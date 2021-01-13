@@ -53,6 +53,31 @@ func (r *Reader) ReadAll(ctx context.Context, emit func(row interface{}) error, 
 	return nil
 }
 
+
+func (r *Reader) ReadAllWithSlice(ctx context.Context, emit func(row []interface{}) error, args ...interface{}) error {
+	return r.ReadAll(ctx, func(row interface{}) error {
+		aSlice, ok := row.([]interface{})
+		if ! ok {
+			return fmt.Errorf("expected %T, but had %T", aSlice, row)
+		}
+		return emit(aSlice)
+	}, args...)
+}
+
+
+
+func (r *Reader) ReadAllWithMap(ctx context.Context, emit func(row map[string]interface{}) error, args ...interface{}) error {
+	return r.ReadAll(ctx, func(row interface{}) error {
+		aMap, ok := row.(map[string]interface{})
+		if ! ok {
+			return fmt.Errorf("expected %T, but had %T", aMap, row)
+		}
+		return emit(aMap)
+	}, args...)
+}
+
+
+
 func (r *Reader) read(mapper RowMapper, rows *sql.Rows, columnsPtr *[]sqlx.Column, emit func(row interface{}) error) error {
 	row := r.newRow()
 	columns := *columnsPtr
@@ -106,4 +131,17 @@ func NewReader(ctx context.Context, db *sql.DB, query string, newRow func() inte
 		return nil, fmt.Errorf("failed to prepare query: %v, due to %w", query, err)
 	}
 	return reader, err
+}
+
+func NewMapReader(ctx context.Context, db *sql.DB, query string) (*Reader, error) {
+	return NewReader(ctx, db, query, func() interface{} {
+		return make(map[string]interface{})
+	})
+}
+
+
+func NewSliceReader(ctx context.Context, db *sql.DB, query string, columns int) (*Reader, error) {
+	return NewReader(ctx, db, query, func() interface{} {
+		return make([]interface{}, columns)
+	})
 }

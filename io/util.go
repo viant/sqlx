@@ -15,6 +15,10 @@ const (
 )
 
 
+
+
+
+
 //columnPositions maps column into field index in record type
 func columnPositions(columns []sqlx.Column, recordType reflect.Type) ([]int, error) {
 	var indexedFields = map[string]int{}
