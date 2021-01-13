@@ -22,13 +22,11 @@ const (
 	dbTypeNameBytes   = "bytes"
 	dbTypeNameBlob    = "blob"
 )
+
 type Foo struct {
-	ID int
+	ID   int
 	Name string
 }
-
-
-
 
 //RowMapper represents a target values mapped to pointer of slice
 type RowMapper func(target interface{}) ([]interface{}, error)
@@ -49,10 +47,11 @@ func newQueryStructMapper(columns []sqlx.Column, recordType reflect.Type) (RowMa
 	}
 	var record = make([]interface{}, recordType.NumField())
 	var mapper = func(target interface{}) ([]interface{}, error) {
-		value, ok := target.(reflect.Value)
-		if !ok {
-			return nil, fmt.Errorf("expected %T, but had: %T", value, target)
-		}
+		//value, ok := target.(reflect.Value)
+		value := reflect.ValueOf(target)
+		//if !ok {
+		//	return nil, fmt.Errorf("expected %T, but had: %T", value, target)
+		//}
 		if value.Kind() != reflect.Ptr {
 			return nil, fmt.Errorf("expected pointer, but had: %T", value.Kind())
 		}
@@ -100,7 +99,7 @@ func genericMapper(columns []sqlx.Column) (RowMapper, error) {
 				val := false
 				values[index] = &val
 			}
-		} else if strings.Contains(dbTypeName, dbTypeNameBytes) || strings.Contains(dbTypeName, dbTypeNameBlob){
+		} else if strings.Contains(dbTypeName, dbTypeNameBytes) || strings.Contains(dbTypeName, dbTypeNameBlob) {
 			valueProviders[i] = func(index int, values []interface{}) {
 				val := make([]byte, 0)
 				values[index] = &val
