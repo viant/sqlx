@@ -11,7 +11,9 @@ import (
 const (
 	tagName = "name"
 	tagColumn = "column"
+	tagTransient = "transient"
 )
+
 
 //columnPositions maps column into field index in record type
 func columnPositions(columns []sqlx.Column, recordType reflect.Type) ([]int, error) {
@@ -24,6 +26,10 @@ func columnPositions(columns []sqlx.Column, recordType reflect.Type) ([]int, err
 		indexedFields[fieldName] = i
 		indexedFields[strings.ToLower(fieldName)] = i //to account for various matching strategies
 		aTag := recordType.Field(i).Tag
+		isTransient:= aTag.Get(tagTransient) != ""
+		if isTransient {
+			continue
+		}
 		if column := aTag.Get(tagColumn); column != "" {
 			indexedFields[column] = i
 		} else if  column := aTag.Get(tagName); column != "" {

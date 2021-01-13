@@ -22,6 +22,13 @@ const (
 	dbTypeNameBytes   = "bytes"
 	dbTypeNameBlob    = "blob"
 )
+type Foo struct {
+	ID int
+	Name string
+}
+
+
+
 
 //RowMapper represents a target values mapped to pointer of slice
 type RowMapper func(target interface{}) ([]interface{}, error)
@@ -31,7 +38,7 @@ func newQueryMapper(columns []sqlx.Column, targetType reflect.Type) (RowMapper, 
 	if targetType.Kind() == reflect.Struct {
 		return newQueryStructMapper(columns, targetType)
 	}
-	return newQueryLoaderMapper(columns)
+	return genericMapper(columns)
 }
 
 //newQueryStructMapper creates a new record mapper for supplied struct type
@@ -59,7 +66,7 @@ func newQueryStructMapper(columns []sqlx.Column, recordType reflect.Type) (RowMa
 }
 
 //newQueryStructMapper creates a new record mapper for supplied struct type
-func newQueryLoaderMapper(columns []sqlx.Column) (RowMapper, error) {
+func genericMapper(columns []sqlx.Column) (RowMapper, error) {
 	var valueProviders = make([]func(index int, values []interface{}), len(columns))
 	defaultProvider := func(index int, values []interface{}) {
 		val := new(interface{})

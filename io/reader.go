@@ -9,6 +9,7 @@ import (
 	"reflect"
 )
 
+//Reader represents generic Query reader
 type Reader struct {
 	query      string
 	newRow     func() interface{}
