@@ -16,7 +16,7 @@ type fooCase1 struct {
 }
 
 type fooCase2 struct {
-	Id   int `column:"foo_id"`
+	Id   int    `column:"foo_id"`
 	Name string `name:"foo_name"`
 	Desc string `transient:"true"`
 	Bar  float64
@@ -43,7 +43,7 @@ func TestReader_ReadAll(t *testing.T) {
 				"insert into t1 values(1, \"John\")",
 				"insert into t1 values(2, \"Bruce\")",
 			},
-			query: "select * from t1 order by id " ,
+			query: "select * from t1 order by id ",
 			newRow: func() interface{} {
 				return &fooCase1{}
 			},
@@ -59,7 +59,7 @@ func TestReader_ReadAll(t *testing.T) {
 				"insert into t1 values(1, \"John\")",
 				"insert into t1 values(2, \"Bruce\")",
 			},
-			query: "select id as foo_id, name as foo_name from t1 order by 1 " ,
+			query: "select id as foo_id, name as foo_name from t1 order by 1 ",
 			newRow: func() interface{} {
 				return &fooCase2{}
 			},
@@ -75,7 +75,7 @@ func TestReader_ReadAll(t *testing.T) {
 				"insert into t1 values(1, \"John\")",
 				"insert into t1 values(2, \"Bruce\")",
 			},
-			query: "select id , name  from t1 order by 1  " ,
+			query: "select id , name  from t1 order by 1  ",
 			newRow: func() interface{} {
 				return make(map[string]interface{})
 			},
@@ -91,9 +91,9 @@ func TestReader_ReadAll(t *testing.T) {
 				"insert into t1 values(1, \"John\")",
 				"insert into t1 values(2, \"Bruce\")",
 			},
-			query: "select id , name  from t1 order by 1  " ,
+			query: "select id , name  from t1 order by 1  ",
 			newRow: func() interface{} {
-				return make([]interface{},2)
+				return make([]interface{}, 2)
 			},
 			expect: `[[1,"John"],[2,"Bruce"]]`,
 		},
@@ -101,7 +101,7 @@ func TestReader_ReadAll(t *testing.T) {
 
 outer:
 
-	for _, useCase := range useCases[2:] {
+	for _, useCase := range useCases {
 
 		ctx := context.Background()
 		var db *sql.DB
