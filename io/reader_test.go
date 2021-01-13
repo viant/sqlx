@@ -3,6 +3,7 @@ package io
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/assert"
 	"log"
@@ -29,11 +30,17 @@ func TestReader_ReadAll(t *testing.T) {
 			description: "Test reader: sqllite",
 			driver:      "sqlite3",
 			dsn:         "/tmp/sqllite.db",
-			initSQL:     []string{"CREATE TABLE IF NOT EXISTS t1 (id INTEGER PRIMARY KEY, name TEXT)", "delete from t1", "insert into t1 values(1, \"John\")"},
-			query:       "select * from t1",
+			initSQL: []string{
+				"CREATE TABLE IF NOT EXISTS t1 (id INTEGER PRIMARY KEY, name TEXT)",
+				"delete from t1",
+				"insert into t1 values(1, \"John\")",
+				"insert into t1 values(2, \"Bruce\")",
+			},
+			query: "select * from t1",
 			newRow: func() interface{} {
 				return &Foo_Case1{}
 			},
+			expect: `[{"Id":1,"Name":"John"},{"Id":2,"Name":"Bruce"}]`,
 		},
 	}
 
@@ -63,6 +70,8 @@ outer:
 			return nil
 		})
 		assert.Nil(t, err, useCases)
+		jActual, _ := json.Marshal(actual)
+		assert.EqualValues(t, useCase.expect, jActual, useCase.description)
 
 	}
 

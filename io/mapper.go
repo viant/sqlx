@@ -47,11 +47,7 @@ func newQueryStructMapper(columns []sqlx.Column, recordType reflect.Type) (RowMa
 	}
 	var record = make([]interface{}, recordType.NumField())
 	var mapper = func(target interface{}) ([]interface{}, error) {
-		//value, ok := target.(reflect.Value)
 		value := reflect.ValueOf(target)
-		//if !ok {
-		//	return nil, fmt.Errorf("expected %T, but had: %T", value, target)
-		//}
 		if value.Kind() != reflect.Ptr {
 			return nil, fmt.Errorf("expected pointer, but had: %T", value.Kind())
 		}
