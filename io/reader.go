@@ -86,7 +86,10 @@ func (r *Reader) read(mapper RowMapper, rows *sql.Rows, columnsPtr *[]sqlx.Colum
 		asDereferenceSlice(rowValues)
 		copy(actual, rowValues)
 	}
-	return emit(row) // emit(*row)
+	if err = rows.Err(); err != nil {
+		return err
+	}
+	return emit(row)
 }
 
 
