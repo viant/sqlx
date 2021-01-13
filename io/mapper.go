@@ -45,7 +45,7 @@ func newQueryStructMapper(columns []sqlx.Column, recordType reflect.Type) (RowMa
 	if err != nil {
 		return nil, err
 	}
-	var record = make([]interface{}, recordType.NumField())
+	var record = make([]interface{}, len(mappedFieldIndex))
 	var mapper = func(target interface{}) ([]interface{}, error) {
 		value := reflect.ValueOf(target)
 		if value.Kind() != reflect.Ptr {

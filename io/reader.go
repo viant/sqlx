@@ -61,7 +61,7 @@ func (r *Reader) read(mapper RowMapper, rows *sql.Rows, columnsPtr *[]sqlx.Colum
 		if err != nil {
 			return err
 		}
-		columns := base.NamesToColumns(columnNames)
+		columns = base.NamesToColumns(columnNames)
 		if columnsTypes, _ := rows.ColumnTypes(); len(columnNames) > 0 {
 			columns = base.TypesToColumns(columnsTypes)
 		}
@@ -70,8 +70,8 @@ func (r *Reader) read(mapper RowMapper, rows *sql.Rows, columnsPtr *[]sqlx.Colum
 			return fmt.Errorf("creating rowValues mapper, due to %w", err)
 		}
 	}
+
 	rowValues, err := mapper(row)
-	fmt.Printf("row values count %v\n",len(rowValues))
 	if err != nil {
 		return err
 	}

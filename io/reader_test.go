@@ -19,6 +19,7 @@ type fooCase2 struct {
 	Id   int `column:"foo_id"`
 	Name string `name:"foo_name"`
 	Desc string `transient:"true"`
+	Bar  float64
 }
 
 func TestReader_ReadAll(t *testing.T) {
@@ -62,12 +63,46 @@ func TestReader_ReadAll(t *testing.T) {
 			newRow: func() interface{} {
 				return &fooCase2{}
 			},
-			expect: `[{"Id":1,"Name":"John"},{"Id":2,"Name":"Bruce"}]`,
+			expect: `[{"Id":1,"Name":"John","Desc":"","Bar":0},{"Id":2,"Name":"Bruce","Desc":"","Bar":0}]`,
+		},
+		{
+			description: "Reading map input   ",
+			driver:      "sqlite3",
+			dsn:         "/tmp/sqllite.db",
+			initSQL: []string{
+				"CREATE TABLE IF NOT EXISTS t1 (id INTEGER PRIMARY KEY, name TEXT)",
+				"delete from t1",
+				"insert into t1 values(1, \"John\")",
+				"insert into t1 values(2, \"Bruce\")",
+			},
+			query: "select id , name  from t1 order by 1  " ,
+			newRow: func() interface{} {
+				return make(map[string]interface{})
+			},
+			expect: `[{"id":1,"name":"John"},{"id":2,"name":"Bruce"}]`,
+		},
+		{
+			description: "Reading slice input   ",
+			driver:      "sqlite3",
+			dsn:         "/tmp/sqllite.db",
+			initSQL: []string{
+				"CREATE TABLE IF NOT EXISTS t1 (id INTEGER PRIMARY KEY, name TEXT)",
+				"delete from t1",
+				"insert into t1 values(1, \"John\")",
+				"insert into t1 values(2, \"Bruce\")",
+			},
+			query: "select id , name  from t1 order by 1  " ,
+			newRow: func() interface{} {
+				return make([]interface{},2)
+			},
+			expect: `[[1,"John"],[2,"Bruce"]]`,
 		},
 	}
 
 outer:
-	for _, useCase := range useCases {
+
+	for _, useCase := range useCases[2:] {
+
 		ctx := context.Background()
 		var db *sql.DB
 
@@ -93,7 +128,7 @@ outer:
 		})
 		assert.Nil(t, err, useCases)
 		jActual, _ := json.Marshal(actual)
-		assert.EqualValues(t, useCase.expect, jActual, useCase.description)
+		assert.EqualValues(t, useCase.expect, string(jActual), useCase.description)
 
 	}
 
