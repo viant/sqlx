@@ -17,26 +17,7 @@ type Reader struct {
 	stmt       *sql.Stmt
 }
 
-
-func (r *Reader) ReadSingle(ctx context.Context, emit func(row interface{}) error, args ...interface{}) error {
-	rows, err := r.stmt.QueryContext(ctx, args...)
-	if err != nil {
-		return fmt.Errorf("failed to run query: %v, due to %s", r.query, err)
-	}
-	defer rows.Close()
-	var mapper RowMapper
-	var columns []sqlx.Column
-	if rows.Next() {
-		if err = r.read(mapper, rows, &columns, emit); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-
-
-func (r *Reader) ReadAll(ctx context.Context, emit func(row interface{}) error, args ...interface{}) error {
+func (r *Reader) Read(ctx context.Context, emit func(row interface{}) error, args ...interface{}) error {
 	rows, err := r.stmt.QueryContext(ctx, args...)
 	if err != nil {
 		return fmt.Errorf("failed to run query: %v, due to %s", r.query, err)
@@ -53,30 +34,25 @@ func (r *Reader) ReadAll(ctx context.Context, emit func(row interface{}) error, 
 	return nil
 }
 
-
-func (r *Reader) ReadAllWithSlice(ctx context.Context, emit func(row []interface{}) error, args ...interface{}) error {
-	return r.ReadAll(ctx, func(row interface{}) error {
+func (r *Reader) ReadWithSlice(ctx context.Context, emit func(row []interface{}) error, args ...interface{}) error {
+	return r.Read(ctx, func(row interface{}) error {
 		aSlice, ok := row.([]interface{})
-		if ! ok {
+		if !ok {
 			return fmt.Errorf("expected %T, but had %T", aSlice, row)
 		}
 		return emit(aSlice)
 	}, args...)
 }
 
-
-
-func (r *Reader) ReadAllWithMap(ctx context.Context, emit func(row map[string]interface{}) error, args ...interface{}) error {
-	return r.ReadAll(ctx, func(row interface{}) error {
+func (r *Reader) ReadWithMap(ctx context.Context, emit func(row map[string]interface{}) error, args ...interface{}) error {
+	return r.Read(ctx, func(row interface{}) error {
 		aMap, ok := row.(map[string]interface{})
-		if ! ok {
+		if !ok {
 			return fmt.Errorf("expected %T, but had %T", aMap, row)
 		}
 		return emit(aMap)
 	}, args...)
 }
-
-
 
 func (r *Reader) read(mapper RowMapper, rows *sql.Rows, columnsPtr *[]sqlx.Column, emit func(row interface{}) error) error {
 	row := r.newRow()
@@ -118,7 +94,6 @@ func (r *Reader) read(mapper RowMapper, rows *sql.Rows, columnsPtr *[]sqlx.Colum
 	return emit(row)
 }
 
-
 func NewReader(ctx context.Context, db *sql.DB, query string, newRow func() interface{}) (*Reader, error) {
 	var err error
 	targetType := reflect.TypeOf(newRow())
@@ -138,7 +113,6 @@ func NewMapReader(ctx context.Context, db *sql.DB, query string) (*Reader, error
 		return make(map[string]interface{})
 	})
 }
-
 
 func NewSliceReader(ctx context.Context, db *sql.DB, query string, columns int) (*Reader, error) {
 	return NewReader(ctx, db, query, func() interface{} {

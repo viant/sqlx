@@ -22,7 +22,127 @@ type fooCase2 struct {
 	Bar  float64
 }
 
-func TestReader_ReadAll(t *testing.T) {
+func TestReader_ReadWithMap(t *testing.T) {
+	var useCases = []struct {
+		description string
+		query       string
+		driver      string
+		dsn         string
+		params      []interface{}
+		expect      interface{}
+		initSQL     []string
+	}{
+		{
+			description: "Reading map input   ",
+			driver:      "sqlite3",
+			dsn:         "/tmp/sqllite.db",
+			initSQL: []string{
+				"CREATE TABLE IF NOT EXISTS t1 (id INTEGER PRIMARY KEY, name TEXT)",
+				"delete from t1",
+				"insert into t1 values(1, \"John\")",
+				"insert into t1 values(2, \"Bruce\")",
+			},
+			query:  "select id , name  from t1 order by 1  ",
+			expect: `[{"id":1,"name":"John"},{"id":2,"name":"Bruce"}]`,
+		},
+	}
+
+outer:
+
+	for _, useCase := range useCases {
+
+		ctx := context.Background()
+		var db *sql.DB
+
+		db, err :=
+			sql.Open(useCase.driver, useCase.dsn)
+		if !assert.Nil(t, err, useCase.description) {
+			log.Panic(err)
+		}
+
+		for _, SQL := range useCase.initSQL {
+			_, err := db.Exec(SQL)
+			if !assert.Nil(t, err, useCase.description) {
+				continue outer
+			}
+		}
+
+		reader, err := NewMapReader(ctx, db, useCase.query)
+		assert.Nil(t, err, useCases)
+		var actual = make([]interface{}, 0)
+		err = reader.ReadWithMap(ctx, func(row map[string]interface{}) error {
+			actual = append(actual, row)
+			return nil
+		})
+		assert.Nil(t, err, useCases)
+		jActual, _ := json.Marshal(actual)
+		assert.EqualValues(t, useCase.expect, string(jActual), useCase.description)
+
+	}
+
+}
+
+func TestReader_ReadWithSlice(t *testing.T) {
+	var useCases = []struct {
+		description string
+		query       string
+		driver      string
+		dsn         string
+		params      []interface{}
+		expect      interface{}
+		initSQL     []string
+	}{
+		{
+			description: "Reading slice input   ",
+			driver:      "sqlite3",
+			dsn:         "/tmp/sqllite.db",
+			initSQL: []string{
+				"CREATE TABLE IF NOT EXISTS t1 (id INTEGER PRIMARY KEY, name TEXT)",
+				"delete from t1",
+				"insert into t1 values(1, \"John\")",
+				"insert into t1 values(2, \"Bruce\")",
+			},
+			query:  "select id , name  from t1 order by 1  ",
+			expect: `[[1,"John"],[2,"Bruce"]]`,
+		},
+	}
+
+outer:
+
+	for _, useCase := range useCases {
+
+		ctx := context.Background()
+		var db *sql.DB
+
+		db, err :=
+			sql.Open(useCase.driver, useCase.dsn)
+		if !assert.Nil(t, err, useCase.description) {
+			log.Panic(err)
+		}
+
+		for _, SQL := range useCase.initSQL {
+			_, err := db.Exec(SQL)
+			if !assert.Nil(t, err, useCase.description) {
+				continue outer
+			}
+		}
+
+		reader, err := NewSliceReader(ctx, db, useCase.query, 2)
+		assert.Nil(t, err, useCases)
+		var actual = make([]interface{}, 0)
+		err = reader.ReadWithSlice(ctx, func(row []interface{}) error {
+			actual = append(actual, row)
+			return nil
+		})
+		assert.Nil(t, err, useCases)
+		jActual, _ := json.Marshal(actual)
+		assert.EqualValues(t, useCase.expect, string(jActual), useCase.description)
+
+	}
+
+}
+
+func TestReader_Read(t *testing.T) {
 	var useCases = []struct {
 		description string
 		query       string
@@ -122,7 +242,7 @@ outer:
 		reader, err := NewReader(ctx, db, useCase.query, useCase.newRow)
 		assert.Nil(t, err, useCases)
 		var actual = make([]interface{}, 0)
-		err = reader.ReadAll(ctx, func(row interface{}) error {
+		err = reader.Read(ctx, func(row interface{}) error {
 			actual = append(actual, row)
 			return nil
 		})
