@@ -10,9 +10,15 @@ import (
 	"testing"
 )
 
-type Foo_Case1 struct {
+type fooCase1 struct {
 	Id   int
 	Name string
+}
+
+type fooCase2 struct {
+	Id   int `column:"foo_id"`
+	Name string `name:"foo_name"`
+	Desc string `transient:"true"`
 }
 
 func TestReader_ReadAll(t *testing.T) {
@@ -27,7 +33,7 @@ func TestReader_ReadAll(t *testing.T) {
 		initSQL     []string
 	}{
 		{
-			description: "Test reader: sqllite",
+			description: "Reading vanilla struct",
 			driver:      "sqlite3",
 			dsn:         "/tmp/sqllite.db",
 			initSQL: []string{
@@ -36,9 +42,25 @@ func TestReader_ReadAll(t *testing.T) {
 				"insert into t1 values(1, \"John\")",
 				"insert into t1 values(2, \"Bruce\")",
 			},
-			query: "select * from t1",
+			query: "select * from t1 order by id " ,
 			newRow: func() interface{} {
-				return &Foo_Case1{}
+				return &fooCase1{}
+			},
+			expect: `[{"Id":1,"Name":"John"},{"Id":2,"Name":"Bruce"}]`,
+		},
+		{
+			description: "Reading struct with tags  ",
+			driver:      "sqlite3",
+			dsn:         "/tmp/sqllite.db",
+			initSQL: []string{
+				"CREATE TABLE IF NOT EXISTS t1 (id INTEGER PRIMARY KEY, name TEXT)",
+				"delete from t1",
+				"insert into t1 values(1, \"John\")",
+				"insert into t1 values(2, \"Bruce\")",
+			},
+			query: "select id as foo_id, name as foo_name from t1 order by 1 " ,
+			newRow: func() interface{} {
+				return &fooCase2{}
 			},
 			expect: `[{"Id":1,"Name":"John"},{"Id":2,"Name":"Bruce"}]`,
 		},

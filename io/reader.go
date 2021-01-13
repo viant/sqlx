@@ -71,6 +71,7 @@ func (r *Reader) read(mapper RowMapper, rows *sql.Rows, columnsPtr *[]sqlx.Colum
 		}
 	}
 	rowValues, err := mapper(row)
+	fmt.Printf("row values count %v\n",len(rowValues))
 	if err != nil {
 		return err
 	}
