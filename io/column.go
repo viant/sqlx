@@ -1,8 +1,20 @@
-package base
+package io
 
 import "reflect"
 
-type Column struct {
+//Column represents a column
+type Column interface {
+	Name() string
+	Length() (length int64, ok bool)
+	DecimalSize() (precision, scale int64, ok bool)
+	ScanType() reflect.Type
+	Nullable() (nullable, ok bool)
+	DatabaseTypeName() string
+}
+
+
+//column represents a column
+type column struct {
 	name             string
 	databaseTypeName string
 	length           *int64
@@ -13,29 +25,29 @@ type Column struct {
 	scanType         reflect.Type
 }
 
-func (c *Column) Name() string {
+func (c *column) Name() string {
 	return c.name
 }
 
-func (c *Column) Length() (length int64, ok bool) {
+func (c *column) Length() (length int64, ok bool) {
 	if c.length == nil {
 		return 0, false
 	}
 	return *c.length, true
 }
 
-func (c *Column) DecimalSize() (precision, scale int64, ok bool) {
+func (c *column) DecimalSize() (precision, scale int64, ok bool) {
 	if c.decimalPrecision == nil || c.decimalScale == nil {
 		return 0, 0, false
 	}
 	return *c.decimalPrecision, *c.decimalScale, true
 }
 
-func (c *Column) ScanType() reflect.Type {
+func (c *column) ScanType() reflect.Type {
 	return c.scanType
 }
 
-func (c *Column) Nullable() (nullable, ok bool) {
+func (c *column) Nullable() (nullable, ok bool) {
 	if c.nullable == nil {
 		return false, false
 	}
@@ -44,7 +56,7 @@ func (c *Column) Nullable() (nullable, ok bool) {
 
 
 // Common type include "VARCHAR", "TEXT", "NVARCHAR", "DECIMAL", "BOOL", "INT", "BIGINT".
-func (c *Column) DatabaseTypeName() string {
+func (c *column) DatabaseTypeName() string {
 	return c.databaseTypeName
 }
 

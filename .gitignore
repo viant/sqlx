@@ -2,3 +2,4 @@ vendor
 .idea
 go.mod
 go.sum
+*.db

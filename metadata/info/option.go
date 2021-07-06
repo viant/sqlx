@@ -1,3 +1,6 @@
-package metadata
+package info
 
 type Option interface{}
+
+
+

@@ -4,28 +4,27 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"github.com/viant/sqlx"
-	"github.com/viant/sqlx/base"
 	"reflect"
 )
 
-//Reader represents generic Query reader
+//Reader represents generic query reader
 type Reader struct {
 	query      string
 	newRow     func() interface{}
 	targetType reflect.Type
+	tagName    string
 	stmt       *sql.Stmt
+	rows       *sql.Rows
 }
 
-
-func (r *Reader) ReadSingle(ctx context.Context, emit func(row interface{}) error, args ...interface{}) error {
+func (r *Reader) QuerySingle(ctx context.Context, emit func(row interface{}) error, args ...interface{}) error {
 	rows, err := r.stmt.QueryContext(ctx, args...)
 	if err != nil {
 		return fmt.Errorf("failed to run query: %v, due to %s", r.query, err)
 	}
 	defer rows.Close()
 	var mapper RowMapper
-	var columns []sqlx.Column
+	var columns []Column
 	if rows.Next() {
 		if err = r.read(mapper, rows, &columns, emit); err != nil {
 			return err
@@ -34,51 +33,47 @@ func (r *Reader) ReadSingle(ctx context.Context, emit func(row interface{}) erro
 	return nil
 }
 
-
-
-func (r *Reader) ReadAll(ctx context.Context, emit func(row interface{}) error, args ...interface{}) error {
+func (r *Reader) QueryAll(ctx context.Context, emit func(row interface{}) error, args ...interface{}) error {
 	rows, err := r.stmt.QueryContext(ctx, args...)
 	if err != nil {
 		return fmt.Errorf("failed to run query: %v, due to %s", r.query, err)
 	}
 	defer rows.Close()
-	var mapper RowMapper
+	return r.ReadAll(rows, emit)
+}
 
-	var columns []sqlx.Column
+func (r *Reader) ReadAll(rows *sql.Rows, emit func(row interface{}) error) error {
+	var mapper RowMapper
+	var columns []Column
 	for rows.Next() {
-		if err = r.read(mapper, rows, &columns, emit); err != nil {
+		if err := r.read(mapper, rows, &columns, emit); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-
-func (r *Reader) ReadAllWithSlice(ctx context.Context, emit func(row []interface{}) error, args ...interface{}) error {
-	return r.ReadAll(ctx, func(row interface{}) error {
+func (r *Reader) QueryAllWithSlice(ctx context.Context, emit func(row []interface{}) error, args ...interface{}) error {
+	return r.QueryAll(ctx, func(row interface{}) error {
 		aSlice, ok := row.([]interface{})
-		if ! ok {
+		if !ok {
 			return fmt.Errorf("expected %T, but had %T", aSlice, row)
 		}
 		return emit(aSlice)
 	}, args...)
 }
 
-
-
-func (r *Reader) ReadAllWithMap(ctx context.Context, emit func(row map[string]interface{}) error, args ...interface{}) error {
-	return r.ReadAll(ctx, func(row interface{}) error {
+func (r *Reader) QueryAllWithMap(ctx context.Context, emit func(row map[string]interface{}) error, args ...interface{}) error {
+	return r.QueryAll(ctx, func(row interface{}) error {
 		aMap, ok := row.(map[string]interface{})
-		if ! ok {
+		if !ok {
 			return fmt.Errorf("expected %T, but had %T", aMap, row)
 		}
 		return emit(aMap)
 	}, args...)
 }
 
-
-
-func (r *Reader) read(mapper RowMapper, rows *sql.Rows, columnsPtr *[]sqlx.Column, emit func(row interface{}) error) error {
+func (r *Reader) read(mapper RowMapper, rows *sql.Rows, columnsPtr *[]Column, emit func(row interface{}) error) error {
 	row := r.newRow()
 	columns := *columnsPtr
 	if mapper == nil {
@@ -86,12 +81,12 @@ func (r *Reader) read(mapper RowMapper, rows *sql.Rows, columnsPtr *[]sqlx.Colum
 		if err != nil {
 			return err
 		}
-		columns = base.NamesToColumns(columnNames)
+		columns = NamesToColumns(columnNames)
 		if columnsTypes, _ := rows.ColumnTypes(); len(columnNames) > 0 {
-			columns = base.TypesToColumns(columnsTypes)
+			columns = TypesToColumns(columnsTypes)
 		}
 		*columnsPtr = columns
-		if mapper, err = newQueryMapper(columns, r.targetType); err != nil {
+		if mapper, err = newQueryMapper(columns, r.targetType, r.tagName); err != nil {
 			return fmt.Errorf("creating rowValues mapper, due to %w", err)
 		}
 	}
@@ -118,30 +113,30 @@ func (r *Reader) read(mapper RowMapper, rows *sql.Rows, columnsPtr *[]sqlx.Colum
 	return emit(row)
 }
 
+func NewReader(ctx context.Context, db *sql.DB, query string, newRow func() interface{}, options ...Option) (*Reader, error) {
+	stmt, err := db.PrepareContext(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to prepare query: %v, due to %w", query, err)
+	}
+	return NewStmtReader(stmt, newRow, options...), err
+}
 
-func NewReader(ctx context.Context, db *sql.DB, query string, newRow func() interface{}) (*Reader, error) {
-	var err error
+func NewStmtReader(stmt *sql.Stmt, newRow func() interface{}, options ...Option) *Reader {
 	targetType := reflect.TypeOf(newRow())
 	if targetType.Kind() == reflect.Ptr {
 		targetType = targetType.Elem()
 	}
-	reader := &Reader{newRow: newRow, targetType: targetType}
-	reader.stmt, err = db.PrepareContext(ctx, query)
-	if err != nil {
-		return nil, fmt.Errorf("failed to prepare query: %v, due to %w", query, err)
-	}
-	return reader, err
+	return &Reader{newRow: newRow, targetType: targetType, stmt: stmt, tagName: Options(options).Tag()}
 }
 
-func NewMapReader(ctx context.Context, db *sql.DB, query string) (*Reader, error) {
+func NewMapReader(ctx context.Context, db *sql.DB, query string, options ...Option) (*Reader, error) {
 	return NewReader(ctx, db, query, func() interface{} {
 		return make(map[string]interface{})
-	})
+	}, options...)
 }
 
-
-func NewSliceReader(ctx context.Context, db *sql.DB, query string, columns int) (*Reader, error) {
+func NewSliceReader(ctx context.Context, db *sql.DB, query string, columns int, options ...Option) (*Reader, error) {
 	return NewReader(ctx, db, query, func() interface{} {
 		return make([]interface{}, columns)
-	})
+	}, options...)
 }

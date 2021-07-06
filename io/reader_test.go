@@ -16,9 +16,9 @@ type fooCase1 struct {
 }
 
 type fooCase2 struct {
-	Id   int    `column:"foo_id"`
-	Name string `name:"foo_name"`
-	Desc string `transient:"true"`
+	Id   int    `sqlx:"foo_id"`
+	Name string `sqlx:"foo_name"`
+	Desc string `sqlx:"-"`
 	Bar  float64
 }
 
@@ -122,7 +122,7 @@ outer:
 		reader, err := NewReader(ctx, db, useCase.query, useCase.newRow)
 		assert.Nil(t, err, useCases)
 		var actual = make([]interface{}, 0)
-		err = reader.ReadAll(ctx, func(row interface{}) error {
+		err = reader.QueryAll(ctx, func(row interface{}) error {
 			actual = append(actual, row)
 			return nil
 		})

@@ -1,8 +1,7 @@
 package io
 
 import (
-	"fmt"
-	"github.com/viant/sqlx"
+	"github.com/viant/sqlx/xunsafe"
 	"reflect"
 	"strings"
 	"time"
@@ -32,28 +31,36 @@ type Foo struct {
 type RowMapper func(target interface{}) ([]interface{}, error)
 
 //newQueryMapper creates a new record mapped
-func newQueryMapper(columns []sqlx.Column, targetType reflect.Type) (RowMapper, error) {
+func newQueryMapper(columns []Column, targetType reflect.Type, tagName string) (RowMapper, error) {
+	if tagName == "" {
+		tagName = tagSqlx
+	}
 	if targetType.Kind() == reflect.Struct {
-		return newQueryStructMapper(columns, targetType)
+		return newQueryStructMapper(columns, targetType, tagName)
 	}
 	return genericMapper(columns)
 }
 
 //newQueryStructMapper creates a new record mapper for supplied struct type
-func newQueryStructMapper(columns []sqlx.Column, recordType reflect.Type) (RowMapper, error) {
-	mappedFieldIndex, err := columnPositions(columns, recordType)
+func newQueryStructMapper(columns []Column, recordType reflect.Type, tagName string) (RowMapper, error) {
+	mappedFieldIndex, err := columnPositions(columns, recordType, tagName)
 	if err != nil {
 		return nil, err
 	}
 	var record = make([]interface{}, len(mappedFieldIndex))
+
+	var pointers = make([]xunsafe.Pointer, len(mappedFieldIndex))
+	for i, fieldIndex := range mappedFieldIndex {
+		pointers[i], err = xunsafe.FieldPointer(recordType, fieldIndex)
+		if err != nil {
+			return nil, err
+		}
+	}
 	var mapper = func(target interface{}) ([]interface{}, error) {
 		value := reflect.ValueOf(target)
-		if value.Kind() != reflect.Ptr {
-			return nil, fmt.Errorf("expected pointer, but had: %T", value.Kind())
-		}
-		value = value.Elem() //T = *T
-		for i, fieldIndex := range mappedFieldIndex {
-			record[i] = value.Field(fieldIndex).Addr().Interface()
+		holderPtr := value.Elem().UnsafeAddr()
+		for i, ptr := range pointers {
+			record[i] = ptr(holderPtr)
 		}
 		return record, nil
 	}
@@ -61,7 +68,7 @@ func newQueryStructMapper(columns []sqlx.Column, recordType reflect.Type) (RowMa
 }
 
 //newQueryStructMapper creates a new record mapper for supplied struct type
-func genericMapper(columns []sqlx.Column) (RowMapper, error) {
+func genericMapper(columns []Column) (RowMapper, error) {
 	var valueProviders = make([]func(index int, values []interface{}), len(columns))
 	defaultProvider := func(index int, values []interface{}) {
 		val := new(interface{})
@@ -107,7 +114,6 @@ func genericMapper(columns []sqlx.Column) (RowMapper, error) {
 			}
 		}
 	}
-
 	mapper := func(target interface{}) ([]interface{}, error) {
 		var record = make([]interface{}, len(columns))
 		for i := range columns {

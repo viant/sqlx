@@ -2,25 +2,16 @@ package io
 
 import (
 	"fmt"
-	"github.com/viant/sqlx"
 	"reflect"
 	"strings"
 )
 
-
 const (
-	tagName = "name"
-	tagColumn = "column"
-	tagTransient = "transient"
+	tagSqlx = "sqlx"
 )
 
-
-
-
-
-
 //columnPositions maps column into field index in record type
-func columnPositions(columns []sqlx.Column, recordType reflect.Type) ([]int, error) {
+func columnPositions(columns []Column, recordType reflect.Type, tag string) ([]int, error) {
 	var indexedFields = map[string]int{}
 	for i := 0; i < recordType.NumField(); i++ {
 		if isExported := recordType.Field(i).PkgPath == ""; !isExported {
@@ -30,14 +21,18 @@ func columnPositions(columns []sqlx.Column, recordType reflect.Type) ([]int, err
 		indexedFields[fieldName] = i
 		indexedFields[strings.ToLower(fieldName)] = i //to account for various matching strategies
 		aTag := recordType.Field(i).Tag
-		isTransient:= aTag.Get(tagTransient) != ""
+		isTransient := aTag.Get(tag) == "-"
 		if isTransient {
 			continue
 		}
-		if column := aTag.Get(tagColumn); column != "" {
-			indexedFields[column] = i
-		} else if  column := aTag.Get(tagName); column != "" {
-			indexedFields[column] = i
+		if names := aTag.Get(tag); names != "" {
+			for _, column := range strings.Split(names, "|") {
+				column = strings.TrimSpace(column)
+				if column == "" {
+					continue
+				}
+				indexedFields[column] = i
+			}
 		}
 	}
 	var mappedFieldIndex = make([]int, len(columns))
@@ -51,15 +46,12 @@ func columnPositions(columns []sqlx.Column, recordType reflect.Type) ([]int, err
 			fieldIndex, ok = indexedFields[strings.Replace(strings.ToLower(columnName), "_", "", strings.Count(columnName, "_"))]
 		}
 		if !ok {
-			return nil, fmt.Errorf("failed to matched a %v field for SQL column: %v", recordType, column)
+			return nil, fmt.Errorf("failed to match %v field for column: %v", recordType, column.Name())
 		}
 		mappedFieldIndex[i] = fieldIndex
 	}
 	return mappedFieldIndex, nil
 }
-
-
-
 
 func asDereferenceSlice(aSlice []interface{}) {
 	for i, value := range aSlice {
@@ -71,12 +63,8 @@ func asDereferenceSlice(aSlice []interface{}) {
 	}
 }
 
-func updateMap(columns []sqlx.Column, values []interface{}, target map[string]interface{}) {
+func updateMap(columns []Column, values []interface{}, target map[string]interface{}) {
 	for i, column := range columns {
 		target[column.Name()] = values[i]
 	}
 }
-
-
-
-
