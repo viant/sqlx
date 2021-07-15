@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"github.com/viant/sqlx/opt"
 	"reflect"
 )
 
@@ -113,7 +114,7 @@ func (r *Reader) read(mapper RowMapper, rows *sql.Rows, columnsPtr *[]Column, em
 	return emit(row)
 }
 
-func NewReader(ctx context.Context, db *sql.DB, query string, newRow func() interface{}, options ...Option) (*Reader, error) {
+func NewReader(ctx context.Context, db *sql.DB, query string, newRow func() interface{}, options ...opt.Option) (*Reader, error) {
 	stmt, err := db.PrepareContext(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("failed to prepare query: %v, due to %w", query, err)
@@ -121,21 +122,21 @@ func NewReader(ctx context.Context, db *sql.DB, query string, newRow func() inte
 	return NewStmtReader(stmt, newRow, options...), err
 }
 
-func NewStmtReader(stmt *sql.Stmt, newRow func() interface{}, options ...Option) *Reader {
+func NewStmtReader(stmt *sql.Stmt, newRow func() interface{}, options ...opt.Option) *Reader {
 	targetType := reflect.TypeOf(newRow())
 	if targetType.Kind() == reflect.Ptr {
 		targetType = targetType.Elem()
 	}
-	return &Reader{newRow: newRow, targetType: targetType, stmt: stmt, tagName: Options(options).Tag()}
+	return &Reader{newRow: newRow, targetType: targetType, stmt: stmt, tagName: opt.Options(options).Tag()}
 }
 
-func NewMapReader(ctx context.Context, db *sql.DB, query string, options ...Option) (*Reader, error) {
+func NewMapReader(ctx context.Context, db *sql.DB, query string, options ...opt.Option) (*Reader, error) {
 	return NewReader(ctx, db, query, func() interface{} {
 		return make(map[string]interface{})
 	}, options...)
 }
 
-func NewSliceReader(ctx context.Context, db *sql.DB, query string, columns int, options ...Option) (*Reader, error) {
+func NewSliceReader(ctx context.Context, db *sql.DB, query string, columns int, options ...opt.Option) (*Reader, error) {
 	return NewReader(ctx, db, query, func() interface{} {
 		return make([]interface{}, columns)
 	}, options...)

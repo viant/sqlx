@@ -9,7 +9,6 @@ func (t InsertFeatures) MultiValues() bool {
 	return int(t)&target == target
 }
 
-
 const (
 
 	//InsertWithSingleValues single values insert

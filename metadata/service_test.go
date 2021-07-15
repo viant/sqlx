@@ -1,11 +1,11 @@
-package metadata_test
+package metadata
 
 import (
 	"context"
 	"database/sql"
 	"fmt"
-	"github.com/viant/sqlx/metadata"
 	"github.com/viant/sqlx/metadata/option"
+	"github.com/viant/sqlx/opt"
 	"os"
 
 	// "github.com/viant/sqlx/metadata/option"
@@ -15,12 +15,10 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/assert"
 	"github.com/viant/afs"
-	"github.com/viant/assertly"
 	"github.com/viant/sqlx/metadata/database"
 	"github.com/viant/sqlx/metadata/info"
 	_ "github.com/viant/sqlx/metadata/product/mysql"
 	_ "github.com/viant/sqlx/metadata/product/sqlite"
-	"github.com/viant/toolbox"
 	"path"
 	"testing"
 )
@@ -40,7 +38,8 @@ type (
 
 func TestAbstractService_DetectVersion(t *testing.T) {
 	var ctx = context.Background()
-	var parentDir = toolbox.CallerDirectory(3)
+	//var parentDir = ""
+	var parentDir = ""
 	var testCases = []struct {
 		testCase
 		expectProduct string
@@ -52,7 +51,7 @@ func TestAbstractService_DetectVersion(t *testing.T) {
 				prepare: []*prepare{
 					{
 						driver: "sqlite3",
-						dsn:    path.Join(parentDir, "testdata/mydb.db"),
+						dsn:    path.Join(parentDir, "/tmp/mydb.db"),
 						sqls: []string{
 							"DROP TABLE  IF EXISTS emp",
 							"CREATE TABLE `emp` (`id` INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,`emp` varchar(255) DEFAULT NULL,`active` tinyint(1) DEFAULT '1',`salary` decimal(7,2) DEFAULT NULL,`comments` text,`last_access_time` timestamp DEFAULT CURRENT_TIMESTAMP)",
@@ -69,7 +68,7 @@ func TestAbstractService_DetectVersion(t *testing.T) {
 		if !assert.Nil(t, err, testCase.description) {
 			continue
 		}
-		meta := metadata.New()
+		meta := New()
 		product, err := meta.DetectProduct(ctx, db)
 		if !assert.Nil(t, err, testCase.description) {
 			continue
@@ -78,20 +77,19 @@ func TestAbstractService_DetectVersion(t *testing.T) {
 	}
 }
 
-
 func TestAbstractService_Info(t *testing.T) {
 	os.Setenv("MYSQL_TEST_HOST", "127.0.0.1:3307")
 	mySQLTestHost := os.Getenv("MYSQL_TEST_HOST")
 	runMySQLTest := mySQLTestHost != ""
 	var ctx = context.Background()
-	var parentDir = toolbox.CallerDirectory(3)
+	var parentDir = ""
 
 	var testCases = []struct {
 		testCase
 		kind    info.Kind
 		product *database.Product
-		options []info.Option
-		sink    metadata.Sink
+		options []opt.Option
+		sink    Sink
 		expect  interface{}
 	}{
 		{
@@ -100,7 +98,7 @@ func TestAbstractService_Info(t *testing.T) {
 				prepare: []*prepare{
 					{
 						driver: "sqlite3",
-						dsn:    path.Join(parentDir, "testdata/mydb.db"),
+						dsn:    path.Join(parentDir, "/tmp/mydb.db"),
 						sqls: []string{
 							"DROP TABLE  IF EXISTS emp",
 							"CREATE TABLE `emp` (`id` INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,`emp` varchar(255) DEFAULT NULL,`active` tinyint(1) DEFAULT '1',`salary` decimal(7,2) DEFAULT NULL,`comments` text,`last_access_time` timestamp DEFAULT CURRENT_TIMESTAMP)",
@@ -120,7 +118,7 @@ func TestAbstractService_Info(t *testing.T) {
 				prepare: []*prepare{
 					{
 						driver: "sqlite3",
-						dsn:    path.Join(parentDir, "testdata/mydb.db"),
+						dsn:    path.Join(parentDir, "/tmp/mydb.db"),
 						sqls: []string{
 							"DROP TABLE  IF EXISTS emp",
 							"CREATE TABLE `emp` (`id` INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,`emp` varchar(255) DEFAULT NULL,`active` tinyint(1) DEFAULT '1',`salary` decimal(7,2) DEFAULT NULL,`comments` text,`last_access_time` timestamp DEFAULT CURRENT_TIMESTAMP)",
@@ -140,7 +138,7 @@ func TestAbstractService_Info(t *testing.T) {
 				prepare: []*prepare{
 					{
 						driver: "sqlite3",
-						dsn:    path.Join(parentDir, "testdata/mydb.db"),
+						dsn:    path.Join(parentDir, "/tmp/mydb.db"),
 						sqls: []string{
 							"DROP TABLE  IF EXISTS emp",
 							"CREATE TABLE `emp` (`id` INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,`emp` varchar(255) DEFAULT NULL,`active` tinyint(1) DEFAULT '1',`salary` decimal(7,2) DEFAULT NULL,`comments` text,`last_access_time` timestamp DEFAULT CURRENT_TIMESTAMP)",
@@ -158,7 +156,7 @@ func TestAbstractService_Info(t *testing.T) {
 		   	{"Name": "dept", "Type": "table"}
 		   ]
 		   `,
-			options: []info.Option{
+			options: []opt.Option{
 				option.NewArgs(),
 			},
 		},
@@ -169,7 +167,7 @@ func TestAbstractService_Info(t *testing.T) {
 				prepare: []*prepare{
 					{
 						driver: "sqlite3",
-						dsn:    path.Join(parentDir, "testdata/mydb.db"),
+						dsn:    path.Join(parentDir, "/tmp/mydb.db"),
 						sqls: []string{
 							"DROP TABLE  IF EXISTS emp",
 							"CREATE TABLE `emp` (`id` INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,`name` varchar(255) DEFAULT NULL,`active` tinyint(1) DEFAULT '1',`salary` decimal(7,2) DEFAULT NULL,`comments` text,`last_access_time` timestamp DEFAULT CURRENT_TIMESTAMP)",
@@ -179,7 +177,7 @@ func TestAbstractService_Info(t *testing.T) {
 			},
 			kind: info.KindTable,
 			sink: pColumns([]sink.Column{}),
-			options: []info.Option{
+			options: []opt.Option{
 				option.NewArgs("", "", "emp"),
 			}, expect: `[
 		   	{"Table":"emp","Name":"id","Position":0,"Type":"INTEGER","Nullable":"0","Key":"PRI"},
@@ -198,7 +196,7 @@ func TestAbstractService_Info(t *testing.T) {
 				prepare: []*prepare{
 					{
 						driver: "sqlite3",
-						dsn:    path.Join(parentDir, "testdata/mydb.db"),
+						dsn:    path.Join(parentDir, "/tmp/mydb.db"),
 						sqls: []string{
 							"DROP TABLE  IF EXISTS emp",
 							"CREATE TABLE `emp` (`id` INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,`name` varchar(255) DEFAULT NULL,`active` tinyint(1) DEFAULT '1',`salary` decimal(7,2) DEFAULT NULL,`comments` text,`last_access_time` timestamp DEFAULT CURRENT_TIMESTAMP)",
@@ -210,7 +208,7 @@ func TestAbstractService_Info(t *testing.T) {
 			},
 			kind: info.KindIndexes,
 			sink: pIndexes([]sink.Index{}),
-			options: []info.Option{
+			options: []opt.Option{
 				option.NewArgs("", "", "emp"),
 			},
 			expect: `[
@@ -225,7 +223,7 @@ func TestAbstractService_Info(t *testing.T) {
 				prepare: []*prepare{
 					{
 						driver: "sqlite3",
-						dsn:    path.Join(parentDir, "testdata/mydb.db"),
+						dsn:    path.Join(parentDir, "/tmp/mydb.db"),
 						sqls: []string{
 							"DROP TABLE  IF EXISTS emp",
 							"CREATE TABLE `emp` (`id` INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,`name` varchar(255) DEFAULT NULL,`active` tinyint(1) DEFAULT '1',`salary` decimal(7,2) DEFAULT NULL,`comments` text,`last_access_time` timestamp DEFAULT CURRENT_TIMESTAMP)",
@@ -237,7 +235,7 @@ func TestAbstractService_Info(t *testing.T) {
 			},
 			kind: info.KindIndex,
 			sink: pColumns([]sink.Column{}),
-			options: []info.Option{
+			options: []opt.Option{
 				option.NewArgs("", "", "emp", "emp_active"),
 			},
 			expect: `[
@@ -252,7 +250,7 @@ func TestAbstractService_Info(t *testing.T) {
 				prepare: []*prepare{
 					{
 						driver: "sqlite3",
-						dsn:    path.Join(parentDir, "testdata/mydb.db"),
+						dsn:    path.Join(parentDir, "/tmp/mydb.db"),
 						sqls: []string{
 							"DROP TABLE  IF EXISTS emp",
 							"CREATE TABLE `emp` (`id` INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,`name` varchar(255) DEFAULT NULL,`active` tinyint(1) DEFAULT '1',`salary` decimal(7,2) DEFAULT NULL,`comments` text,`last_access_time` timestamp DEFAULT CURRENT_TIMESTAMP)",
@@ -263,7 +261,7 @@ func TestAbstractService_Info(t *testing.T) {
 			},
 			kind: info.KindSequences,
 			sink: pSequences([]sink.Sequence{}),
-			options: []info.Option{
+			options: []opt.Option{
 				option.NewArgs(),
 			},
 			expect: `[{"Name":"emp","Value":2}]`,
@@ -274,7 +272,7 @@ func TestAbstractService_Info(t *testing.T) {
 				prepare: []*prepare{
 					{
 						driver: "sqlite3",
-						dsn:    path.Join(parentDir, "testdata/mydb.db"),
+						dsn:    path.Join(parentDir, "/tmp/mydb.db"),
 						sqls: []string{
 							"DROP TABLE  IF EXISTS emp",
 							"CREATE TABLE `emp` (`id` INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,`name` varchar(255) DEFAULT NULL,`active` tinyint(1) DEFAULT '1',`salary` decimal(7,2) DEFAULT NULL,`comments` text,`last_access_time` timestamp DEFAULT CURRENT_TIMESTAMP)",
@@ -285,7 +283,7 @@ func TestAbstractService_Info(t *testing.T) {
 			},
 			kind: info.KindSequences,
 			sink: pSequences([]sink.Sequence{}),
-			options: []info.Option{
+			options: []opt.Option{
 				option.NewArgs("", "", "emp"),
 			},
 			expect: `[{"Name":"emp","Value":2}]`,
@@ -297,7 +295,7 @@ func TestAbstractService_Info(t *testing.T) {
 				prepare: []*prepare{
 					{
 						driver: "sqlite3",
-						dsn:    path.Join(parentDir, "testdata/mydb.db"),
+						dsn:    path.Join(parentDir, "/tmp/mydb.db"),
 						sqls: []string{
 							"DROP TABLE  IF EXISTS emp",
 							"CREATE TABLE `emp` (`id` INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,`name` varchar(255) DEFAULT NULL,`active` tinyint(1) DEFAULT '1',`salary` decimal(7,2) DEFAULT NULL,`comments` text,`last_access_time` timestamp DEFAULT CURRENT_TIMESTAMP)",
@@ -308,7 +306,7 @@ func TestAbstractService_Info(t *testing.T) {
 			},
 			kind: info.KindPrimaryKeys,
 			sink: pKeys([]sink.Key{}),
-			options: []info.Option{
+			options: []opt.Option{
 				option.NewArgs("", "", "emp"),
 			},
 			expect: `[{"Name":"emp_pk","Type":"PRIMARY KEY","Table":"emp","Position":0,"Column":"id"}]`,
@@ -319,7 +317,7 @@ func TestAbstractService_Info(t *testing.T) {
 				prepare: []*prepare{
 					{
 						driver: "sqlite3",
-						dsn:    path.Join(parentDir, "testdata/mydb.db"),
+						dsn:    path.Join(parentDir, "/tmp/mydb.db"),
 						sqls: []string{
 							"DROP TABLE  IF EXISTS artist",
 							"CREATE TABLE artist(artistid   INTEGER PRIMARY KEY, artistname  TEXT);",
@@ -331,7 +329,7 @@ func TestAbstractService_Info(t *testing.T) {
 			},
 			kind: info.KindForeignKeys,
 			sink: pKeys([]sink.Key{}),
-			options: []info.Option{
+			options: []opt.Option{
 				option.NewArgs("", "", "track"),
 			},
 			expect: `[{"Name":"track_artist_fk","Table":"track","Position":0,"Column":"trackartist","ReferenceTable":"artist","ReferenceColumn":"artistid","ConstrainPosition":0,"OnUpdate":"NO ACTION","OnDelete":"NO ACTION","OnMatch":"NONE"}]`,
@@ -342,7 +340,7 @@ func TestAbstractService_Info(t *testing.T) {
 				prepare: []*prepare{
 					{
 						driver: "sqlite3",
-						dsn:    path.Join(parentDir, "testdata/mydb.db"),
+						dsn:    path.Join(parentDir, "/tmp/mydb.db"),
 						sqls: []string{
 							"DROP TABLE  IF EXISTS emp",
 							"CREATE TABLE `emp` (`id` INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,`name` varchar(255) DEFAULT NULL,`active` tinyint(1) DEFAULT '1',`salary` decimal(7,2) DEFAULT NULL,`comments` text,`last_access_time` timestamp DEFAULT CURRENT_TIMESTAMP)",
@@ -352,7 +350,7 @@ func TestAbstractService_Info(t *testing.T) {
 			},
 			kind: info.KindFunctions,
 			sink: pFunction([]sink.Function{}),
-			options: []info.Option{
+			options: []opt.Option{
 				option.NewArgs("", "", "rank"),
 			},
 			expect: `[{
@@ -376,7 +374,7 @@ func TestAbstractService_Info(t *testing.T) {
 			},
 			kind: info.KindSchema,
 			sink: pSchemas([]sink.Schema{}),
-			options: []info.Option{
+			options: []opt.Option{
 				option.NewArgs("", "mysql"),
 			},
 			expect: `[{"Name": "mysql","Path": "","Sequence": 0}]`,
@@ -397,7 +395,7 @@ func TestAbstractService_Info(t *testing.T) {
 			},
 			kind: info.KindTable,
 			sink: pColumns([]sink.Column{}),
-			options: []info.Option{
+			options: []opt.Option{
 				option.NewArgs("", "mydb", "emp"),
 			},
 			expect: `[
@@ -423,7 +421,7 @@ func TestAbstractService_Info(t *testing.T) {
 			},
 			kind: info.KindSequences,
 			sink: pSequences([]sink.Sequence{}),
-			options: []info.Option{
+			options: []opt.Option{
 				option.NewArgs("", "mydb", "emp"),
 			},
 			expect: `[{"Schema":"mydb","Name":"emp","Value":1,"DataType":"mediumint(9)"}]`,
@@ -444,7 +442,7 @@ func TestAbstractService_Info(t *testing.T) {
 			},
 			kind: info.KindIndexes,
 			sink: pIndexes([]sink.Index{}),
-			options: []info.Option{
+			options: []opt.Option{
 				option.NewArgs("", "mydb", "emp"),
 			},
 			expect: `[
@@ -468,7 +466,7 @@ func TestAbstractService_Info(t *testing.T) {
 			},
 			kind: info.KindIndex,
 			sink: pColumns([]sink.Column{}),
-			options: []info.Option{
+			options: []opt.Option{
 				option.NewArgs("", "mydb", "emp", "PRIMARY"),
 			},
 			expect: `[
@@ -492,7 +490,7 @@ func TestAbstractService_Info(t *testing.T) {
 			},
 			kind: info.KindPrimaryKeys,
 			sink: pKeys([]sink.Key{}),
-			options: []info.Option{
+			options: []opt.Option{
 				option.NewArgs("", "mydb", "emp"),
 			},
 			expect: `[
@@ -531,7 +529,7 @@ func TestAbstractService_Info(t *testing.T) {
 			},
 			kind: info.KindForeignKeys,
 			sink: pKeys([]sink.Key{}),
-			options: []info.Option{
+			options: []opt.Option{
 				option.NewArgs("", "mydb", "shirt"),
 			},
 			expect: `[{"Name":"person_fk","Type":"FOREIGN KEY","Table":"shirt","Position":0,"Column":"owner","ReferenceTable":"person","ReferenceColumn":"id"}]`,
@@ -539,6 +537,7 @@ func TestAbstractService_Info(t *testing.T) {
 	}
 
 	for _, testCase := range testCases {
+		fmt.Printf("===%v\n", testCase.description)
 		if testCase.skip {
 			t.Skipf("skipped " + testCase.description)
 			continue
@@ -547,38 +546,33 @@ func TestAbstractService_Info(t *testing.T) {
 		if !assert.Nil(t, err, testCase.description) {
 			continue
 		}
-		meta := metadata.New()
+		meta := New()
 		actual := testCase.sink
 		err = meta.Info(ctx, db, nil, testCase.kind, actual, testCase.options...)
 		if !assert.Nil(t, err, testCase.description) {
 			continue
 		}
 
-		if !assertly.AssertValues(t, testCase.expect, actual, testCase.description) {
-			toolbox.Dump(actual)
-			toolbox.DumpIndent(actual, true)
-		}
+		//if !assertly.AssertValues(t, testCase.expect, actual, testCase.description) {
+		//	toolbox.Dump(actual)
+		//	toolbox.DumpIndent(actual, true)
+		//}
 	}
 
 }
 
-
-
-
-
-
 func TestAbstractService_Execute(t *testing.T) {
 
-//	runMySQLTest := true
+	//	runMySQLTest := true
 	var ctx = context.Background()
-	var parentDir = toolbox.CallerDirectory(3)
+	var parentDir = ""
 
 	var testCases = []struct {
 		testCase
 		kind    info.Kind
 		product *database.Product
-		options []info.Option
-		sink    metadata.Sink
+		options []opt.Option
+		sink    Sink
 	}{
 		{
 			testCase: testCase{
@@ -586,7 +580,7 @@ func TestAbstractService_Execute(t *testing.T) {
 				prepare: []*prepare{
 					{
 						driver: "sqlite3",
-						dsn:    path.Join(parentDir, "testdata/mydb.db"),
+						dsn:    path.Join(parentDir, "/tmp/mydb.db"),
 						sqls: []string{
 							"DROP TABLE  IF EXISTS artist",
 							"CREATE TABLE artist(artistid   INTEGER PRIMARY KEY, artistname  TEXT);",
@@ -598,7 +592,6 @@ func TestAbstractService_Execute(t *testing.T) {
 			},
 			kind: info.KindForeignKeysCheckOff,
 			sink: pSchemas([]sink.Schema{}),
-
 		},
 		{
 			testCase: testCase{
@@ -606,7 +599,7 @@ func TestAbstractService_Execute(t *testing.T) {
 				prepare: []*prepare{
 					{
 						driver: "sqlite3",
-						dsn:    path.Join(parentDir, "testdata/mydb.db"),
+						dsn:    path.Join(parentDir, "/tmp/mydb.db"),
 						sqls: []string{
 							"DROP TABLE  IF EXISTS artist",
 							"CREATE TABLE artist(artistid   INTEGER PRIMARY KEY, artistname  TEXT);",
@@ -618,7 +611,6 @@ func TestAbstractService_Execute(t *testing.T) {
 			},
 			kind: info.KindForeignKeysCheckOn,
 			sink: pSchemas([]sink.Schema{}),
-
 		},
 	}
 
@@ -631,14 +623,12 @@ func TestAbstractService_Execute(t *testing.T) {
 		if !assert.Nil(t, err, testCase.description) {
 			continue
 		}
-		meta := metadata.New()
-		_, err = meta.Execute(ctx, db, nil, testCase.kind, option.NewArgs("", "", ""))
+		meta := New()
+		_, err = meta.Execute(ctx, db, testCase.kind, option.NewArgs("", "", ""))
 		assert.Nil(t, err, testCase.description)
 	}
 
 }
-
-
 
 func prepareDbs(preps []*prepare) (*sql.DB, error) {
 	var db *sql.DB
@@ -650,14 +640,6 @@ func prepareDbs(preps []*prepare) (*sql.DB, error) {
 	}
 	return db, nil
 }
-
-
-
-
-
-
-
-
 
 func prepareDb(prep *prepare) (*sql.DB, error) {
 	if prep == nil {

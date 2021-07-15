@@ -1,9 +1,10 @@
 package mysql
 
 import (
-	"github.com/viant/sqlx/metadata"
 	"github.com/viant/sqlx/metadata/database"
 	"github.com/viant/sqlx/metadata/info"
+	"github.com/viant/sqlx/metadata/info/dialect"
+	"github.com/viant/sqlx/metadata/registry"
 	"log"
 )
 
@@ -14,13 +15,19 @@ var mySQL5 = database.Product{
 	Major: 5,
 }
 
+var mySQL57 = database.Product{
+	Name:  product,
+	Major: 5,
+	Minor: 7,
+}
+
 //MySQL5 return MySQL 5.x product
 func MySQL5() *database.Product {
 	return &mySQL5
 }
 
 func init() {
-	err := metadata.Register(
+	err := registry.Register(
 		info.NewQuery(info.KindVersion, "SELECT CONCAT('MySQL - ', VERSION())", mySQL5),
 
 		info.NewQuery(info.KindSchemas, `SELECT 
@@ -148,7 +155,6 @@ FROM
 			info.NewCriterion(info.Sequence, "t.TABLE_NAME"),
 		),
 
-
 		info.NewQuery(info.KindIndexes, `SELECT 
 		TABLE_CATALOG,
 		TABLE_SCHEMA,
@@ -183,7 +189,6 @@ FROM INFORMATION_SCHEMA.STATISTICS
 			info.NewCriterion(info.Index, "INDEX_NAME"),
 		),
 
-
 		info.NewQuery(info.KindPrimaryKeys, `SELECT 
 c.CONSTRAINT_NAME,  
 s.CONSTRAINT_TYPE,
@@ -200,12 +205,11 @@ JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE c ON c.CONSTRAINT_NAME = s.CONSTRAINT_N
 	 AND c.CONSTRAINT_SCHEMA = s.CONSTRAINT_SCHEMA	 
 	 AND c.TABLE_NAME = s.TABLE_NAME
 WHERE  s.CONSTRAINT_TYPE = 'PRIMARY KEY'
-`,			mySQL5,
+`, mySQL5,
 			info.NewCriterion(info.Catalog, "s.CONSTRAINT_CATALOG"),
 			info.NewCriterion(info.Schema, "s.CONSTRAINT_SCHEMA"),
 			info.NewCriterion(info.Table, "c.TABLE_NAME"),
 		),
-
 
 		info.NewQuery(info.KindForeignKeys, `SELECT 
 c.CONSTRAINT_NAME,  
@@ -223,7 +227,7 @@ JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE c ON c.CONSTRAINT_NAME = s.CONSTRAINT_N
 	 AND c.CONSTRAINT_SCHEMA = s.CONSTRAINT_SCHEMA	 
 	 AND c.TABLE_NAME = s.TABLE_NAME
 WHERE s.CONSTRAINT_TYPE = 'FOREIGN KEY'
-`,			mySQL5,
+`, mySQL5,
 			info.NewCriterion(info.Catalog, "s.CONSTRAINT_CATALOG"),
 			info.NewCriterion(info.Schema, "s.CONSTRAINT_SCHEMA"),
 			info.NewCriterion(info.Table, "c.TABLE_NAME"),
@@ -246,5 +250,15 @@ WHERE s.CONSTRAINT_TYPE = 'FOREIGN KEY'
 	if err != nil {
 		log.Printf("failed to register queries: %v", err)
 	}
+
+	registry.RegisterDialect(&info.Dialect{
+		Product:          mySQL5,
+		Placeholder:      "?",
+		Transactional:    true,
+		Insert:           dialect.InsertWithMultiValues,
+		Upsert:           dialect.UpsertTypeInsertOrReplace,
+		Load:             dialect.LoadTypeLocalData,
+		CanAutoincrement: true,
+	})
 
 }

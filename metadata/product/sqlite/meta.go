@@ -1,9 +1,10 @@
 package sqlite
 
 import (
-	"github.com/viant/sqlx/metadata"
 	"github.com/viant/sqlx/metadata/database"
 	"github.com/viant/sqlx/metadata/info"
+	"github.com/viant/sqlx/metadata/info/dialect"
+	"github.com/viant/sqlx/metadata/registry"
 	"log"
 )
 
@@ -21,7 +22,7 @@ func SQLite3() *database.Product {
 
 func init() {
 
-	err := metadata.Register(
+	err := registry.Register(
 		info.NewQuery(info.KindVersion, "SELECT 'SQLite - ' || sqlite_version()", sqLite3),
 		info.NewQuery(info.KindSchemas, `SELECT 
 	name AS SCHEMA_NAME,
@@ -168,4 +169,13 @@ FROM pragma_function_list t`,
 		log.Printf("failed to register queries: %v", err)
 	}
 
+	registry.RegisterDialect(&info.Dialect{
+		Product:          sqLite3,
+		Placeholder:      "?",
+		Transactional:    true,
+		Insert:           dialect.InsertWithMultiValues,
+		Upsert:           dialect.UpsertTypeUnsupported,
+		Load:             dialect.LoadTypeUnsupported,
+		CanAutoincrement: true,
+	})
 }

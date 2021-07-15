@@ -8,6 +8,8 @@ import (
 	"github.com/viant/sqlx/metadata/info"
 	"github.com/viant/sqlx/metadata/option"
 	"github.com/viant/sqlx/metadata/product/ansi"
+	"github.com/viant/sqlx/metadata/registry"
+	"github.com/viant/sqlx/opt"
 	"strings"
 )
 
@@ -38,16 +40,16 @@ func (s *Service) DetectProduct(ctx context.Context, db *sql.DB) (*database.Prod
 	return product, err
 }
 
-
 //Execute execute the metadata kind corresponding SQL
-func (s *Service) Execute(ctx context.Context, db *sql.DB, product *database.Product, kind info.Kind, options ...info.Option) (sql.Result, error) {
+func (s *Service) Execute(ctx context.Context, db *sql.DB, kind info.Kind, options ...opt.Option) (sql.Result, error) {
 	var err error
+	product := opt.Options(options).Product()
 	if product == nil {
 		if product, err = s.DetectProduct(ctx, db); err != nil {
-			return  nil, err
+			return nil, err
 		}
 	}
-	queries := _registry.Lookup(product.Name, kind)
+	queries := registry.Lookup(product.Name, kind)
 	if len(queries) == 0 {
 		return nil, fmt.Errorf("unsupported kind: %s for: %s", kind, product.Name)
 	}
@@ -60,14 +62,14 @@ func (s *Service) Execute(ctx context.Context, db *sql.DB, product *database.Pro
 }
 
 //Info execute the metadata kind corresponding Query, result are passed to sink
-func (s *Service) Info(ctx context.Context, db *sql.DB, product *database.Product, kind info.Kind, sink Sink, options ...info.Option) error {
+func (s *Service) Info(ctx context.Context, db *sql.DB, product *database.Product, kind info.Kind, sink Sink, options ...opt.Option) error {
 	var err error
 	if product == nil {
 		if product, err = s.DetectProduct(ctx, db); err != nil {
 			return err
 		}
 	}
-	queries := _registry.Lookup(product.Name, kind)
+	queries := registry.Lookup(product.Name, kind)
 	if len(queries) == 0 {
 		return fmt.Errorf("unsupported kind: %s for: %s", kind, product.Name)
 	}
@@ -81,9 +83,9 @@ func (s *Service) Info(ctx context.Context, db *sql.DB, product *database.Produc
 func (s *Service) matchProduct(ctx context.Context, db *sql.DB) (*database.Product, error) {
 	driverClass := strings.ToLower(fmt.Sprintf("%T", db.Driver()))
 	var product *database.Product
-	for name := range _registry.products {
+	for name := range registry.Products() {
 		if strings.Contains(driverClass, name) {
-			product = _registry.products[name]
+			product = registry.Products()[name]
 		}
 	}
 	if product == nil {
@@ -93,7 +95,7 @@ func (s *Service) matchProduct(ctx context.Context, db *sql.DB) (*database.Produ
 }
 
 func (s *Service) matchVersion(ctx context.Context, db *sql.DB, product *database.Product) (*database.Product, error) {
-	versionQueries := _registry.Lookup(product.Name, info.KindVersion)
+	versionQueries := registry.Lookup(product.Name, info.KindVersion)
 	if len(versionQueries) == 0 {
 		return product, nil
 	}
@@ -112,10 +114,9 @@ func (s *Service) matchVersion(ctx context.Context, db *sql.DB, product *databas
 	return nil, err
 }
 
-
-func (s *Service) executeQuery(ctx context.Context, db *sql.DB, query *info.Query,  options ...info.Option) (sql.Result, error) {
+func (s *Service) executeQuery(ctx context.Context, db *sql.DB, query *info.Query, options ...opt.Option) (sql.Result, error) {
 	args := &option.Args{}
-	info.Assign(options, &args)
+	opt.Assign(options, &args)
 	SQL, params, err := prepareSQL(query, args)
 	if err != nil {
 		return nil, err
@@ -123,15 +124,15 @@ func (s *Service) executeQuery(ctx context.Context, db *sql.DB, query *info.Quer
 	fmt.Printf("exec SQL: %v\n", SQL)
 	stmt, err := db.PrepareContext(ctx, SQL)
 	if err != nil {
-		return nil,  err
+		return nil, err
 	}
 	defer stmt.Close()
 	return stmt.ExecContext(ctx, params...)
 }
 
-func (s *Service) runQuery(ctx context.Context, db *sql.DB, query *info.Query, sink Sink, options ...info.Option) error {
+func (s *Service) runQuery(ctx context.Context, db *sql.DB, query *info.Query, sink Sink, options ...opt.Option) error {
 	args := &option.Args{}
-	info.Assign(options, &args)
+	opt.Assign(options, &args)
 	SQL, params, err := prepareSQL(query, args)
 	if err != nil {
 		return err
@@ -215,7 +216,6 @@ func (r *recent) match(db *sql.DB) *database.Product {
 	}
 	return nil
 }
-
 
 //New creates new metadata service
 func New() *Service {

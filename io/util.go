@@ -6,10 +6,6 @@ import (
 	"strings"
 )
 
-const (
-	tagSqlx = "sqlx"
-)
-
 //columnPositions maps column into field index in record type
 func columnPositions(columns []Column, recordType reflect.Type, tag string) ([]int, error) {
 	var indexedFields = map[string]int{}

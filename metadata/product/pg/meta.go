@@ -1,11 +1,9 @@
 package pg
 
-
-
 import (
-	"github.com/viant/sqlx/metadata"
 	"github.com/viant/sqlx/metadata/database"
 	"github.com/viant/sqlx/metadata/info"
+	"github.com/viant/sqlx/metadata/registry"
 	"log"
 )
 
@@ -22,7 +20,7 @@ func PqSQL9() *database.Product {
 }
 
 func init() {
-	err := metadata.Register(
+	err := registry.Register(
 		info.NewQuery(info.KindVersion, "SELECT version()", pgSQL9),
 
 		info.NewQuery(info.KindSchemas, `SELECT 
@@ -150,7 +148,6 @@ FROM
 			info.NewCriterion(info.Sequence, "t.TABLE_NAME"),
 		),
 
-
 		info.NewQuery(info.KindIndexes, `SELECT 
 		TABLE_CATALOG,
 		TABLE_SCHEMA,
@@ -185,7 +182,6 @@ FROM INFORMATION_SCHEMA.STATISTICS
 			info.NewCriterion(info.Index, "INDEX_NAME"),
 		),
 
-
 		info.NewQuery(info.KindPrimaryKeys, `SELECT 
 c.CONSTRAINT_NAME,  
 s.CONSTRAINT_TYPE,
@@ -207,7 +203,6 @@ WHERE  s.CONSTRAINT_TYPE = 'PRIMARY KEY'
 			info.NewCriterion(info.Schema, "s.CONSTRAINT_SCHEMA"),
 			info.NewCriterion(info.Table, "c.TABLE_NAME"),
 		),
-
 
 		info.NewQuery(info.KindForeignKeys, `SELECT 
 c.CONSTRAINT_NAME,  

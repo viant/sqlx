@@ -1,12 +1,13 @@
-package info
+package opt
 
-import "reflect"
+import (
+	"reflect"
+)
 
 //Assign assign supplied option, if returns un assign options and true if assign at least one
 func Assign(options []Option, supplied ...interface{}) bool {
 	return assign(options, supplied)
 }
-
 
 //Assign assign supplied option
 func assign(options []Option, supported []interface{}) bool {
