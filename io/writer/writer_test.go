@@ -101,8 +101,8 @@ outer:
 
 func TestBulkWriter(t *testing.T) {
 	type fooCase2 struct {
-		//Id   int    `sqlx:"name=my_id,autoincrement=true"`
-		Id   int    `sqlx:"-"`
+		Id int `sqlx:"name=my_id,autoincrement=true"`
+		//Id   int    `sqlx:"-"`
 		Name string `sqlx:"foo_name"`
 		Desc string `sqlx:"-"`
 		Bar  float64

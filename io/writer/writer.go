@@ -8,6 +8,7 @@ import (
 	"github.com/viant/sqlx/metadata/info/dialect"
 	"github.com/viant/sqlx/metadata/registry"
 	"github.com/viant/sqlx/opt"
+	"github.com/viant/sqlx/utils"
 	"github.com/viant/sqlx/xunsafe"
 	"reflect"
 	"strings"
@@ -158,13 +159,17 @@ func (w *Writer) getRecTypeAndCols(record interface{}) error {
 		}
 		fieldName := w.recordType.Field(i).Name
 		tagName := w.tagName
-		aTag := strings.TrimSpace(w.recordType.Field(i).Tag.Get(tagName))
-		isTransient := aTag == "-"
+		tag := utils.ParseTag(w.recordType.Field(i).Tag.Get(tagName))
+		isTransient := tag.FieldName == "-"
 		if isTransient {
 			continue
 		}
-		if aTag != "" {
-			fieldName = aTag
+		if tag.Autoincrement {
+			w.batch.Size = 1
+			continue
+		}
+		if tag.FieldName != "" {
+			fieldName = tag.FieldName
 		}
 		w.columnNames = append(w.columnNames, fieldName)
 		w.fieldPositions = append(w.fieldPositions, i)
