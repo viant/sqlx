@@ -1,4 +1,4 @@
-package writer
+package io
 
 import (
 	"context"
@@ -16,14 +16,16 @@ import (
 
 //Writer represents generic db writer
 type Writer struct {
-	db             *sql.DB
-	dialect        *info.Dialect
-	tableName      string
-	recordType     reflect.Type
-	columnNames    []string
-	fieldPositions []int
-	tagName        string
-	batch          *opt.BatchOption
+	db              *sql.DB
+	dialect         *info.Dialect
+	tableName       string
+	recordType      reflect.Type
+	columnNames     []string
+	fieldPositions  []int
+	autoincrement   bool
+	autoincPosition int
+	tagName         string
+	batch           *opt.BatchOption
 }
 
 func NewWriter(ctx context.Context, db *sql.DB, tableName string, options ...opt.Option) (*Writer, error) {
@@ -66,7 +68,10 @@ func (w *Writer) init(ctx context.Context, db *sql.DB, options opt.Options) erro
 }
 
 func (w *Writer) Write(any interface{}, options ...opt.Option) (int64, int64, error) {
-	recordsFn := anyProvider(any)
+	recordsFn, err := anyProvider(any)
+	if err != nil {
+		return 0, 0, err
+	}
 	record := recordsFn()
 	if w.recordType == nil {
 		err := w.getRecTypeAndCols(record)
@@ -101,30 +106,53 @@ func (w *Writer) Write(any interface{}, options ...opt.Option) (int64, int64, er
 	if w.dialect.Transactional {
 		err = tx.Commit()
 	}
+
 	return rowsAffected, lastInsertedId, err
 }
 
 func (w *Writer) write(batch *opt.BatchOption, record interface{}, recordsFn func() interface{}, stmt *sql.Stmt) (int64, int64, error) {
 	recValues := make([]interface{}, batch.Size*len(w.columnNames))
+
+	identities := []interface{}{}
 	batchLen := 0
 	var err error
 	var rowsAffected, totalRowsAffected, lastInsertedId int64
+	//ToDo: get real lastInsertedId
+
+	var pointers = make([]xunsafe.Pointer, len(w.columnNames))
+	for i, position := range w.fieldPositions {
+		pointers[i], err = xunsafe.FieldPointer(w.recordType, position)
+		if err != nil {
+			return 0, 0, fmt.Errorf("failed to acquire field pointer %w", err)
+		}
+	}
+
 	for ; record != nil; record = recordsFn() {
-		values, err := w.recordValues(record)
+		offset := batchLen * len(w.columnNames)
+		err = recordValues(record, &recValues, offset, pointers)
 		if err != nil {
 			return 0, 0, err
 		}
-		for j := range values {
-			recValues[batchLen*len(w.columnNames)+j] = values[j]
+		if w.autoincrement {
+			autoincPointer, err := xunsafe.FieldPointer(w.recordType, w.autoincPosition)
+			if err != nil {
+				return 0, 0, err
+			}
+			autoincVal, err := autoincValue(record, offset, autoincPointer)
+			if err != nil {
+				return 0, 0, err
+			}
+			identities = append(identities, autoincVal)
 		}
 		batchLen++
 		if batchLen == batch.Size {
-			rowsAffected, lastInsertedId, err = flush(stmt, recValues)
+			rowsAffected, lastInsertedId, err = flush(stmt, recValues, lastInsertedId, identities)
 			if err != nil {
-				return 0, 0, nil
+				return 0, 0, err
 			}
 			totalRowsAffected += rowsAffected
 			batchLen = 0
+			identities = []interface{}{}
 		}
 	}
 
@@ -133,13 +161,12 @@ func (w *Writer) write(batch *opt.BatchOption, record interface{}, recordsFn fun
 		if err != nil {
 			return 0, 0, nil
 		}
-		rowsAffected, lastInsertedId, err = flush(stmt, recValues[0:batchLen*len(w.columnNames)])
+		rowsAffected, lastInsertedId, err = flush(stmt, recValues[0:batchLen*len(w.columnNames)], lastInsertedId, identities)
 		if err != nil {
 			return 0, 0, nil
 		}
 		totalRowsAffected += rowsAffected
 	}
-
 	return totalRowsAffected, lastInsertedId, err
 }
 
@@ -165,7 +192,8 @@ func (w *Writer) getRecTypeAndCols(record interface{}) error {
 			continue
 		}
 		if tag.Autoincrement {
-			w.batch.Size = 1
+			w.autoincPosition = i
+			w.autoincrement = true
 			continue
 		}
 		if tag.FieldName != "" {
@@ -177,7 +205,7 @@ func (w *Writer) getRecTypeAndCols(record interface{}) error {
 	return nil
 }
 
-func anyProvider(any interface{}) func() interface{} {
+func anyProvider(any interface{}) (func() interface{}, error) {
 	switch actual := any.(type) {
 	case []interface{}:
 		i := 0
@@ -185,23 +213,44 @@ func anyProvider(any interface{}) func() interface{} {
 			if i >= len(actual) {
 				return nil
 			}
+			result := actual[i]
 			i++
-			return actual[i-1]
+			return result
+		}, nil
+
+	default:
+		anyValue := reflect.ValueOf(any)
+		switch anyValue.Kind() {
+		case reflect.Ptr, reflect.Struct:
+			val := actual
+			return func() interface{} {
+				result := val
+				val = nil
+				return result
+			}, nil
+
+		case reflect.Slice:
+			anyLength := anyValue.Len()
+			i := 0
+			return func() interface{} {
+				if i >= anyLength {
+					return nil
+				}
+				resultValue := anyValue.Index(i)
+				if resultValue.Kind() != reflect.Ptr {
+					resultValue = resultValue.Addr()
+				}
+				result := resultValue.Interface()
+				i++
+				return result
+			}, nil
 		}
-	case interface{}:
-		done := false
-		return func() interface{} {
-			if done {
-				return nil
-			}
-			done = true
-			return actual
-		}
+
 	}
-	return func() interface{} { return nil }
+	return nil, fmt.Errorf("usnupported :%T", any)
 }
 
-func flush(stmt *sql.Stmt, values []interface{}) (int64, int64, error) {
+func flush(stmt *sql.Stmt, values []interface{}, lastInsertedId int64, identities []interface{}) (int64, int64, error) {
 	result, err := stmt.Exec(values...)
 	if err != nil {
 		return 0, 0, err
@@ -210,24 +259,28 @@ func flush(stmt *sql.Stmt, values []interface{}) (int64, int64, error) {
 	if err != nil {
 		return 0, 0, err
 	}
-	lastInsertedId, err := result.LastInsertId()
+	newLastInsertedId, err := result.LastInsertId()
 	if err != nil {
 		return 0, 0, err
 	}
-	return rowsAffected, lastInsertedId, err
-}
 
-func (w *Writer) recordValues(record interface{}) ([]interface{}, error) {
-	values := make([]interface{}, len(w.columnNames))
-	var pointers = make([]xunsafe.Pointer, len(w.columnNames))
-	var err error
-
-	for i, position := range w.fieldPositions {
-		pointers[i], err = xunsafe.FieldPointer(w.recordType, position)
-		if err != nil {
-			return nil, err
+	if len(identities) > 0 { // update autoinc fields
+		//ToDo: check: newLastInsertedId-lastInsertedId>len(values)
+		for i, id := range identities {
+			switch val := id.(type) {
+			case *int64:
+				*val = lastInsertedId + int64(i+1)
+			case *int:
+				*val = int(lastInsertedId + int64(i+1))
+			default:
+				return 0, 0, fmt.Errorf("expected *int or *int64 for autoinc, got %T", val)
+			}
 		}
 	}
+	return rowsAffected, newLastInsertedId, err
+}
+
+func recordValues(record interface{}, target *[]interface{}, offset int, pointers []xunsafe.Pointer) error {
 	value := reflect.ValueOf(record)
 	if value.Kind() != reflect.Ptr { //convert to a pointer
 		vp := reflect.New(value.Type())
@@ -236,9 +289,18 @@ func (w *Writer) recordValues(record interface{}) ([]interface{}, error) {
 	}
 	holderPtr := value.Elem().UnsafeAddr()
 	for i, ptr := range pointers {
-		values[i] = ptr(holderPtr)
+		(*target)[offset+i] = ptr(holderPtr)
 	}
-	return values, nil
+	return nil
+}
+
+func autoincValue(record interface{}, offset int, autoincPointer xunsafe.Pointer) (interface{}, error) {
+	value := reflect.ValueOf(record)
+	if value.Kind() != reflect.Ptr {
+		return nil, fmt.Errorf("record with autoinc should be a pointer not a %v", value.Kind())
+	}
+	holderPtr := value.Elem().UnsafeAddr()
+	return autoincPointer(holderPtr), nil
 }
 
 func (w *Writer) buildInsertStmt(batchSize int) (*sql.Stmt, error) {

@@ -1,4 +1,4 @@
-package writer
+package io_test
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 	"fmt"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/assert"
+	"github.com/viant/sqlx/io"
 	"github.com/viant/sqlx/metadata"
 	_ "github.com/viant/sqlx/metadata/product/sqlite"
 	"github.com/viant/sqlx/opt"
@@ -86,7 +87,7 @@ outer:
 		if err != nil {
 			continue
 		}
-		writer, err := NewWriter(context.TODO(), db, useCase.table, product)
+		writer, err := io.NewWriter(context.TODO(), db, useCase.table, product)
 		assert.Nil(t, err, useCases)
 		if err != nil {
 			continue
@@ -101,8 +102,7 @@ outer:
 
 func TestBulkWriter(t *testing.T) {
 	type fooCase2 struct {
-		Id int `sqlx:"name=my_id,autoincrement=true"`
-		//Id   int    `sqlx:"-"`
+		Id   int    `sqlx:"name=my_id,autoincrement=true"`
 		Name string `sqlx:"foo_name"`
 		Desc string `sqlx:"-"`
 		Bar  float64
@@ -114,13 +114,13 @@ func TestBulkWriter(t *testing.T) {
 		driver      string
 		dsn         string
 		options     []opt.Option
-		records     []interface{}
+		records     interface{}
 		params      []interface{}
 		expect      interface{}
 		initSQL     []string
 	}{
 		{
-			description: "Bulk writing structs  ",
+			description: "Bulk writing structs 1  ",
 			driver:      "sqlite3",
 			dsn:         "/tmp/sqllite.db",
 			table:       "t2",
@@ -132,6 +132,25 @@ func TestBulkWriter(t *testing.T) {
 				&fooCase2{Id: 1, Name: "John1", Desc: "description", Bar: 17},
 				&fooCase2{Id: 1, Name: "John2", Desc: "description", Bar: 18},
 				&fooCase2{Id: 1, Name: "John3", Desc: "description", Bar: 19},
+			},
+			options: []opt.Option{
+				opt.TagOption{"sqlx"},
+				&opt.BatchOption{2},
+			},
+		},
+		{
+			description: "Bulk writing structs 2 ",
+			driver:      "sqlite3",
+			dsn:         "/tmp/sqllite.db",
+			table:       "t3",
+			initSQL: []string{
+				"DROP TABLE IF EXISTS t3",
+				"CREATE TABLE t3 (foo_id INTEGER PRIMARY KEY, foo_name TEXT, Bar integer)",
+			},
+			records: []fooCase2{
+				fooCase2{Id: 1, Name: "John1", Desc: "description", Bar: 17},
+				fooCase2{Id: 1, Name: "John2", Desc: "description", Bar: 18},
+				fooCase2{Id: 1, Name: "John3", Desc: "description", Bar: 19},
 			},
 			options: []opt.Option{
 				opt.TagOption{"sqlx"},
@@ -167,7 +186,7 @@ outer:
 			continue
 		}
 		useCase.options = append(useCase.options, product)
-		writer, err := NewWriter(context.TODO(), db, useCase.table, useCase.options...)
+		writer, err := io.NewWriter(context.TODO(), db, useCase.table, useCase.options...)
 		assert.Nil(t, err, useCases)
 		if err != nil {
 			continue
