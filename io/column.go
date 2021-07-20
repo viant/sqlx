@@ -1,6 +1,9 @@
 package io
 
-import "reflect"
+import (
+	"database/sql"
+	"reflect"
+)
 
 //Column represents a column
 type Column interface {
@@ -10,8 +13,16 @@ type Column interface {
 	ScanType() reflect.Type
 	Nullable() (nullable, ok bool)
 	DatabaseTypeName() string
+	Tag() *Tag
 }
 
+type columnType struct {
+	*sql.ColumnType
+}
+
+func (t *columnType) Tag() *Tag {
+	return nil
+}
 
 //column represents a column
 type column struct {
@@ -23,6 +34,7 @@ type column struct {
 	nullable         *bool
 	position         int
 	scanType         reflect.Type
+	tag              *Tag
 }
 
 func (c *column) Name() string {
@@ -54,9 +66,11 @@ func (c *column) Nullable() (nullable, ok bool) {
 	return *c.nullable, true
 }
 
+func (t *column) Tag() *Tag {
+	return t.tag
+}
 
 // Common type include "VARCHAR", "TEXT", "NVARCHAR", "DECIMAL", "BOOL", "INT", "BIGINT".
 func (c *column) DatabaseTypeName() string {
 	return c.databaseTypeName
 }
-

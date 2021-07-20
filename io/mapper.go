@@ -1,6 +1,7 @@
 package io
 
 import (
+	"fmt"
 	"github.com/viant/sqlx/opt"
 	"github.com/viant/sqlx/xunsafe"
 	"reflect"
@@ -23,7 +24,6 @@ const (
 	dbTypeNameBlob    = "blob"
 )
 
-
 //RowMapper represents a target values mapped to pointer of slice
 type RowMapper func(target interface{}) ([]interface{}, error)
 
@@ -38,7 +38,7 @@ func newQueryMapper(columns []Column, targetType reflect.Type, tagName string) (
 	if targetType.Kind() == reflect.Struct {
 		return newQueryStructMapper(columns, targetType, tagName)
 	}
-	return genericMapper(columns)
+	return genericRowMapper(columns)
 }
 
 //newQueryStructMapper creates a new record mapper for supplied struct type
@@ -68,7 +68,7 @@ func newQueryStructMapper(columns []Column, recordType reflect.Type, tagName str
 }
 
 //newQueryStructMapper creates a new record mapper for supplied struct type
-func genericMapper(columns []Column) (RowMapper, error) {
+func genericRowMapper(columns []Column) (RowMapper, error) {
 	var valueProviders = make([]func(index int, values []interface{}), len(columns))
 	defaultProvider := func(index int, values []interface{}) {
 		val := new(interface{})
@@ -122,4 +122,81 @@ func genericMapper(columns []Column) (RowMapper, error) {
 		return record, nil
 	}
 	return mapper, nil
+}
+
+//PlaceholderBinder copies source values to params starting with offset
+type PlaceholderBinder func(src interface{}, params []interface{}, offset int)
+
+//ColumnMapper maps src to columns and its placeholders
+type ColumnMapper func(src interface{}, tagName string) ([]Column, PlaceholderBinder,  error)
+
+func genericColumnMapper(src interface{}, tagName string) ([]Column, PlaceholderBinder,  error) {
+	recordType := reflect.TypeOf(src)
+	if recordType.Kind() == reflect.Ptr {
+		recordType = recordType.Elem()
+	}
+	if recordType.Kind() != reflect.Struct {
+		return nil, nil, fmt.Errorf("invalid record type: %v", recordType.Kind())
+	}
+	var columns []Column
+	var identityColumns []Column
+	var pointers []xunsafe.Pointer
+	for i := 0; i < recordType.NumField(); i++ {
+		field := recordType.Field(i)
+		if isExported := field.PkgPath == ""; !isExported {
+			continue
+		}
+
+		tag := ParseTag(field.Tag.Get(tagName))
+		isTransient := tag.Column == "-"
+		if isTransient {
+			continue
+		}
+		columnName := field.Name
+		if tag.Column != "" {
+			columnName = tag.Column
+		}
+		if tag.PrimaryKey || strings.ToLower(columnName) == "id" {
+			if tag == nil {
+				tag = &Tag{Column: columnName, PrimaryKey: true}
+			}
+			tag.FieldIndex = i
+			identityColumns  = append(identityColumns, &column{
+				name: columnName,
+				scanType: field.Type,
+				tag: tag,
+			})
+			continue
+		}
+		columns  = append(columns, &column{
+			name: columnName,
+			scanType: field.Type,
+			tag: tag,
+		})
+		pointer, err := xunsafe.FieldPointer(recordType, i)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to get filed: %T.%v pointer", src, field.Name)
+		}
+		pointers = append(pointers, pointer)
+	}
+
+	//make sure id column are at the end
+	if len(identityColumns) > 0 {
+		for i, item := range identityColumns {
+			fieldIndex := item.Tag().FieldIndex
+			field := recordType.Field(fieldIndex)
+			pointer, err := xunsafe.FieldPointer(recordType, fieldIndex)
+			if err != nil {
+				return nil, nil, fmt.Errorf("failed to get filed: %T.%v pointer", src, field.Name)
+			}
+			pointers = append(pointers, pointer)
+			columns = append(columns, identityColumns[i])
+		}
+	}
+	return columns, func(src interface{}, params []interface{}, offset int) {
+		holderPtr := holderPointer(src)
+		for i, ptr := range pointers {
+			params[offset+i] = ptr(holderPtr)
+		}
+	}, nil
 }

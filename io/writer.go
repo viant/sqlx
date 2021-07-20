@@ -8,7 +8,6 @@ import (
 	"github.com/viant/sqlx/metadata/info/dialect"
 	"github.com/viant/sqlx/metadata/registry"
 	"github.com/viant/sqlx/opt"
-	"github.com/viant/sqlx/utils"
 	"github.com/viant/sqlx/xunsafe"
 	"reflect"
 	"strings"
@@ -16,26 +15,31 @@ import (
 
 //Writer represents generic db writer
 type Writer struct {
-	db              *sql.DB
-	dialect         *info.Dialect
-	tableName       string
-	recordType      reflect.Type
-	columnNames     []string
-	fieldPositions  []int
-	autoincrement   bool
-	autoincPosition int
-	tagName         string
-	batch           *opt.BatchOption
+	db            *sql.DB
+	dialect       *info.Dialect
+	tableName     string
+	columnMapper  ColumnMapper
+	columns       Columns
+	binder        PlaceholderBinder
+	autoIncrement *int
+	tagName       string
+	batch         *opt.BatchOption
 }
 
 func NewWriter(ctx context.Context, db *sql.DB, tableName string, options ...opt.Option) (*Writer, error) {
-	writer := &Writer{
-		db:        db,
-		dialect:   opt.Options(options).Dialect(),
-		tableName: tableName,
-		batch:     opt.Options(options).Batch(),
-		tagName:   opt.Options(options).Tag(),
+	var columnMapper ColumnMapper
+	if !opt.Assign(options, &columnMapper) {
+		columnMapper = genericColumnMapper
 	}
+	writer := &Writer{
+		db:           db,
+		dialect:      opt.Options(options).Dialect(),
+		tableName:    tableName,
+		batch:        opt.Options(options).Batch(),
+		tagName:      opt.Options(options).Tag(),
+		columnMapper: columnMapper,
+	}
+
 	err := writer.init(ctx, db, options)
 	if err != nil {
 		return nil, err
@@ -72,10 +76,12 @@ func (w *Writer) Insert(any interface{}, options ...opt.Option) (int64, int64, e
 		return 0, 0, err
 	}
 	record := recordsFn()
-	if w.recordType == nil {
-		err := w.getRecTypeAndCols(record)
-		if err != nil {
+	if len(w.columns) == 0 {
+		if w.columns, w.binder, err = w.columnMapper(record, w.tagName); err != nil {
 			return 0, 0, err
+		}
+		if autoIncrement := w.columns.Autoincrement();autoIncrement !=-1 {
+			w.autoIncrement = &autoIncrement
 		}
 	}
 	batch := opt.Options(options).Batch()
@@ -109,7 +115,7 @@ func (w *Writer) Insert(any interface{}, options ...opt.Option) (int64, int64, e
 }
 
 func (w *Writer) insert(batch *opt.BatchOption, record interface{}, recordsFn func() interface{}, stmt *sql.Stmt) (int64, int64, error) {
-	recValues := make([]interface{}, batch.Size*len(w.columnNames))
+	recValues := make([]interface{}, batch.Size*len(w.columns))
 
 	var identities []interface{}
 	batchLen := 0
@@ -117,30 +123,12 @@ func (w *Writer) insert(batch *opt.BatchOption, record interface{}, recordsFn fu
 	var rowsAffected, totalRowsAffected, lastInsertedId int64
 	//ToDo: get real lastInsertedId
 
-	var pointers = make([]xunsafe.Pointer, len(w.columnNames))
-	for i, position := range w.fieldPositions {
-		pointers[i], err = xunsafe.FieldPointer(w.recordType, position)
-		if err != nil {
-			return 0, 0, fmt.Errorf("failed to acquire field pointer %w", err)
-		}
-	}
-
 	for ; record != nil; record = recordsFn() {
-		offset := batchLen * len(w.columnNames)
-		holderPtr := holderPointer(record)
-		err = recordValues(holderPtr, &recValues, offset, pointers)
-		if err != nil {
-			return 0, 0, err
-		}
-		if w.autoincrement {
-			autoincPointer, err := xunsafe.FieldPointer(w.recordType, w.autoincPosition)
-			if err != nil {
-				return 0, 0, err
-			}
-			if err != nil {
-				return 0, 0, err
-			}
-			identities = append(identities, autoincPointer(holderPtr))
+		offset := batchLen * len(w.columns)
+		w.binder(record, recValues, offset)
+
+		if w.autoIncrement != nil  {
+			identities = append(identities, recValues[offset+*w.autoIncrement])
 		}
 		batchLen++
 		if batchLen == batch.Size {
@@ -159,50 +147,13 @@ func (w *Writer) insert(batch *opt.BatchOption, record interface{}, recordsFn fu
 		if err != nil {
 			return 0, 0, nil
 		}
-		rowsAffected, lastInsertedId, err = flush(stmt, recValues[0:batchLen*len(w.columnNames)], lastInsertedId, identities)
+		rowsAffected, lastInsertedId, err = flush(stmt, recValues[0:batchLen*len(w.columns)], lastInsertedId, identities)
 		if err != nil {
 			return 0, 0, nil
 		}
 		totalRowsAffected += rowsAffected
 	}
 	return totalRowsAffected, lastInsertedId, err
-}
-
-
-
-func (w *Writer) getRecTypeAndCols(record interface{}) error {
-	w.recordType = reflect.TypeOf(record)
-	if w.recordType.Kind() == reflect.Ptr {
-		w.recordType = w.recordType.Elem()
-	}
-	if w.recordType.Kind() != reflect.Struct {
-		return fmt.Errorf("invalid record type: %v", w.recordType.Kind())
-	}
-	w.columnNames = []string{}
-	w.fieldPositions = []int{}
-	for i := 0; i < w.recordType.NumField(); i++ {
-		if isExported := w.recordType.Field(i).PkgPath == ""; !isExported {
-			continue
-		}
-		fieldName := w.recordType.Field(i).Name
-		tagName := w.tagName
-		tag := utils.ParseTag(w.recordType.Field(i).Tag.Get(tagName))
-		isTransient := tag.FieldName == "-"
-		if isTransient {
-			continue
-		}
-		if tag.Autoincrement {
-			w.autoincPosition = i
-			w.autoincrement = true
-			continue
-		}
-		if tag.FieldName != "" {
-			fieldName = tag.FieldName
-		}
-		w.columnNames = append(w.columnNames, fieldName)
-		w.fieldPositions = append(w.fieldPositions, i)
-	}
-	return nil
 }
 
 func anyProvider(any interface{}) (func() interface{}, error) {
@@ -217,7 +168,8 @@ func anyProvider(any interface{}) (func() interface{}, error) {
 			i++
 			return result
 		}, nil
-
+	case func() interface{}:
+		return actual, nil
 	default:
 		anyValue := reflect.ValueOf(any)
 		switch anyValue.Kind() {
@@ -314,9 +266,13 @@ func autoincValue(record interface{}, ptr xunsafe.Pointer) (interface{}, error) 
 }
 
 func (w *Writer) buildInsertStmt(batchSize int) (*sql.Stmt, error) {
-	colNames := strings.Join(w.columnNames, ",")
+	//TODO optimize it
+	var colNames []string
+	for _, column := range w.columns {
+		colNames = append(colNames, column.Name())
+	}
 	sqlTemplate := "INSERT INTO %s(%s) VALUES%s"
-	insertSQL := fmt.Sprintf(sqlTemplate, w.tableName, colNames, buildPlaceholders(batchSize, len(w.columnNames), w.dialect.Placeholder))
+	insertSQL := fmt.Sprintf(sqlTemplate, w.tableName, colNames, buildPlaceholders(batchSize, len(w.columns), w.dialect.Placeholder))
 	return w.db.Prepare(insertSQL)
 }
 
