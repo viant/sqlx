@@ -44,7 +44,6 @@ func NewWriter(ctx context.Context, db *sql.DB, tableName string, options ...opt
 }
 
 func (w *Writer) init(ctx context.Context, db *sql.DB, options opt.Options) error {
-
 	if w.dialect == nil {
 		product := options.Product()
 		if product == nil {
@@ -67,7 +66,7 @@ func (w *Writer) init(ctx context.Context, db *sql.DB, options opt.Options) erro
 	return nil
 }
 
-func (w *Writer) Write(any interface{}, options ...opt.Option) (int64, int64, error) {
+func (w *Writer) Insert(any interface{}, options ...opt.Option) (int64, int64, error) {
 	recordsFn, err := anyProvider(any)
 	if err != nil {
 		return 0, 0, err
@@ -95,7 +94,7 @@ func (w *Writer) Write(any interface{}, options ...opt.Option) (int64, int64, er
 			return 0, 0, err
 		}
 	}
-	rowsAffected, lastInsertedId, err := w.write(batch, record, recordsFn, stmt)
+	rowsAffected, lastInsertedId, err := w.insert(batch, record, recordsFn, stmt)
 	if err != nil {
 		if rErr := tx.Rollback(); rErr != nil {
 			return 0, 0, fmt.Errorf("failed to rollback: %w, %v", err, rErr)
@@ -106,11 +105,10 @@ func (w *Writer) Write(any interface{}, options ...opt.Option) (int64, int64, er
 	if w.dialect.Transactional {
 		err = tx.Commit()
 	}
-
 	return rowsAffected, lastInsertedId, err
 }
 
-func (w *Writer) write(batch *opt.BatchOption, record interface{}, recordsFn func() interface{}, stmt *sql.Stmt) (int64, int64, error) {
+func (w *Writer) insert(batch *opt.BatchOption, record interface{}, recordsFn func() interface{}, stmt *sql.Stmt) (int64, int64, error) {
 	recValues := make([]interface{}, batch.Size*len(w.columnNames))
 
 	var identities []interface{}
@@ -169,6 +167,8 @@ func (w *Writer) write(batch *opt.BatchOption, record interface{}, recordsFn fun
 	}
 	return totalRowsAffected, lastInsertedId, err
 }
+
+
 
 func (w *Writer) getRecTypeAndCols(record interface{}) error {
 	w.recordType = reflect.TypeOf(record)

@@ -92,7 +92,7 @@ outer:
 		if err != nil {
 			continue
 		}
-		a, id, err := writer.Write(useCase.record, 2)
+		a, id, err := writer.Insert(useCase.record, 2)
 		assert.Nil(t, err, useCases)
 		fmt.Printf("Result: %v %v\n", a, id)
 
@@ -191,7 +191,7 @@ outer:
 		if err != nil {
 			continue
 		}
-		a, id, err := writer.Write(useCase.records)
+		a, id, err := writer.Insert(useCase.records)
 		assert.Nil(t, err, useCases)
 		fmt.Printf("Result: %v %v\n", a, id)
 		//jActual, _ := json.Marshal(actual)
