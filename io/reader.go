@@ -10,12 +10,13 @@ import (
 
 //Reader represents generic query reader
 type Reader struct {
-	query      string
-	newRow     func() interface{}
-	targetType reflect.Type
-	tagName    string
-	stmt       *sql.Stmt
-	rows       *sql.Rows
+	query        string
+	newRow       func() interface{}
+	targetType   reflect.Type
+	tagName      string
+	stmt         *sql.Stmt
+	rows         *sql.Rows
+	newRowMapper RowMapperProvider
 }
 
 func (r *Reader) QuerySingle(ctx context.Context, emit func(row interface{}) error, args ...interface{}) error {
@@ -27,7 +28,7 @@ func (r *Reader) QuerySingle(ctx context.Context, emit func(row interface{}) err
 	var mapper RowMapper
 	var columns []Column
 	if rows.Next() {
-		if err = r.read(mapper, rows, &columns, emit); err != nil {
+		if err = r.read(&mapper, rows, &columns, emit); err != nil {
 			return err
 		}
 	}
@@ -47,7 +48,7 @@ func (r *Reader) ReadAll(rows *sql.Rows, emit func(row interface{}) error) error
 	var mapper RowMapper
 	var columns []Column
 	for rows.Next() {
-		if err := r.read(mapper, rows, &columns, emit); err != nil {
+		if err := r.read(&mapper, rows, &columns, emit); err != nil {
 			return err
 		}
 	}
@@ -74,9 +75,10 @@ func (r *Reader) QueryAllWithMap(ctx context.Context, emit func(row map[string]i
 	}, args...)
 }
 
-func (r *Reader) read(mapper RowMapper, rows *sql.Rows, columnsPtr *[]Column, emit func(row interface{}) error) error {
+func (r *Reader) read(mapperPtr *RowMapper, rows *sql.Rows, columnsPtr *[]Column, emit func(row interface{}) error) error {
 	row := r.newRow()
 	columns := *columnsPtr
+	mapper := *mapperPtr
 	if mapper == nil {
 		columnNames, err := rows.Columns()
 		if err != nil {
@@ -87,9 +89,10 @@ func (r *Reader) read(mapper RowMapper, rows *sql.Rows, columnsPtr *[]Column, em
 			columns = TypesToColumns(columnsTypes)
 		}
 		*columnsPtr = columns
-		if mapper, err = newQueryMapper(columns, r.targetType, r.tagName); err != nil {
+		if mapper, err = r.newRowMapper(columns, r.targetType, r.tagName); err != nil {
 			return fmt.Errorf("creating rowValues mapper, due to %w", err)
 		}
+		*mapperPtr = mapper
 	}
 
 	rowValues, err := mapper(row)
@@ -127,7 +130,11 @@ func NewStmtReader(stmt *sql.Stmt, newRow func() interface{}, options ...opt.Opt
 	if targetType.Kind() == reflect.Ptr {
 		targetType = targetType.Elem()
 	}
-	return &Reader{newRow: newRow, targetType: targetType, stmt: stmt, tagName: opt.Options(options).Tag()}
+	var newRowMapper RowMapperProvider
+	if !opt.Assign(options, &newRowMapper) {
+		newRowMapper = newQueryMapper
+	}
+	return &Reader{newRow: newRow, targetType: targetType, stmt: stmt, tagName: opt.Options(options).Tag(), newRowMapper: newRowMapper}
 }
 
 func NewMapReader(ctx context.Context, db *sql.DB, query string, options ...opt.Option) (*Reader, error) {

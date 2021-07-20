@@ -23,13 +23,12 @@ const (
 	dbTypeNameBlob    = "blob"
 )
 
-type Foo struct {
-	ID   int
-	Name string
-}
 
 //RowMapper represents a target values mapped to pointer of slice
 type RowMapper func(target interface{}) ([]interface{}, error)
+
+//RowMapperProvider represents new a row mapper
+type RowMapperProvider func(columns []Column, targetType reflect.Type, tagName string) (RowMapper, error)
 
 //newQueryMapper creates a new record mapped
 func newQueryMapper(columns []Column, targetType reflect.Type, tagName string) (RowMapper, error) {

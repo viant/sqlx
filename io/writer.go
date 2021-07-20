@@ -129,7 +129,8 @@ func (w *Writer) write(batch *opt.BatchOption, record interface{}, recordsFn fun
 
 	for ; record != nil; record = recordsFn() {
 		offset := batchLen * len(w.columnNames)
-		err = recordValues(record, &recValues, offset, pointers)
+		holderPtr := holderPointer(record)
+		err = recordValues(holderPtr, &recValues, offset, pointers)
 		if err != nil {
 			return 0, 0, err
 		}
@@ -138,11 +139,10 @@ func (w *Writer) write(batch *opt.BatchOption, record interface{}, recordsFn fun
 			if err != nil {
 				return 0, 0, err
 			}
-			autoincVal, err := autoincValue(record, offset, autoincPointer)
 			if err != nil {
 				return 0, 0, err
 			}
-			identities = append(identities, autoincVal)
+			identities = append(identities, autoincPointer(holderPtr))
 		}
 		batchLen++
 		if batchLen == batch.Size {
@@ -286,7 +286,14 @@ func flush(stmt *sql.Stmt, values []interface{}, prevInsertedID int64, identitie
 	return rowsAffected, newLastInsertedID, err
 }
 
-func recordValues(record interface{}, target *[]interface{}, offset int, pointers []xunsafe.Pointer) error {
+func recordValues(holderPtr uintptr, target *[]interface{}, offset int, pointers []xunsafe.Pointer) error {
+	for i, ptr := range pointers {
+		(*target)[offset+i] = ptr(holderPtr)
+	}
+	return nil
+}
+
+func holderPointer(record interface{}) uintptr {
 	value := reflect.ValueOf(record)
 	if value.Kind() != reflect.Ptr { //convert to a pointer
 		vp := reflect.New(value.Type())
@@ -294,19 +301,16 @@ func recordValues(record interface{}, target *[]interface{}, offset int, pointer
 		value = vp
 	}
 	holderPtr := value.Elem().UnsafeAddr()
-	for i, ptr := range pointers {
-		(*target)[offset+i] = ptr(holderPtr)
-	}
-	return nil
+	return holderPtr
 }
 
-func autoincValue(record interface{}, offset int, autoincPointer xunsafe.Pointer) (interface{}, error) {
+func autoincValue(record interface{}, ptr xunsafe.Pointer) (interface{}, error) {
 	value := reflect.ValueOf(record)
 	if value.Kind() != reflect.Ptr {
 		return nil, fmt.Errorf("record with autoinc should be a pointer not a %v", value.Kind())
 	}
 	holderPtr := value.Elem().UnsafeAddr()
-	return autoincPointer(holderPtr), nil
+	return ptr(holderPtr), nil
 }
 
 func (w *Writer) buildInsertStmt(batchSize int) (*sql.Stmt, error) {
