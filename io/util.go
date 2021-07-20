@@ -64,3 +64,16 @@ func updateMap(columns []Column, values []interface{}, target map[string]interfa
 		target[column.Name()] = values[i]
 	}
 }
+
+
+
+func holderPointer(record interface{}) uintptr {
+	value := reflect.ValueOf(record)
+	if value.Kind() != reflect.Ptr { //convert to a pointer
+		vp := reflect.New(value.Type())
+		vp.Elem().Set(value)
+		value = vp
+	}
+	holderPtr := value.Elem().UnsafeAddr()
+	return holderPtr
+}

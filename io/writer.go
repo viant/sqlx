@@ -8,7 +8,6 @@ import (
 	"github.com/viant/sqlx/metadata/info/dialect"
 	"github.com/viant/sqlx/metadata/registry"
 	"github.com/viant/sqlx/opt"
-	"github.com/viant/sqlx/xunsafe"
 	"reflect"
 	"strings"
 )
@@ -18,12 +17,13 @@ type Writer struct {
 	db            *sql.DB
 	dialect       *info.Dialect
 	tableName     string
-	columnMapper  ColumnMapper
-	columns       Columns
-	binder        PlaceholderBinder
-	autoIncrement *int
 	tagName       string
-	batch         *opt.BatchOption
+	insertMapper  ColumnMapper
+	insertColumns Columns
+	insertBinder  PlaceholderBinder
+	insertBuilder Builder
+	insertBatch   *opt.BatchOption
+	autoIncrement *int
 }
 
 func NewWriter(ctx context.Context, db *sql.DB, tableName string, options ...opt.Option) (*Writer, error) {
@@ -35,9 +35,9 @@ func NewWriter(ctx context.Context, db *sql.DB, tableName string, options ...opt
 		db:           db,
 		dialect:      opt.Options(options).Dialect(),
 		tableName:    tableName,
-		batch:        opt.Options(options).Batch(),
+		insertBatch:  opt.Options(options).Batch(),
 		tagName:      opt.Options(options).Tag(),
-		columnMapper: columnMapper,
+		insertMapper: columnMapper,
 	}
 
 	err := writer.init(ctx, db, options)
@@ -59,13 +59,13 @@ func (w *Writer) init(ctx context.Context, db *sql.DB, options opt.Options) erro
 		}
 	}
 
-	if w.batch == nil {
-		w.batch = &opt.BatchOption{
+	if w.insertBatch == nil {
+		w.insertBatch = &opt.BatchOption{
 			Size: 1,
 		}
 	}
 	if w.dialect.Insert == dialect.InsertWithSingleValues {
-		w.batch.Size = 1
+		w.insertBatch.Size = 1
 	}
 	return nil
 }
@@ -76,19 +76,27 @@ func (w *Writer) Insert(any interface{}, options ...opt.Option) (int64, int64, e
 		return 0, 0, err
 	}
 	record := recordsFn()
-	if len(w.columns) == 0 {
-		if w.columns, w.binder, err = w.columnMapper(record, w.tagName); err != nil {
+	batch := opt.Options(options).Batch()
+	if batch == nil {
+		batch = w.insertBatch
+	}
+	if len(w.insertColumns) == 0 {
+		if w.insertColumns, w.insertBinder, err = w.insertMapper(record, w.tagName); err != nil {
 			return 0, 0, err
 		}
-		if autoIncrement := w.columns.Autoincrement();autoIncrement !=-1 {
+		var values = make([]string, len(w.insertColumns))
+		for i := range values {
+			values[i] = w.dialect.Placeholder
+		}
+		if w.insertBuilder, err = NewInsert(w.tableName, batch.Size, w.insertColumns.Names(), values); err != nil {
+			return 0, 0, err
+		}
+		if autoIncrement := w.insertColumns.Autoincrement(); autoIncrement != -1 {
 			w.autoIncrement = &autoIncrement
 		}
 	}
-	batch := opt.Options(options).Batch()
-	if batch == nil {
-		batch = w.batch
-	}
-	stmt, err := w.buildInsertStmt(batch.Size)
+
+	stmt, err := w.prepareInsertStatement(batch.Size)
 	if err != nil {
 		return 0, 0, err
 	}
@@ -115,7 +123,7 @@ func (w *Writer) Insert(any interface{}, options ...opt.Option) (int64, int64, e
 }
 
 func (w *Writer) insert(batch *opt.BatchOption, record interface{}, recordsFn func() interface{}, stmt *sql.Stmt) (int64, int64, error) {
-	recValues := make([]interface{}, batch.Size*len(w.columns))
+	recValues := make([]interface{}, batch.Size*len(w.insertColumns))
 
 	var identities []interface{}
 	batchLen := 0
@@ -124,10 +132,10 @@ func (w *Writer) insert(batch *opt.BatchOption, record interface{}, recordsFn fu
 	//ToDo: get real lastInsertedId
 
 	for ; record != nil; record = recordsFn() {
-		offset := batchLen * len(w.columns)
-		w.binder(record, recValues, offset)
+		offset := batchLen * len(w.insertColumns)
+		w.insertBinder(record, recValues, offset)
 
-		if w.autoIncrement != nil  {
+		if w.autoIncrement != nil {
 			identities = append(identities, recValues[offset+*w.autoIncrement])
 		}
 		batchLen++
@@ -143,11 +151,12 @@ func (w *Writer) insert(batch *opt.BatchOption, record interface{}, recordsFn fu
 	}
 
 	if batchLen > 0 { //overflow
-		stmt, err = w.buildInsertStmt(batchLen)
+		stmt, err = w.prepareInsertStatement(batchLen)
 		if err != nil {
 			return 0, 0, nil
 		}
-		rowsAffected, lastInsertedId, err = flush(stmt, recValues[0:batchLen*len(w.columns)], lastInsertedId, identities)
+		defer stmt.Close()
+		rowsAffected, lastInsertedId, err = flush(stmt, recValues[0:batchLen*len(w.insertColumns)], lastInsertedId, identities)
 		if err != nil {
 			return 0, 0, nil
 		}
@@ -238,42 +247,9 @@ func flush(stmt *sql.Stmt, values []interface{}, prevInsertedID int64, identitie
 	return rowsAffected, newLastInsertedID, err
 }
 
-func recordValues(holderPtr uintptr, target *[]interface{}, offset int, pointers []xunsafe.Pointer) error {
-	for i, ptr := range pointers {
-		(*target)[offset+i] = ptr(holderPtr)
-	}
-	return nil
-}
-
-func holderPointer(record interface{}) uintptr {
-	value := reflect.ValueOf(record)
-	if value.Kind() != reflect.Ptr { //convert to a pointer
-		vp := reflect.New(value.Type())
-		vp.Elem().Set(value)
-		value = vp
-	}
-	holderPtr := value.Elem().UnsafeAddr()
-	return holderPtr
-}
-
-func autoincValue(record interface{}, ptr xunsafe.Pointer) (interface{}, error) {
-	value := reflect.ValueOf(record)
-	if value.Kind() != reflect.Ptr {
-		return nil, fmt.Errorf("record with autoinc should be a pointer not a %v", value.Kind())
-	}
-	holderPtr := value.Elem().UnsafeAddr()
-	return ptr(holderPtr), nil
-}
-
-func (w *Writer) buildInsertStmt(batchSize int) (*sql.Stmt, error) {
-	//TODO optimize it
-	var colNames []string
-	for _, column := range w.columns {
-		colNames = append(colNames, column.Name())
-	}
-	sqlTemplate := "INSERT INTO %s(%s) VALUES%s"
-	insertSQL := fmt.Sprintf(sqlTemplate, w.tableName, strings.Join(colNames, ","), buildPlaceholders(batchSize, len(w.columns), w.dialect.Placeholder))
-	return w.db.Prepare(insertSQL)
+func (w *Writer) prepareInsertStatement(batchSize int) (*sql.Stmt, error) {
+	SQL := w.insertBuilder.Build(batchSize)
+	return w.db.Prepare(SQL)
 }
 
 func buildPlaceholders(batchSize, nCols int, placeholder string) string {

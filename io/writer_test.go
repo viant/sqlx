@@ -3,7 +3,6 @@ package io_test
 import (
 	"context"
 	"database/sql"
-	"fmt"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/assert"
 	"github.com/viant/sqlx/io"
@@ -14,7 +13,8 @@ import (
 	"testing"
 )
 
-func TestWriter(t *testing.T) {
+
+func TestWriter_Insert(t *testing.T) {
 	type fooCase1 struct {
 		Id   int
 		Name string
@@ -92,17 +92,15 @@ outer:
 		if err != nil {
 			continue
 		}
-		a, id, err := writer.Insert(useCase.record, 2)
+		_, _, err = writer.Insert(useCase.record, 2)
 		assert.Nil(t, err, useCases)
-		fmt.Printf("Result: %v %v\n", a, id)
-
 	}
 
 }
 
 func TestBulkWriter(t *testing.T) {
 	type fooCase2 struct {
-		Id   int    `sqlx:"name=my_id,autoincrement=true"`
+		Id   int    `sqlx:"name=foo_id,autoincrement=true"`
 		Name string `sqlx:"foo_name"`
 		Desc string `sqlx:"-"`
 		Bar  float64
@@ -130,8 +128,8 @@ func TestBulkWriter(t *testing.T) {
 			},
 			records: []interface{}{
 				&fooCase2{Id: 1, Name: "John1", Desc: "description", Bar: 17},
-				&fooCase2{Id: 1, Name: "John2", Desc: "description", Bar: 18},
-				&fooCase2{Id: 1, Name: "John3", Desc: "description", Bar: 19},
+				&fooCase2{Id: 2, Name: "John2", Desc: "description", Bar: 18},
+				&fooCase2{Id: 3, Name: "John3", Desc: "description", Bar: 19},
 			},
 			options: []opt.Option{
 				opt.TagOption{"sqlx"},
@@ -149,8 +147,8 @@ func TestBulkWriter(t *testing.T) {
 			},
 			records: []fooCase2{
 				fooCase2{Id: 1, Name: "John1", Desc: "description", Bar: 17},
-				fooCase2{Id: 1, Name: "John2", Desc: "description", Bar: 18},
-				fooCase2{Id: 1, Name: "John3", Desc: "description", Bar: 19},
+				fooCase2{Id: 2, Name: "John2", Desc: "description", Bar: 18},
+				fooCase2{Id: 3, Name: "John3", Desc: "description", Bar: 19},
 			},
 			options: []opt.Option{
 				opt.TagOption{"sqlx"},
@@ -191,11 +189,8 @@ outer:
 		if err != nil {
 			continue
 		}
-		a, id, err := writer.Insert(useCase.records)
+		_, _, err = writer.Insert(useCase.records)
 		assert.Nil(t, err, useCases)
-		fmt.Printf("Result: %v %v\n", a, id)
-		//jActual, _ := json.Marshal(actual)
-		//assert.EqualValues(t, useCase.expect, string(jActual), useCase.description)
 	}
 
 }
