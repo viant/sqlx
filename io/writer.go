@@ -113,7 +113,7 @@ func (w *Writer) Write(any interface{}, options ...opt.Option) (int64, int64, er
 func (w *Writer) write(batch *opt.BatchOption, record interface{}, recordsFn func() interface{}, stmt *sql.Stmt) (int64, int64, error) {
 	recValues := make([]interface{}, batch.Size*len(w.columnNames))
 
-	identities := []interface{}{}
+	var identities []interface{}
 	batchLen := 0
 	var err error
 	var rowsAffected, totalRowsAffected, lastInsertedId int64
@@ -152,7 +152,7 @@ func (w *Writer) write(batch *opt.BatchOption, record interface{}, recordsFn fun
 			}
 			totalRowsAffected += rowsAffected
 			batchLen = 0
-			identities = []interface{}{}
+			identities = nil
 		}
 	}
 
@@ -250,7 +250,7 @@ func anyProvider(any interface{}) (func() interface{}, error) {
 	return nil, fmt.Errorf("usnupported :%T", any)
 }
 
-func flush(stmt *sql.Stmt, values []interface{}, lastInsertedId int64, identities []interface{}) (int64, int64, error) {
+func flush(stmt *sql.Stmt, values []interface{}, prevInsertedID int64, identities []interface{}) (int64, int64, error) {
 	result, err := stmt.Exec(values...)
 	if err != nil {
 		return 0, 0, err
@@ -259,25 +259,31 @@ func flush(stmt *sql.Stmt, values []interface{}, lastInsertedId int64, identitie
 	if err != nil {
 		return 0, 0, err
 	}
-	newLastInsertedId, err := result.LastInsertId()
+	newLastInsertedID, err := result.LastInsertId()
 	if err != nil {
 		return 0, 0, err
 	}
 
+	lastInsertedID := prevInsertedID
+	if lastInsertedID == 0 {
+		lastInsertedID = newLastInsertedID - (int64(len(identities)) + 1)
+	}
+
 	if len(identities) > 0 { // update autoinc fields
-		//ToDo: check: newLastInsertedId-lastInsertedId>len(values)
-		for i, id := range identities {
-			switch val := id.(type) {
+		//ToDo: check: newLastInsertedID-prevInsertedID>len(values)
+
+		for i, ID := range identities {
+			switch val := ID.(type) {
 			case *int64:
-				*val = lastInsertedId + int64(i+1)
+				*val = lastInsertedID + int64(i+1)
 			case *int:
-				*val = int(lastInsertedId + int64(i+1))
+				*val = int(lastInsertedID + int64(i+1))
 			default:
 				return 0, 0, fmt.Errorf("expected *int or *int64 for autoinc, got %T", val)
 			}
 		}
 	}
-	return rowsAffected, newLastInsertedId, err
+	return rowsAffected, newLastInsertedID, err
 }
 
 func recordValues(record interface{}, target *[]interface{}, offset int, pointers []xunsafe.Pointer) error {

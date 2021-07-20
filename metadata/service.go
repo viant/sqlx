@@ -109,7 +109,6 @@ func (s *Service) matchVersion(ctx context.Context, db *sql.DB, product *databas
 			}
 			break
 		}
-		fmt.Printf("ERR: %v\n", err)
 	}
 	return nil, err
 }
@@ -121,7 +120,6 @@ func (s *Service) executeQuery(ctx context.Context, db *sql.DB, query *info.Quer
 	if err != nil {
 		return nil, err
 	}
-	fmt.Printf("exec SQL: %v\n", SQL)
 	stmt, err := db.PrepareContext(ctx, SQL)
 	if err != nil {
 		return nil, err
@@ -137,7 +135,6 @@ func (s *Service) runQuery(ctx context.Context, db *sql.DB, query *info.Query, s
 	if err != nil {
 		return err
 	}
-	fmt.Printf("query SQL: %v\n", SQL)
 	stmt, err := db.PrepareContext(ctx, SQL)
 	if err != nil {
 		return err

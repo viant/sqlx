@@ -51,10 +51,6 @@ func fetchStruct(rows *sql.Rows, dest Sink) error {
 		reader := io.NewStmtReader(nil, func() interface{} {
 			return reflect.New(targetType).Interface()
 		})
-
-		cols, _ := rows.Columns()
-		fmt.Printf("%v\n", cols)
-
 		return reader.ReadAll(rows, func(row interface{}) error {
 			item := reflect.ValueOf(row)
 			if !isTargetPointer {
