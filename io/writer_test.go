@@ -44,7 +44,7 @@ func TestWriter(t *testing.T) {
 			table:       "t1",
 			initSQL: []string{
 				"DROP TABLE IF EXISTS t1",
-				"CREATE TABLE t1 (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT)",
+				"CREATE TABLE t1 (Id INTEGER PRIMARY KEY AUTOINCREMENT, Name TEXT)",
 			},
 			record: fooCase1{Id: 1, Name: "John"},
 		},

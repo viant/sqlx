@@ -272,7 +272,7 @@ func (w *Writer) buildInsertStmt(batchSize int) (*sql.Stmt, error) {
 		colNames = append(colNames, column.Name())
 	}
 	sqlTemplate := "INSERT INTO %s(%s) VALUES%s"
-	insertSQL := fmt.Sprintf(sqlTemplate, w.tableName, colNames, buildPlaceholders(batchSize, len(w.columns), w.dialect.Placeholder))
+	insertSQL := fmt.Sprintf(sqlTemplate, w.tableName, strings.Join(colNames, ","), buildPlaceholders(batchSize, len(w.columns), w.dialect.Placeholder))
 	return w.db.Prepare(insertSQL)
 }
 
