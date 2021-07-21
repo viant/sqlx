@@ -125,9 +125,9 @@ func genericRowMapper(columns []Column) (RowMapper, error) {
 }
 
 //PlaceholderBinder copies source values to params starting with offset
-type PlaceholderBinder func(src interface{}, params []interface{}, offset int)
+type PlaceholderBinder func(src interface{}, params []interface{}, offset, limit int)
 
-//ColumnMapper maps src to insertColumns and its placeholders
+//ColumnMapper maps src to columns and its placeholders
 type ColumnMapper func(src interface{}, tagName string) ([]Column, PlaceholderBinder,  error)
 
 func genericColumnMapper(src interface{}, tagName string) ([]Column, PlaceholderBinder,  error) {
@@ -193,10 +193,11 @@ func genericColumnMapper(src interface{}, tagName string) ([]Column, Placeholder
 			columns = append(columns, identityColumns[i])
 		}
 	}
-	return columns, func(src interface{}, params []interface{}, offset int) {
+	return columns, func(src interface{}, params []interface{},offset, limit int) {
 		holderPtr := holderPointer(src)
-		for i, ptr := range pointers {
-			params[offset+i] = ptr(holderPtr)
+		end := offset+limit
+		for i, ptr := range pointers[offset:end] {
+			params[i] = ptr(holderPtr)
 		}
 	}, nil
 }

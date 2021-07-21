@@ -59,13 +59,12 @@ func asDereferenceSlice(aSlice []interface{}) {
 	}
 }
 
+
 func updateMap(columns []Column, values []interface{}, target map[string]interface{}) {
 	for i, column := range columns {
 		target[column.Name()] = values[i]
 	}
 }
-
-
 
 func holderPointer(record interface{}) uintptr {
 	value := reflect.ValueOf(record)

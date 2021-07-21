@@ -18,8 +18,8 @@ type Writer struct {
 	dialect       *info.Dialect
 	tableName     string
 	tagName       string
-	insertMapper  ColumnMapper
-	insertColumns Columns
+	columnMapper  ColumnMapper
+	columns       Columns
 	insertBinder  PlaceholderBinder
 	insertBuilder Builder
 	insertBatch   *opt.BatchOption
@@ -37,7 +37,7 @@ func NewWriter(ctx context.Context, db *sql.DB, tableName string, options ...opt
 		tableName:    tableName,
 		insertBatch:  opt.Options(options).Batch(),
 		tagName:      opt.Options(options).Tag(),
-		insertMapper: columnMapper,
+		columnMapper: columnMapper,
 	}
 
 	err := writer.init(ctx, db, options)
@@ -80,19 +80,22 @@ func (w *Writer) Insert(any interface{}, options ...opt.Option) (int64, int64, e
 	if batch == nil {
 		batch = w.insertBatch
 	}
-	if len(w.insertColumns) == 0 {
-		if w.insertColumns, w.insertBinder, err = w.insertMapper(record, w.tagName); err != nil {
+	if len(w.columns) == 0 {
+
+		if w.columns, w.insertBinder, err = w.columnMapper(record, w.tagName); err != nil {
 			return 0, 0, err
 		}
-		var values = make([]string, len(w.insertColumns))
+		if autoIncrement := w.columns.Autoincrement(); autoIncrement != -1 {
+			w.autoIncrement = &autoIncrement
+			w.columns = w.columns[:autoIncrement]
+		}
+
+		var values = make([]string, len(w.columns))
 		for i := range values {
 			values[i] = w.dialect.Placeholder
 		}
-		if w.insertBuilder, err = NewInsert(w.tableName, batch.Size, w.insertColumns.Names(), values); err != nil {
+		if w.insertBuilder, err = NewInsert(w.tableName, batch.Size, w.columns.Names(), values); err != nil {
 			return 0, 0, err
-		}
-		if autoIncrement := w.insertColumns.Autoincrement(); autoIncrement != -1 {
-			w.autoIncrement = &autoIncrement
 		}
 	}
 
@@ -123,40 +126,42 @@ func (w *Writer) Insert(any interface{}, options ...opt.Option) (int64, int64, e
 }
 
 func (w *Writer) insert(batch *opt.BatchOption, record interface{}, recordsFn func() interface{}, stmt *sql.Stmt) (int64, int64, error) {
-	recValues := make([]interface{}, batch.Size*len(w.insertColumns))
-
-	var identities []interface{}
-	batchLen := 0
+	var recValues = make([]interface{}, batch.Size*len(w.columns))
+	var identities = make([]interface{}, batch.Size)
+	inBatchCount := 0
+	identityIndex := 0
 	var err error
 	var rowsAffected, totalRowsAffected, lastInsertedId int64
 	//ToDo: get real lastInsertedId
 
 	for ; record != nil; record = recordsFn() {
-		offset := batchLen * len(w.insertColumns)
-		w.insertBinder(record, recValues, offset)
-
+		offset := inBatchCount * len(w.columns)
+		w.insertBinder(record, recValues[offset:], 0, len(w.columns))
 		if w.autoIncrement != nil {
-			identities = append(identities, recValues[offset+*w.autoIncrement])
+			if autoIncrement := w.autoIncrement; autoIncrement != nil {
+				w.insertBinder(record, identities[identityIndex:], *w.autoIncrement, 1)
+				identityIndex++
+			}
 		}
-		batchLen++
-		if batchLen == batch.Size {
-			rowsAffected, lastInsertedId, err = flush(stmt, recValues, lastInsertedId, identities)
+		inBatchCount++
+		if inBatchCount == batch.Size {
+			rowsAffected, lastInsertedId, err = flush(stmt, recValues, lastInsertedId, identities[:identityIndex])
 			if err != nil {
 				return 0, 0, err
 			}
 			totalRowsAffected += rowsAffected
-			batchLen = 0
-			identities = nil
+			inBatchCount = 0
+			identityIndex = 0
 		}
 	}
 
-	if batchLen > 0 { //overflow
-		stmt, err = w.prepareInsertStatement(batchLen)
+	if inBatchCount > 0 { //overflow
+		stmt, err = w.prepareInsertStatement(inBatchCount)
 		if err != nil {
 			return 0, 0, nil
 		}
 		defer stmt.Close()
-		rowsAffected, lastInsertedId, err = flush(stmt, recValues[0:batchLen*len(w.insertColumns)], lastInsertedId, identities)
+		rowsAffected, lastInsertedId, err = flush(stmt, recValues[0:inBatchCount*len(w.columns)], lastInsertedId, identities[:identityIndex])
 		if err != nil {
 			return 0, 0, nil
 		}
@@ -227,12 +232,11 @@ func flush(stmt *sql.Stmt, values []interface{}, prevInsertedID int64, identitie
 
 	lastInsertedID := prevInsertedID
 	if lastInsertedID == 0 {
-		lastInsertedID = newLastInsertedID - (int64(len(identities)) + 1)
+		lastInsertedID = newLastInsertedID - int64(len(identities))
 	}
 
 	if len(identities) > 0 { // update autoinc fields
 		//ToDo: check: newLastInsertedID-prevInsertedID>len(values)
-
 		for i, ID := range identities {
 			switch val := ID.(type) {
 			case *int64:

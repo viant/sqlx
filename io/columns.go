@@ -6,7 +6,7 @@ import (
 
 
 
-//Columns represents insertColumns
+//Columns represents columns
 type Columns []Column
 
 //Autoincrement returns position of autoincrement column or -1
@@ -30,6 +30,7 @@ func (c Columns) Names() []string {
 	}
 	return result
 }
+
 
 //TypesToColumns converts []*sql.ColumnType type to []sqlx.column
 func TypesToColumns(columns []*sql.ColumnType) []Column {
