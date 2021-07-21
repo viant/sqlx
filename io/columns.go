@@ -6,7 +6,7 @@ import (
 
 
 
-//Columns represents columns
+//Columns represents insertColumns
 type Columns []Column
 
 //Autoincrement returns position of autoincrement column or -1

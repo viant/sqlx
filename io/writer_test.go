@@ -153,7 +153,6 @@ outer:
 		}
 		affected, lastID, err := writer.Insert(testCase.records)
 		assert.Nil(t, err, testCase.description)
-
 		assert.EqualValues(t, testCase.affected, affected, testCase.description)
 		assert.EqualValues(t, testCase.lastID, lastID, testCase.description)
 

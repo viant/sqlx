@@ -18,8 +18,8 @@ type Writer struct {
 	dialect       *info.Dialect
 	tableName     string
 	tagName       string
-	columnMapper  ColumnMapper
-	columns       Columns
+	insertMapper  ColumnMapper
+	insertColumns Columns
 	insertBinder  PlaceholderBinder
 	insertBuilder Builder
 	insertBatch   *opt.BatchOption
@@ -37,7 +37,7 @@ func NewWriter(ctx context.Context, db *sql.DB, tableName string, options ...opt
 		tableName:    tableName,
 		insertBatch:  opt.Options(options).Batch(),
 		tagName:      opt.Options(options).Tag(),
-		columnMapper: columnMapper,
+		insertMapper: columnMapper,
 	}
 
 	err := writer.init(ctx, db, options)
@@ -80,21 +80,21 @@ func (w *Writer) Insert(any interface{}, options ...opt.Option) (int64, int64, e
 	if batch == nil {
 		batch = w.insertBatch
 	}
-	if len(w.columns) == 0 {
+	if len(w.insertColumns) == 0 {
 
-		if w.columns, w.insertBinder, err = w.columnMapper(record, w.tagName); err != nil {
+		if w.insertColumns, w.insertBinder, err = w.insertMapper(record, w.tagName); err != nil {
 			return 0, 0, err
 		}
-		if autoIncrement := w.columns.Autoincrement(); autoIncrement != -1 {
+		if autoIncrement := w.insertColumns.Autoincrement(); autoIncrement != -1 {
 			w.autoIncrement = &autoIncrement
-			w.columns = w.columns[:autoIncrement]
+			w.insertColumns = w.insertColumns[:autoIncrement]
 		}
 
-		var values = make([]string, len(w.columns))
+		var values = make([]string, len(w.insertColumns))
 		for i := range values {
 			values[i] = w.dialect.Placeholder
 		}
-		if w.insertBuilder, err = NewInsert(w.tableName, batch.Size, w.columns.Names(), values); err != nil {
+		if w.insertBuilder, err = NewInsert(w.tableName, batch.Size, w.insertColumns.Names(), values); err != nil {
 			return 0, 0, err
 		}
 	}
@@ -118,7 +118,6 @@ func (w *Writer) Insert(any interface{}, options ...opt.Option) (int64, int64, e
 		}
 		return 0, 0, err
 	}
-
 	if w.dialect.Transactional {
 		err = tx.Commit()
 	}
@@ -126,7 +125,7 @@ func (w *Writer) Insert(any interface{}, options ...opt.Option) (int64, int64, e
 }
 
 func (w *Writer) insert(batch *opt.BatchOption, record interface{}, recordsFn func() interface{}, stmt *sql.Stmt) (int64, int64, error) {
-	var recValues = make([]interface{}, batch.Size*len(w.columns))
+	var recValues = make([]interface{}, batch.Size*len(w.insertColumns))
 	var identities = make([]interface{}, batch.Size)
 	inBatchCount := 0
 	identityIndex := 0
@@ -135,8 +134,8 @@ func (w *Writer) insert(batch *opt.BatchOption, record interface{}, recordsFn fu
 	//ToDo: get real lastInsertedId
 
 	for ; record != nil; record = recordsFn() {
-		offset := inBatchCount * len(w.columns)
-		w.insertBinder(record, recValues[offset:], 0, len(w.columns))
+		offset := inBatchCount * len(w.insertColumns)
+		w.insertBinder(record, recValues[offset:], 0, len(w.insertColumns))
 		if w.autoIncrement != nil {
 			if autoIncrement := w.autoIncrement; autoIncrement != nil {
 				w.insertBinder(record, identities[identityIndex:], *w.autoIncrement, 1)
@@ -161,7 +160,7 @@ func (w *Writer) insert(batch *opt.BatchOption, record interface{}, recordsFn fu
 			return 0, 0, nil
 		}
 		defer stmt.Close()
-		rowsAffected, lastInsertedId, err = flush(stmt, recValues[0:inBatchCount*len(w.columns)], lastInsertedId, identities[:identityIndex])
+		rowsAffected, lastInsertedId, err = flush(stmt, recValues[0:inBatchCount*len(w.insertColumns)], lastInsertedId, identities[:identityIndex])
 		if err != nil {
 			return 0, 0, nil
 		}
