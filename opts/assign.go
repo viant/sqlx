@@ -1,4 +1,4 @@
-package opt
+package opts
 
 import (
 	"reflect"

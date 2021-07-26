@@ -8,7 +8,7 @@ import (
 	"github.com/viant/sqlx/io"
 	"github.com/viant/sqlx/metadata"
 	_ "github.com/viant/sqlx/metadata/product/sqlite"
-	"github.com/viant/sqlx/opt"
+	"github.com/viant/sqlx/opts"
 	"testing"
 )
 
@@ -32,7 +32,7 @@ func TestWriter_Insert(t *testing.T) {
 		table       string
 		driver      string
 		dsn         string
-		options     []opt.Option
+		options     []opts.Option
 		records     interface{}
 		params      []interface{}
 		expect      interface{}
@@ -73,8 +73,8 @@ func TestWriter_Insert(t *testing.T) {
 			},
 			affected: 3,
 			lastID: 3,
-			options: []opt.Option{
-				&opt.BatchOption{2},
+			options: []opts.Option{
+				&opts.BatchOption{2},
 			},
 		},
 		{
@@ -93,8 +93,8 @@ func TestWriter_Insert(t *testing.T) {
 			},
 			affected: 3,
 			lastID: 3,
-			options: []opt.Option{
-				&opt.BatchOption{2},
+			options: []opts.Option{
+				&opts.BatchOption{2},
 			},
 		},
 		{
@@ -116,8 +116,8 @@ func TestWriter_Insert(t *testing.T) {
 			},
 			affected: 5,
 			lastID: 6,
-			options: []opt.Option{
-				&opt.BatchOption{3},
+			options: []opts.Option{
+				&opts.BatchOption{3},
 			},
 		},
 	}

@@ -4,7 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"github.com/viant/sqlx/opt"
+	"github.com/viant/sqlx/opts"
 	"reflect"
 )
 
@@ -19,6 +19,7 @@ type Reader struct {
 	newRowMapper RowMapperProvider
 }
 
+//QuerySingle returns single row
 func (r *Reader) QuerySingle(ctx context.Context, emit func(row interface{}) error, args ...interface{}) error {
 	rows, err := r.stmt.QueryContext(ctx, args...)
 	if err != nil {
@@ -117,7 +118,7 @@ func (r *Reader) read(mapperPtr *RowMapper, rows *sql.Rows, columnsPtr *[]Column
 	return emit(row)
 }
 
-func NewReader(ctx context.Context, db *sql.DB, query string, newRow func() interface{}, options ...opt.Option) (*Reader, error) {
+func NewReader(ctx context.Context, db *sql.DB, query string, newRow func() interface{}, options ...opts.Option) (*Reader, error) {
 	stmt, err := db.PrepareContext(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("failed to prepare query: %v, due to %w", query, err)
@@ -125,25 +126,25 @@ func NewReader(ctx context.Context, db *sql.DB, query string, newRow func() inte
 	return NewStmtReader(stmt, newRow, options...), err
 }
 
-func NewStmtReader(stmt *sql.Stmt, newRow func() interface{}, options ...opt.Option) *Reader {
+func NewStmtReader(stmt *sql.Stmt, newRow func() interface{}, options ...opts.Option) *Reader {
 	targetType := reflect.TypeOf(newRow())
 	if targetType.Kind() == reflect.Ptr {
 		targetType = targetType.Elem()
 	}
 	var newRowMapper RowMapperProvider
-	if !opt.Assign(options, &newRowMapper) {
+	if !opts.Assign(options, &newRowMapper) {
 		newRowMapper = newQueryMapper
 	}
-	return &Reader{newRow: newRow, targetType: targetType, stmt: stmt, tagName: opt.Options(options).Tag(), newRowMapper: newRowMapper}
+	return &Reader{newRow: newRow, targetType: targetType, stmt: stmt, tagName: opts.Options(options).Tag(), newRowMapper: newRowMapper}
 }
 
-func NewMapReader(ctx context.Context, db *sql.DB, query string, options ...opt.Option) (*Reader, error) {
+func NewMapReader(ctx context.Context, db *sql.DB, query string, options ...opts.Option) (*Reader, error) {
 	return NewReader(ctx, db, query, func() interface{} {
 		return make(map[string]interface{})
 	}, options...)
 }
 
-func NewSliceReader(ctx context.Context, db *sql.DB, query string, columns int, options ...opt.Option) (*Reader, error) {
+func NewSliceReader(ctx context.Context, db *sql.DB, query string, columns int, options ...opts.Option) (*Reader, error) {
 	return NewReader(ctx, db, query, func() interface{} {
 		return make([]interface{}, columns)
 	}, options...)

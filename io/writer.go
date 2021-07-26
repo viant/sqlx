@@ -4,10 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"github.com/viant/sqlx/opts"
 	"github.com/viant/sqlx/metadata/info"
 	"github.com/viant/sqlx/metadata/info/dialect"
 	"github.com/viant/sqlx/metadata/registry"
-	"github.com/viant/sqlx/opt"
 	"reflect"
 	"strings"
 )
@@ -22,21 +22,21 @@ type Writer struct {
 	insertColumns Columns
 	insertBinder  PlaceholderBinder
 	insertBuilder Builder
-	insertBatch   *opt.BatchOption
+	insertBatch   *opts.BatchOption
 	autoIncrement *int
 }
 
-func NewWriter(ctx context.Context, db *sql.DB, tableName string, options ...opt.Option) (*Writer, error) {
+func NewWriter(ctx context.Context, db *sql.DB, tableName string, options ...opts.Option) (*Writer, error) {
 	var columnMapper ColumnMapper
-	if !opt.Assign(options, &columnMapper) {
+	if !opts.Assign(options, &columnMapper) {
 		columnMapper = genericColumnMapper
 	}
 	writer := &Writer{
 		db:           db,
-		dialect:      opt.Options(options).Dialect(),
+		dialect:      opts.Options(options).Dialect(),
 		tableName:    tableName,
-		insertBatch:  opt.Options(options).Batch(),
-		tagName:      opt.Options(options).Tag(),
+		insertBatch:  opts.Options(options).Batch(),
+		tagName:      opts.Options(options).Tag(),
 		insertMapper: columnMapper,
 	}
 
@@ -47,7 +47,7 @@ func NewWriter(ctx context.Context, db *sql.DB, tableName string, options ...opt
 	return writer, nil
 }
 
-func (w *Writer) init(ctx context.Context, db *sql.DB, options opt.Options) error {
+func (w *Writer) init(ctx context.Context, db *sql.DB, options opts.Options) error {
 	if w.dialect == nil {
 		product := options.Product()
 		if product == nil {
@@ -60,7 +60,7 @@ func (w *Writer) init(ctx context.Context, db *sql.DB, options opt.Options) erro
 	}
 
 	if w.insertBatch == nil {
-		w.insertBatch = &opt.BatchOption{
+		w.insertBatch = &opts.BatchOption{
 			Size: 1,
 		}
 	}
@@ -70,13 +70,13 @@ func (w *Writer) init(ctx context.Context, db *sql.DB, options opt.Options) erro
 	return nil
 }
 
-func (w *Writer) Insert(any interface{}, options ...opt.Option) (int64, int64, error) {
+func (w *Writer) Insert(any interface{}, options ...opts.Option) (int64, int64, error) {
 	recordsFn, err := anyProvider(any)
 	if err != nil {
 		return 0, 0, err
 	}
 	record := recordsFn()
-	batch := opt.Options(options).Batch()
+	batch := opts.Options(options).Batch()
 	if batch == nil {
 		batch = w.insertBatch
 	}
@@ -124,7 +124,7 @@ func (w *Writer) Insert(any interface{}, options ...opt.Option) (int64, int64, e
 	return rowsAffected, lastInsertedId, err
 }
 
-func (w *Writer) insert(batch *opt.BatchOption, record interface{}, recordsFn func() interface{}, stmt *sql.Stmt) (int64, int64, error) {
+func (w *Writer) insert(batch *opts.BatchOption, record interface{}, recordsFn func() interface{}, stmt *sql.Stmt) (int64, int64, error) {
 	var recValues = make([]interface{}, batch.Size*len(w.insertColumns))
 	var identities = make([]interface{}, batch.Size)
 	inBatchCount := 0
