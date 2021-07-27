@@ -106,8 +106,7 @@ outer:
 		ctx := context.Background()
 		var db *sql.DB
 
-		db, err :=
-			sql.Open(useCase.driver, useCase.dsn)
+		db, err := sql.Open(useCase.driver, useCase.dsn)
 		if !assert.Nil(t, err, useCase.description) {
 			log.Panic(err)
 		}

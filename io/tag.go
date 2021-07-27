@@ -9,16 +9,20 @@ type Tag struct {
 	PrimaryKey    bool
 	Sequence      string
 	FieldIndex    int
+	Transient bool
 }
 
 //ParseTag parses tag
 func ParseTag(tagString string) *Tag {
+	tag := &Tag{}
+	if tagString == "-" {
+		tag.Transient = true
+		return tag
+	}
 	elements := strings.Split(tagString, ",")
 	if len(elements) == 0 {
-		return nil
+		return tag
 	}
-
-	tag := &Tag{}
 	for i, element := range elements {
 		nv := strings.Split(element, "=")
 		if len(nv) == 2 {

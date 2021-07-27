@@ -4,7 +4,11 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+	"time"
 )
+
+var byteType = reflect.TypeOf([]byte{})
+var timeType = reflect.TypeOf(time.Time{})
 
 //columnPositions maps column into field index in record type
 func columnPositions(columns []Column, recordType reflect.Type, tag string) ([]int, error) {
@@ -59,7 +63,6 @@ func asDereferenceSlice(aSlice []interface{}) {
 	}
 }
 
-
 func updateMap(columns []Column, values []interface{}, target map[string]interface{}) {
 	for i, column := range columns {
 		target[column.Name()] = values[i]
@@ -75,4 +78,23 @@ func holderPointer(record interface{}) uintptr {
 	}
 	holderPtr := value.Elem().UnsafeAddr()
 	return holderPtr
+}
+
+//IsBaseType return true if base type
+func IsBaseType(aType reflect.Type) bool {
+	if aType.Kind() == reflect.Ptr {
+		aType = aType.Elem()
+	}
+	switch aType.Kind() {
+	case reflect.Int, reflect.Int64, reflect.Int8, reflect.Int16, reflect.Int32,
+		reflect.Uint, reflect.Uint64, reflect.Uint8, reflect.Uint16, reflect.Uint32,
+		reflect.Float32, reflect.Float64,
+		reflect.Bool, reflect.String, reflect.Slice:
+		return true
+	default:
+		if byteType.AssignableTo(aType) || timeType.AssignableTo(aType) {
+			return true
+		}
+	}
+	return false
 }
