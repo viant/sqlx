@@ -36,6 +36,7 @@ func (r *Reader) QuerySingle(ctx context.Context, emit func(row interface{}) err
 	return nil
 }
 
+//QueryAll query all
 func (r *Reader) QueryAll(ctx context.Context, emit func(row interface{}) error, args ...interface{}) error {
 	rows, err := r.stmt.QueryContext(ctx, args...)
 	if err != nil {
@@ -45,6 +46,7 @@ func (r *Reader) QueryAll(ctx context.Context, emit func(row interface{}) error,
 	return r.ReadAll(rows, emit)
 }
 
+//ReadAll read all
 func (r *Reader) ReadAll(rows *sql.Rows, emit func(row interface{}) error) error {
 	var mapper RowMapper
 	var columns []Column
@@ -80,6 +82,12 @@ func (r *Reader) read(mapperPtr *RowMapper, rows *sql.Rows, columnsPtr *[]Column
 	row := r.newRow()
 	columns := *columnsPtr
 	mapper := *mapperPtr
+	if r.targetType == nil {
+		r.targetType = reflect.TypeOf(row)
+		if r.targetType.Kind() == reflect.Ptr {
+			r.targetType = r.targetType.Elem()
+		}
+	}
 	if mapper == nil {
 		columnNames, err := rows.Columns()
 		if err != nil {
@@ -127,15 +135,12 @@ func NewReader(ctx context.Context, db *sql.DB, query string, newRow func() inte
 }
 
 func NewStmtReader(stmt *sql.Stmt, newRow func() interface{}, options ...opts.Option) *Reader {
-	targetType := reflect.TypeOf(newRow())
-	if targetType.Kind() == reflect.Ptr {
-		targetType = targetType.Elem()
-	}
+
 	var newRowMapper RowMapperProvider
 	if !opts.Assign(options, &newRowMapper) {
 		newRowMapper = newQueryMapper
 	}
-	return &Reader{newRow: newRow, targetType: targetType, stmt: stmt, tagName: opts.Options(options).Tag(), newRowMapper: newRowMapper}
+	return &Reader{newRow: newRow, stmt: stmt, tagName: opts.Options(options).Tag(), newRowMapper: newRowMapper}
 }
 
 func NewMapReader(ctx context.Context, db *sql.DB, query string, options ...opts.Option) (*Reader, error) {

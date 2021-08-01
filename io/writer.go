@@ -4,10 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"github.com/viant/sqlx/opts"
 	"github.com/viant/sqlx/metadata/info"
 	"github.com/viant/sqlx/metadata/info/dialect"
 	"github.com/viant/sqlx/metadata/registry"
+	"github.com/viant/sqlx/opts"
 	"reflect"
 	"strings"
 )
@@ -89,7 +89,6 @@ func (w *Writer) Insert(any interface{}, options ...opts.Option) (int64, int64, 
 			w.autoIncrement = &autoIncrement
 			w.insertColumns = w.insertColumns[:autoIncrement]
 		}
-
 		var values = make([]string, len(w.insertColumns))
 		for i := range values {
 			values[i] = w.dialect.Placeholder

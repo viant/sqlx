@@ -55,7 +55,7 @@ func TestWriter_Insert(t *testing.T) {
 				&entity{Id: 3, Name: "John3", Desc: "description", Bar: 19},
 			},
 			affected: 3,
-			lastID: 3,
+			lastID:   3,
 		},
 		{
 			description: "Writer.Insert: batch size: 2 ",
@@ -72,7 +72,7 @@ func TestWriter_Insert(t *testing.T) {
 				{Id: 3, Name: "John3", Desc: "description", Bar: 19},
 			},
 			affected: 3,
-			lastID: 3,
+			lastID:   3,
 			options: []opts.Option{
 				&opts.BatchOption{2},
 			},
@@ -92,7 +92,7 @@ func TestWriter_Insert(t *testing.T) {
 				{Id: 0, Name: "John3", Desc: "description", Bar: 19},
 			},
 			affected: 3,
-			lastID: 3,
+			lastID:   3,
 			options: []opts.Option{
 				&opts.BatchOption{2},
 			},
@@ -115,7 +115,7 @@ func TestWriter_Insert(t *testing.T) {
 				{Id: 0, Name: "John5", Desc: "description", Bar: 19},
 			},
 			affected: 5,
-			lastID: 6,
+			lastID:   6,
 			options: []opts.Option{
 				&opts.BatchOption{3},
 			},
