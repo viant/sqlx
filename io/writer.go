@@ -81,7 +81,6 @@ func (w *Writer) Insert(any interface{}, options ...opts.Option) (int64, int64, 
 		batch = w.insertBatch
 	}
 	if len(w.insertColumns) == 0 {
-
 		if w.insertColumns, w.insertBinder, err = w.insertMapper(record, w.tagName); err != nil {
 			return 0, 0, err
 		}

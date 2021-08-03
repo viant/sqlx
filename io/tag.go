@@ -9,7 +9,8 @@ type Tag struct {
 	PrimaryKey    bool
 	Sequence      string
 	FieldIndex    int
-	Transient bool
+	Transient     bool
+	Ns            string
 }
 
 //ParseTag parses tag
@@ -29,6 +30,8 @@ func ParseTag(tagString string) *Tag {
 			switch strings.ToLower(strings.TrimSpace(nv[0])) {
 			case "name":
 				tag.Column = strings.TrimSpace(nv[1])
+			case "ns":
+				tag.Ns = strings.TrimSpace(nv[1])
 			case "sequence":
 				tag.Sequence = strings.TrimSpace(nv[1])
 			case "autoincrement":

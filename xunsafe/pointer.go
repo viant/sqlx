@@ -6,19 +6,25 @@ import (
 	"unsafe"
 )
 
-
 //Pointer represents a func returning field value pointer, it takes holder address
 type Pointer func(structPtr uintptr) interface{}
 
 
+
+
 //FieldPointer create Pointer function for supported field or error
-func FieldPointer(structType reflect.Type, fieldIndex int) (Pointer, error) {
+func FieldPointer(structType reflect.Type, fieldPath *Field) (Pointer, error) {
 	if structType.Kind() != reflect.Struct {
 		return nil, fmt.Errorf("expected struct but had: %T", reflect.New(structType))
 	}
-	field := structType.Field(fieldIndex)
+	field := structType.Field(fieldPath.Index)
 	offset := field.Offset
 	var result Pointer
+	if fieldPath.Getter != nil {
+		return func(structAddr uintptr) interface{} {
+			return fieldPath.Getter(structAddr)
+		}, nil
+	}
 	switch field.Type.Kind() {
 	case reflect.Int:
 		result = func(structAddr uintptr) interface{} {
@@ -78,8 +84,39 @@ func FieldPointer(structType reflect.Type, fieldIndex int) (Pointer, error) {
 			return (*bool)(unsafe.Pointer(structAddr + offset))
 		}
 
+	case reflect.Struct:
+		if fieldPath.Field == nil {
+			return nil, fmt.Errorf("failed to get pointer on %v.%v, subPath was nil", structType.String(), field.Name)
+		}
+		fn, err := FieldPointer(field.Type, fieldPath.Field)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get poiner on %v.%v due to %w", structType.String(), field.Name, err)
+		}
+		result = func(structAddr uintptr) interface{} {
+			fieldValue := reflect.NewAt(field.Type, unsafe.Pointer(structAddr+offset))
+			addr := fieldValue.Elem().UnsafeAddr()
+			return fn(addr)
+		}
+
 	case reflect.Ptr:
 		switch field.Type.Elem().Kind() {
+		case reflect.Struct:
+			if fieldPath.Field == nil {
+				return nil, fmt.Errorf("failed to get pointer on %v.%v, subPath was nil", structType.String(), field.Name)
+			}
+			fn, err := FieldPointer(field.Type.Elem(), fieldPath.Field)
+			if err != nil {
+				return nil, fmt.Errorf("failed to get poiner on %v.%v due to %w", structType.String(), field.Name, err)
+			}
+			result = func(structAddr uintptr) interface{} {
+				fieldValue := reflect.NewAt(field.Type, unsafe.Pointer(structAddr+offset))
+				if fieldValue.Elem().IsNil() {
+					ptr := reflect.New(fieldValue.Type().Elem().Elem())
+					fieldValue.Elem().Set(ptr)
+				}
+				return fn(fieldValue.Elem().Elem().UnsafeAddr())
+			}
+
 		case reflect.Int:
 			result = func(structAddr uintptr) interface{} {
 				return (**int)(unsafe.Pointer(structAddr + offset))
@@ -272,5 +309,5 @@ func FieldPointer(structType reflect.Type, fieldIndex int) (Pointer, error) {
 }
 
 func raiseUnsupportedTypeError(holder reflect.Type, field reflect.StructField) (Pointer, error) {
-	return nil, fmt.Errorf("unsupported type: %v, at %T.%s", field.Type.Name(),  reflect.New(holder).Interface(), field.Name)
+	return nil, fmt.Errorf("unsupported type: %v, at %T.%s", field.Type.Name(), reflect.New(holder).Interface(), field.Name)
 }

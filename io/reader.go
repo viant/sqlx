@@ -17,6 +17,7 @@ type Reader struct {
 	stmt         *sql.Stmt
 	rows         *sql.Rows
 	newRowMapper RowMapperProvider
+	unmappedFn   Resolve
 }
 
 //QuerySingle returns single row
@@ -58,6 +59,7 @@ func (r *Reader) ReadAll(rows *sql.Rows, emit func(row interface{}) error) error
 	return nil
 }
 
+//QueryAllWithSlice query all with a slice
 func (r *Reader) QueryAllWithSlice(ctx context.Context, emit func(row []interface{}) error, args ...interface{}) error {
 	return r.QueryAll(ctx, func(row interface{}) error {
 		aSlice, ok := row.([]interface{})
@@ -68,6 +70,7 @@ func (r *Reader) QueryAllWithSlice(ctx context.Context, emit func(row []interfac
 	}, args...)
 }
 
+//QueryAllWithMap query all with a map
 func (r *Reader) QueryAllWithMap(ctx context.Context, emit func(row map[string]interface{}) error, args ...interface{}) error {
 	return r.QueryAll(ctx, func(row interface{}) error {
 		aMap, ok := row.(map[string]interface{})
@@ -98,7 +101,7 @@ func (r *Reader) read(mapperPtr *RowMapper, rows *sql.Rows, columnsPtr *[]Column
 			columns = TypesToColumns(columnsTypes)
 		}
 		*columnsPtr = columns
-		if mapper, err = r.newRowMapper(columns, r.targetType, r.tagName); err != nil {
+		if mapper, err = r.newRowMapper(columns, r.targetType, r.tagName, r.unmappedFn); err != nil {
 			return fmt.Errorf("creating rowValues mapper, due to %w", err)
 		}
 		*mapperPtr = mapper
@@ -135,12 +138,14 @@ func NewReader(ctx context.Context, db *sql.DB, query string, newRow func() inte
 }
 
 func NewStmtReader(stmt *sql.Stmt, newRow func() interface{}, options ...opts.Option) *Reader {
-
 	var newRowMapper RowMapperProvider
+	var unmappedFn Resolve
 	if !opts.Assign(options, &newRowMapper) {
 		newRowMapper = newQueryMapper
 	}
-	return &Reader{newRow: newRow, stmt: stmt, tagName: opts.Options(options).Tag(), newRowMapper: newRowMapper}
+	opts.Assign(options, &unmappedFn)
+
+	return &Reader{newRow: newRow, stmt: stmt, tagName: opts.Options(options).Tag(), newRowMapper: newRowMapper, unmappedFn: unmappedFn}
 }
 
 func NewMapReader(ctx context.Context, db *sql.DB, query string, options ...opts.Option) (*Reader, error) {
