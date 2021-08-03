@@ -50,7 +50,7 @@ func newQueryStructMapper(columns []Column, recordType reflect.Type, tagName str
 	}
 	var record = make([]interface{}, len(mappedFieldIndex))
 
-	var pointers = make([]xunsafe.Pointer, len(mappedFieldIndex))
+	var pointers = make([]xunsafe.Getter, len(mappedFieldIndex))
 	for i, fldPath := range mappedFieldIndex {
 		pointers[i], err = xunsafe.FieldPointer(recordType, fldPath)
 		if err != nil {
@@ -142,7 +142,7 @@ func genericColumnMapper(src interface{}, tagName string) ([]Column, Placeholder
 
 	var columns []Column
 	var identityColumns []Column
-	var pointers []xunsafe.Pointer
+	var pointers []xunsafe.Getter
 
 	for i := 0; i < recordType.NumField(); i++ {
 		field := recordType.Field(i)

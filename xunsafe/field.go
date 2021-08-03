@@ -4,5 +4,5 @@ package xunsafe
 type Field struct {
 	Index  int
 	Field  *Field
-	Getter func(structAddr uintptr) interface{}
+	Getter
 }

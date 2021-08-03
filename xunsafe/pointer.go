@@ -6,17 +6,17 @@ import (
 	"unsafe"
 )
 
-//Pointer represents a func returning field value pointer, it takes holder address
-type Pointer func(structPtr uintptr) interface{}
+//Getter represents a func returning field value pointer, it takes holder address
+type Getter func(structPtr uintptr) interface{}
 
-//FieldPointer create Pointer function for supported field or error
-func FieldPointer(structType reflect.Type, fieldPath *Field) (Pointer, error) {
+//FieldPointer creates a Getter function returning filed pointer or error
+func FieldPointer(structType reflect.Type, fieldPath *Field) (Getter, error) {
 	if structType.Kind() != reflect.Struct {
 		return nil, fmt.Errorf("expected struct but had: %T", reflect.New(structType))
 	}
 	field := structType.Field(fieldPath.Index)
 	offset := field.Offset
-	var result Pointer
+	var result Getter
 	if fieldPath.Getter != nil {
 		return func(structAddr uintptr) interface{} {
 			return fieldPath.Getter(structAddr)
@@ -316,6 +316,6 @@ func FieldPointer(structType reflect.Type, fieldPath *Field) (Pointer, error) {
 	return result, nil
 }
 
-func raiseUnsupportedTypeError(holder reflect.Type, field reflect.StructField) (Pointer, error) {
+func raiseUnsupportedTypeError(holder reflect.Type, field reflect.StructField) (Getter, error) {
 	return nil, fmt.Errorf("unsupported type: %v, at %T.%s", field.Type.Name(), reflect.New(holder).Interface(), field.Name)
 }
