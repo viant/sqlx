@@ -51,6 +51,10 @@ func NamesToColumns(columns []string) []Column {
 	return result
 }
 
+
+
+
+
 //StructColumns returns column for the struct
 func StructColumns(recordType reflect.Type) ([]Column, error) {
 	var result []Column
@@ -66,9 +70,9 @@ func StructColumns(recordType reflect.Type) ([]Column, error) {
 		if ! IsBaseType(fieldType) {
 			continue
 		}
-
 		fieldName := field.Name
 		aTag := ParseTag(field.Tag.Get(opts.TagSqlx))
+		aTag.FieldIndex = i
 		if aTag.Transient {
 			continue
 		}
@@ -84,5 +88,7 @@ func StructColumns(recordType reflect.Type) ([]Column, error) {
 	}
 	return result, nil
 }
+
+
 
 
