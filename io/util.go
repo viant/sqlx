@@ -21,6 +21,7 @@ func updateMap(columns []Column, values []interface{}, target map[string]interfa
 	}
 }
 
+
 func holderPointer(record interface{}) uintptr {
 	value := reflect.ValueOf(record)
 	if value.Kind() != reflect.Ptr { //convert to a pointer

@@ -307,6 +307,17 @@ func FieldPointer(structType reflect.Type, fieldPath *Field) (Getter, error) {
 			result = func(structAddr uintptr) interface{} {
 				return (*[]bool)(unsafe.Pointer(structAddr + offset))
 			}
+		case reflect.Ptr:
+			return func(structAddr uintptr) interface{} {
+				fieldValue := reflect.NewAt(field.Type, unsafe.Pointer(structAddr+offset))
+				return fieldValue.Interface()
+			}, nil
+		case reflect.Struct:
+			return func(structAddr uintptr) interface{} {
+				fieldValue := reflect.NewAt(field.Type, unsafe.Pointer(structAddr+offset))
+				return fieldValue.Interface()
+			}, nil
+
 		default:
 			return raiseUnsupportedTypeError(structType, field)
 		}
