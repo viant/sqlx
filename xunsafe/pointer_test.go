@@ -10,7 +10,7 @@ func TestFieldPointer(t *testing.T) {
 	var testCases = []struct {
 		description string
 		instance interface{}
-		fieldIndex int
+		Field
 		expect interface{}
 	}{
 		{
@@ -21,7 +21,7 @@ func TestFieldPointer(t *testing.T) {
 			}{
 				nil, 101,
 			},
-			fieldIndex: 1,
+			Field:Field{Index: 1},
 			expect:     101,
 		},
 		{
@@ -33,7 +33,7 @@ func TestFieldPointer(t *testing.T) {
 			}{
 				nil, 102, []byte{'a', 'c', 'b'},
 			},
-			fieldIndex: 2,
+			Field:Field{Index: 2},
 			expect:     []byte{'a', 'c', 'b'},
 		},
 		{
@@ -46,7 +46,7 @@ func TestFieldPointer(t *testing.T) {
 			}{
 				nil, 102, []byte{'a', 'c', 'b'}, pBool(true),
 			},
-			fieldIndex: 3,
+			Field:Field{Index: 3},
 			expect:     true,
 		},
 		{
@@ -60,7 +60,7 @@ func TestFieldPointer(t *testing.T) {
 			}{
 				nil, 102, []byte{'a', 'c', 'b'}, pBool(true),pStrings([]string{"a", "1", "a"}),
 			},
-			fieldIndex: 4,
+			Field:Field{Index: 4},
 			expect:     []string{"a", "1", "a"},
 		},
 	}
@@ -71,7 +71,7 @@ func TestFieldPointer(t *testing.T) {
 		structPtr := reflect.New(structValue.Type())
 		structPtr.Elem().Set(structValue)
 
-		ptr, err := FieldPointer(structValue.Type(), testCase.fieldIndex)
+		ptr, err := FieldPointer(structValue.Type(), &testCase.Field)
 		if ! assert.Nil(t, err, testCase.description) {
 			continue
 		}

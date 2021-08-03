@@ -9,9 +9,6 @@ import (
 //Pointer represents a func returning field value pointer, it takes holder address
 type Pointer func(structPtr uintptr) interface{}
 
-
-
-
 //FieldPointer create Pointer function for supported field or error
 func FieldPointer(structType reflect.Type, fieldPath *Field) (Pointer, error) {
 	if structType.Kind() != reflect.Struct {
@@ -86,8 +83,12 @@ func FieldPointer(structType reflect.Type, fieldPath *Field) (Pointer, error) {
 
 	case reflect.Struct:
 		if fieldPath.Field == nil {
-			return nil, fmt.Errorf("failed to get pointer on %v.%v, subPath was nil", structType.String(), field.Name)
+			return func(structAddr uintptr) interface{} {
+				fieldValue := reflect.NewAt(field.Type, unsafe.Pointer(structAddr+offset))
+				return fieldValue.Interface()
+			}, nil
 		}
+
 		fn, err := FieldPointer(field.Type, fieldPath.Field)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get poiner on %v.%v due to %w", structType.String(), field.Name, err)
@@ -102,7 +103,14 @@ func FieldPointer(structType reflect.Type, fieldPath *Field) (Pointer, error) {
 		switch field.Type.Elem().Kind() {
 		case reflect.Struct:
 			if fieldPath.Field == nil {
-				return nil, fmt.Errorf("failed to get pointer on %v.%v, subPath was nil", structType.String(), field.Name)
+				return func(structAddr uintptr) interface{} {
+					fieldValue := reflect.NewAt(field.Type, unsafe.Pointer(structAddr+offset))
+					if fieldValue.Elem().IsNil() {
+						ptr := reflect.New(fieldValue.Type().Elem().Elem())
+						fieldValue.Elem().Set(ptr)
+					}
+					return fieldValue.Interface()
+				}, nil
 			}
 			fn, err := FieldPointer(field.Type.Elem(), fieldPath.Field)
 			if err != nil {

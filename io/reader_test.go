@@ -218,9 +218,7 @@ outer:
 				fmt.Println(actualJSON)
 				continue
 			}
-
 		}
-
 	}
 
 }
