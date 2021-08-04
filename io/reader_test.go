@@ -13,33 +13,36 @@ import (
 	"testing"
 )
 
-type fooCase1 struct {
-	Id   int
-	Name string
-}
-
-type fooCase2 struct {
-	Id   int    `sqlx:"foo_id"`
-	Name string `sqlx:"foo_name"`
-	Desc string `sqlx:"-"`
-	Bar  float64
-}
-
-type case3FooID struct {
-	Id   int `sqlx:"foo_id"`
-	Desc string
-}
-
-type Case3FooName struct {
-	Name string
-}
-
-type case3Wrapper struct {
-	*case3FooID
-	Case3FooName `sqlx:"ns=foo"`
-}
-
 func TestReader_ReadAll(t *testing.T) {
+
+
+	type fooCase1 struct {
+		Id   int
+		Name string
+	}
+
+	type fooCase2 struct {
+		Id   int    `sqlx:"foo_id"`
+		Name string `sqlx:"foo_name"`
+		Desc string `sqlx:"-"`
+		Bar  float64
+	}
+
+	type case3FooID struct {
+		Id   int `sqlx:"foo_id"`
+		Desc string
+	}
+
+	type Case3FooName struct {
+		Name string
+	}
+
+	type case3Wrapper struct {
+		*case3FooID
+		Case3FooName `sqlx:"ns=foo"`
+	}
+
+
 	var useCases = []struct {
 		description    string
 		query          string

@@ -1,4 +1,4 @@
-package io
+package insert
 
 import (
 	"github.com/stretchr/testify/assert"

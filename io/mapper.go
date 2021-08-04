@@ -128,10 +128,11 @@ func genericRowMapper(columns []Column) (RowMapper, error) {
 //PlaceholderBinder copies source values to params starting with offset
 type PlaceholderBinder func(src interface{}, params []interface{}, offset, limit int)
 
-//ColumnMapper maps src to insertColumns and its placeholders
+//ColumnMapper maps src to columns and its placeholders
 type ColumnMapper func(src interface{}, tagName string) ([]Column, PlaceholderBinder, error)
 
-func genericColumnMapper(src interface{}, tagName string) ([]Column, PlaceholderBinder, error) {
+//GenericColumnMapper returns genertic column mapper
+func GenericColumnMapper(src interface{}, tagName string) ([]Column, PlaceholderBinder, error) {
 	recordType := reflect.TypeOf(src)
 	if recordType.Kind() == reflect.Ptr {
 		recordType = recordType.Elem()

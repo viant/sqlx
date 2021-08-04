@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-//Columns represents insertColumns
+//Columns represents columns
 type Columns []Column
 
 //Autoincrement returns position of autoincrement column or -1

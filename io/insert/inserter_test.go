@@ -1,18 +1,18 @@
-package io_test
+package insert_test
 
 import (
 	"context"
 	"database/sql"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/assert"
-	"github.com/viant/sqlx/io"
+	"github.com/viant/sqlx/io/insert"
 	"github.com/viant/sqlx/metadata"
 	_ "github.com/viant/sqlx/metadata/product/sqlite"
 	"github.com/viant/sqlx/opts"
 	"testing"
 )
 
-func TestWriter_Insert(t *testing.T) {
+func TestInserter_Insert(t *testing.T) {
 
 	type entity struct {
 		Id   int    `sqlx:"name=foo_id,primaryKey=true"`
@@ -41,7 +41,7 @@ func TestWriter_Insert(t *testing.T) {
 		lastID      int64
 	}{
 		{
-			description: "Writer.Insert ",
+			description: "Inserter.Insert ",
 			driver:      "sqlite3",
 			dsn:         "/tmp/sqllite.db",
 			table:       "t1",
@@ -58,7 +58,7 @@ func TestWriter_Insert(t *testing.T) {
 			lastID:   3,
 		},
 		{
-			description: "Writer.Insert: batch size: 2 ",
+			description: "Inserter.Insert: batch size: 2 ",
 			driver:      "sqlite3",
 			dsn:         "/tmp/sqllite.db",
 			table:       "t2",
@@ -78,7 +78,7 @@ func TestWriter_Insert(t *testing.T) {
 			},
 		},
 		{
-			description: "Writer.Insert - autoincrement batch - empty table ",
+			description: "Inserter.Insert - autoincrement batch - empty table ",
 			driver:      "sqlite3",
 			dsn:         "/tmp/sqllite.db",
 			table:       "t3",
@@ -98,7 +98,7 @@ func TestWriter_Insert(t *testing.T) {
 			},
 		},
 		{
-			description: "Writer.Insert - autoincrement batch - existing data",
+			description: "Inserter.Insert - autoincrement batch - existing data",
 			driver:      "sqlite3",
 			dsn:         "/tmp/sqllite.db",
 			table:       "t4",
@@ -147,7 +147,7 @@ outer:
 			continue
 		}
 		testCase.options = append(testCase.options, product)
-		writer, err := io.NewWriter(context.TODO(), db, testCase.table, testCase.options...)
+		writer, err := insert.New(context.TODO(), db, testCase.table, testCase.options...)
 		if !assert.Nil(t, err, testCase.description) {
 			continue
 		}

@@ -1,4 +1,4 @@
-package io
+package insert
 
 import "fmt"
 
@@ -34,13 +34,13 @@ func (i *Insert) Build(options ...interface{}) string {
 //NewInsert return insert builder
 func NewInsert(table string, batchSize int, columns, values []string) (*Insert, error) {
 	if len(columns) == 0 {
-		return nil, fmt.Errorf("insertColumns were empty")
+		return nil, fmt.Errorf("columns were empty")
 	}
 	if batchSize == 0 {
 		batchSize = 1
 	}
 	if len(values) != len(columns) {
-		return nil, fmt.Errorf("values size(%v) differs from insertColumns size(%v)", len(values), len(columns))
+		return nil, fmt.Errorf("values size(%v) differs from columns size(%v)", len(values), len(columns))
 	}
 	columnSize := len(columns) - 1
 	for _, column := range columns {
