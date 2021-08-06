@@ -3,10 +3,11 @@ package io
 import (
 	"fmt"
 	"github.com/viant/sqlx/opts"
-	"github.com/viant/sqlx/xunsafe"
+	"github.com/viant/xunsafe"
 	"reflect"
 	"strings"
 	"time"
+	"unsafe"
 )
 
 const (
@@ -30,7 +31,6 @@ type RowMapper func(target interface{}) ([]interface{}, error)
 //RowMapperProvider represents new a row mapper
 type RowMapperProvider func(columns []Column, targetType reflect.Type, tagName string, resolver Resolve) (RowMapper, error)
 
-
 //newQueryMapper creates a new record mapped
 func newQueryMapper(columns []Column, targetType reflect.Type, tagName string, resolver Resolve) (RowMapper, error) {
 	if tagName == "" {
@@ -44,23 +44,20 @@ func newQueryMapper(columns []Column, targetType reflect.Type, tagName string, r
 
 //newQueryStructMapper creates a new record mapper for supplied struct type
 func newQueryStructMapper(columns []Column, recordType reflect.Type, tagName string, resolver Resolve) (RowMapper, error) {
-	mappedFieldIndex, err := columnPositions("", columns, recordType, tagName, resolver)
+	fildGetters, err := columnPositions("", columns, recordType, tagName, resolver)
 	if err != nil {
 		return nil, err
 	}
-	var record = make([]interface{}, len(mappedFieldIndex))
+	var record = make([]interface{}, len(fildGetters))
 
-	var pointers = make([]xunsafe.Getter, len(mappedFieldIndex))
-	for i, fldPath := range mappedFieldIndex {
-		pointers[i], err = xunsafe.FieldPointer(recordType, fldPath)
-		if err != nil {
-			return nil, err
-		}
+	var getters = make([]xunsafe.Getter, len(fildGetters))
+	for i, item := range fildGetters {
+		getters[i] = item.AddrGetter()
 	}
 	var mapper = func(target interface{}) ([]interface{}, error) {
 		value := reflect.ValueOf(target)
-		holderPtr := value.Elem().UnsafeAddr()
-		for i, ptr := range pointers {
+		holderPtr := unsafe.Pointer(value.Elem().UnsafeAddr())
+		for i, ptr := range getters {
 			record[i] = ptr(holderPtr)
 		}
 		return record, nil
@@ -143,7 +140,7 @@ func GenericColumnMapper(src interface{}, tagName string) ([]Column, Placeholder
 
 	var columns []Column
 	var identityColumns []Column
-	var pointers []xunsafe.Getter
+	var getters []xunsafe.Getter
 
 	for i := 0; i < recordType.NumField(); i++ {
 		field := recordType.Field(i)
@@ -175,31 +172,23 @@ func GenericColumnMapper(src interface{}, tagName string) ([]Column, Placeholder
 			scanType: field.Type,
 			tag:      tag,
 		})
-
-		pointer, err := xunsafe.FieldPointer(recordType, &xunsafe.Field{Index: i})
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to get filed: %T.%v pointer", src, field.Name)
-		}
-		pointers = append(pointers, pointer)
+		getter := xunsafe.FieldByIndex(recordType, i).AddrGetter()
+		getters = append(getters, getter)
 	}
 
 	//make sure id column are at the end
 	if len(identityColumns) > 0 {
 		for i, item := range identityColumns {
 			fieldIndex := item.Tag().FieldIndex
-			field := recordType.Field(fieldIndex)
-			pointer, err := xunsafe.FieldPointer(recordType, &xunsafe.Field{Index: fieldIndex})
-			if err != nil {
-				return nil, nil, fmt.Errorf("failed to get filed: %T.%v pointer", src, field.Name)
-			}
-			pointers = append(pointers, pointer)
+			getter := xunsafe.FieldByIndex(recordType,  fieldIndex).AddrGetter()
+			getters = append(getters, getter)
 			columns = append(columns, identityColumns[i])
 		}
 	}
 	return columns, func(src interface{}, params []interface{}, offset, limit int) {
-		holderPtr := holderPointer(src)
+		holderPtr := xunsafe.Addr(src)
 		end := offset + limit
-		for i, ptr := range pointers[offset:end] {
+		for i, ptr := range getters[offset:end] {
 			params[i] = ptr(holderPtr)
 		}
 	}, nil
@@ -213,28 +202,28 @@ func columnPositions(ns string, columns []Column, recordType reflect.Type, tag s
 	var indexedFields = map[string]*xunsafe.Field{}
 	for i := 0; i < recordType.NumField(); i++ {
 		field := recordType.Field(i)
-		matchFieldWithColumn(field, indexedFields, i, tag, ns)
+		matchFieldWithColumn(recordType, field, indexedFields, i, tag, ns)
 	}
 
 	var unmappedColumns []Column
 	var mappedFieldIndex = make([]*xunsafe.Field, len(columns))
 	for i, column := range columns {
 		columnName := column.Name()
-		aPath, ok := indexedFields[column.Name()]
+		aField, ok := indexedFields[column.Name()]
 		if !ok {
-			aPath, ok = indexedFields[strings.ToLower(columnName)]
+			aField, ok = indexedFields[strings.ToLower(columnName)]
 		}
 		if !ok {
-			aPath, ok = indexedFields[strings.Replace(strings.ToLower(columnName), "_", "", strings.Count(columnName, "_"))]
+			aField, ok = indexedFields[strings.Replace(strings.ToLower(columnName), "_", "", strings.Count(columnName, "_"))]
 		}
 		if !ok {
 			if resolver != nil {
-				mappedFieldIndex[i] = &xunsafe.Field{Getter: resolver(columns[i])}
+				mappedFieldIndex[i] = xunsafe.FieldWithGetters(resolver(columns[i]), resolver(columns[i]))
 			}
 			unmappedColumns = append(unmappedColumns, columns[i])
 			continue
 		}
-		mappedFieldIndex[i] = aPath
+		mappedFieldIndex[i] = aField
 	}
 
 	if len(unmappedColumns) > 0 {
@@ -250,8 +239,7 @@ func columnPositions(ns string, columns []Column, recordType reflect.Type, tag s
 	return mappedFieldIndex, nil
 }
 
-
-func matchFieldWithColumn(field reflect.StructField, indexedFields map[string]*xunsafe.Field, index int, tag string, ns string) {
+func matchFieldWithColumn(structType reflect.Type, field reflect.StructField, indexedFields map[string]*xunsafe.Field, index int, tag string, ns string) {
 	if isExported := field.PkgPath == ""; !isExported && !field.Anonymous {
 		return
 	}
@@ -261,30 +249,36 @@ func matchFieldWithColumn(field reflect.StructField, indexedFields map[string]*x
 	}
 	if IsBaseType(field.Type) {
 		fieldName := field.Name
-		indexedFields[ns+fieldName] = &xunsafe.Field{Index: index}
-		indexedFields[ns+strings.ToLower(fieldName)] = &xunsafe.Field{Index: index} //to account for various matching strategies
+		aField := xunsafe.FieldByIndex(structType, index)
+		indexedFields[ns+fieldName] = aField
+		indexedFields[ns+strings.ToLower(fieldName)] = aField //to account for various matching strategies
 	}
 
 	switch field.Type.Kind() {
 	case reflect.Struct:
 		subFields := make(map[string]*xunsafe.Field)
 		for i := 0; i < field.Type.NumField(); i++ {
-			matchFieldWithColumn(field.Type.Field(i), subFields, i, tag, aTag.Ns)
+			matchFieldWithColumn(field.Type, field.Type.Field(i), subFields, i, tag, aTag.Ns)
 		}
 		if len(subFields) > 0 {
 			for k, v := range subFields {
-				indexedFields[k] = &xunsafe.Field{Index: index, Field: v}
+				field := xunsafe.FieldByIndex(structType, index)
+				field.Field = v
+				indexedFields[k] = field
 			}
 		}
 	case reflect.Ptr:
-		if field.Type.Elem().Kind() == reflect.Struct {
+		fieldType := field.Type.Elem()
+		if fieldType.Kind() == reflect.Struct {
 			subFields := make(map[string]*xunsafe.Field)
-			for i := 0; i < field.Type.Elem().NumField(); i++ {
-				matchFieldWithColumn(field.Type.Elem().Field(i), subFields, i, tag, aTag.Ns)
+			for i := 0; i < fieldType.NumField(); i++ {
+				matchFieldWithColumn(fieldType, fieldType.Field(i), subFields, i, tag, aTag.Ns)
 			}
 			if len(subFields) > 0 {
 				for k, v := range subFields {
-					indexedFields[k] = &xunsafe.Field{Index: index, Field: v}
+					field := xunsafe.FieldByIndex(structType, index)
+					field.Field = v
+					indexedFields[k] = field
 				}
 			}
 		}
@@ -295,9 +289,7 @@ func matchFieldWithColumn(field reflect.StructField, indexedFields map[string]*x
 			if column == "" {
 				continue
 			}
-			indexedFields[ns+column] = &xunsafe.Field{Index: index}
+			indexedFields[ns+column] = xunsafe.FieldByIndex(structType, index)
 		}
 	}
 }
-
-

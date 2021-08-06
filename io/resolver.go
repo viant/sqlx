@@ -1,16 +1,19 @@
 package io
 
-import "reflect"
+import (
+	"reflect"
+	"unsafe"
+)
 
 //Resolve Resolver handler unresolved columns
-type Resolve func(column Column) func(ptr uintptr) interface{}
+type Resolve func(column Column) func(pointer unsafe.Pointer) interface{}
 
 
 //Resolver represents unmatched column resolver
 type Resolver struct {
 	columns []Column
 	data    [][]interface{}
-	ptrs    []uintptr
+	ptrs    []unsafe.Pointer
 }
 
 
@@ -29,11 +32,11 @@ func (r *Resolver) Data(index int) []interface{} {
 	return r.data[index]
 }
 
-func (r *Resolver) Resolve(column Column) func(ptr uintptr) interface{} {
+func (r *Resolver) Resolve(column Column) func(ptr unsafe.Pointer) interface{} {
 	index := len(r.columns)
 	r.columns = append(r.columns, column)
 	r.data = append(r.data, make([]interface{}, 0))
-	return func(ptr uintptr) interface{} {
+	return func(ptr unsafe.Pointer) interface{} {
 		if index == 0 {
 			r.ptrs = append(r.ptrs, ptr)
 		}

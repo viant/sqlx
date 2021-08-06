@@ -152,8 +152,8 @@ func TestAbstractService_Info(t *testing.T) {
 			sink: pTables([]sink.Table{}),
 			expect: `[
 		   	{"@indexBy@":"Name"},
-		   	{"Name": "emp", "Type": "table"},
-		   	{"Name": "dept", "Type": "table"}
+		   	{"Name": "emp", "Owner": "table"},
+		   	{"Name": "dept", "Owner": "table"}
 		   ]
 		   `,
 			options: []opts.Option{
@@ -180,12 +180,12 @@ func TestAbstractService_Info(t *testing.T) {
 			options: []opts.Option{
 				option.NewArgs("", "", "emp"),
 			}, expect: `[
-		   	{"Table":"emp","Name":"id","Position":0,"Type":"INTEGER","Nullable":"0","Key":"PRI"},
-		   	{"Table":"emp","Name":"name","Position":1,"Type":"varchar(255)","Nullable":"1","Default":"NULL","Key":""},
-		   	{"Table":"emp","Name":"active","Position":2,"Type":"tinyint(1)","Nullable":"1","Default":"'1'","Key":""},
-		   	{"Table":"emp","Name":"salary","Position":3,"Type":"decimal(7,2)","Nullable":"1","Default":"NULL","Key":""},
-		   	{"Table":"emp","Name":"comments","Position":4,"Type":"text","Nullable":"1","Key":""},
-		   	{"Table":"emp","Name":"last_access_time","Position":5,"Type":"timestamp","Nullable":"1","Key":""}
+		   	{"Table":"emp","Name":"id","Position":0,"Owner":"INTEGER","Nullable":"0","Key":"PRI"},
+		   	{"Table":"emp","Name":"name","Position":1,"Owner":"varchar(255)","Nullable":"1","Default":"NULL","Key":""},
+		   	{"Table":"emp","Name":"active","Position":2,"Owner":"tinyint(1)","Nullable":"1","Default":"'1'","Key":""},
+		   	{"Table":"emp","Name":"salary","Position":3,"Owner":"decimal(7,2)","Nullable":"1","Default":"NULL","Key":""},
+		   	{"Table":"emp","Name":"comments","Position":4,"Owner":"text","Nullable":"1","Key":""},
+		   	{"Table":"emp","Name":"last_access_time","Position":5,"Owner":"timestamp","Nullable":"1","Key":""}
 		   ]
 		   `,
 		},
@@ -309,7 +309,7 @@ func TestAbstractService_Info(t *testing.T) {
 			options: []opts.Option{
 				option.NewArgs("", "", "emp"),
 			},
-			expect: `[{"Name":"emp_pk","Type":"PRIMARY KEY","Table":"emp","Position":0,"Column":"id"}]`,
+			expect: `[{"Name":"emp_pk","Owner":"PRIMARY KEY","Table":"emp","Position":0,"Column":"id"}]`,
 		},
 		{
 			testCase: testCase{
@@ -357,7 +357,7 @@ func TestAbstractService_Info(t *testing.T) {
 		   		"Name": "rank",
 		   		"Body": "",
 		   		"DataType": "NUMERIC",
-		   		"Type": "NATIVE",
+		   		"Owner": "NATIVE",
 		   		"Charset": "utf8",
 		   		"Deterministic": "NO"}]`,
 		},
@@ -399,8 +399,8 @@ func TestAbstractService_Info(t *testing.T) {
 				option.NewArgs("", "mydb", "emp"),
 			},
 			expect: `[
-{"Schema":"mydb","Table":"emp","Name":"id","Position":1,"Type":"mediumint","Precision":7,"Scale":0,"Nullable":"NO","Key":"PRI"},
-{"Schema":"mydb","Table":"emp","Name":"name","Position":2,"Type":"char","Length":30,"Nullable":"NO"}
+{"Schema":"mydb","Table":"emp","Name":"id","Position":1,"Owner":"mediumint","Precision":7,"Scale":0,"Nullable":"NO","Key":"PRI"},
+{"Schema":"mydb","Table":"emp","Name":"name","Position":2,"Owner":"char","Length":30,"Nullable":"NO"}
 ]
 `,
 		},
@@ -446,7 +446,7 @@ func TestAbstractService_Info(t *testing.T) {
 				option.NewArgs("", "mydb", "emp"),
 			},
 			expect: `[
-	{"Table":"emp","Type":"BTREE","TableSchema":"mydb","Schema":"mydb","Position":0,"Name":"PRIMARY","Columns":"id"}
+	{"Table":"emp","Owner":"BTREE","TableSchema":"mydb","Schema":"mydb","Position":0,"Name":"PRIMARY","Columns":"id"}
 ]
 `,
 		},
@@ -494,7 +494,7 @@ func TestAbstractService_Info(t *testing.T) {
 				option.NewArgs("", "mydb", "emp"),
 			},
 			expect: `[
-{"Name":"PRIMARY","Type":"PRIMARY KEY","Schema":"mydb","Table":"emp","Position":0,"Column":"id"}
+{"Name":"PRIMARY","Owner":"PRIMARY KEY","Schema":"mydb","Table":"emp","Position":0,"Column":"id"}
 ]`,
 		},
 
@@ -532,7 +532,7 @@ func TestAbstractService_Info(t *testing.T) {
 			options: []opts.Option{
 				option.NewArgs("", "mydb", "shirt"),
 			},
-			expect: `[{"Name":"person_fk","Type":"FOREIGN KEY","Table":"shirt","Position":0,"Column":"owner","ReferenceTable":"person","ReferenceColumn":"id"}]`,
+			expect: `[{"Name":"person_fk","Owner":"FOREIGN KEY","Table":"shirt","Position":0,"Column":"owner","ReferenceTable":"person","ReferenceColumn":"id"}]`,
 		},
 	}
 
