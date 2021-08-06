@@ -4,7 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"github.com/viant/sqlx/opts"
+	"github.com/viant/sqlx/option"
 	"reflect"
 )
 
@@ -129,7 +129,7 @@ func (r *Reader) read(mapperPtr *RowMapper, rows *sql.Rows, columnsPtr *[]Column
 	return emit(row)
 }
 
-func NewReader(ctx context.Context, db *sql.DB, query string, newRow func() interface{}, options ...opts.Option) (*Reader, error) {
+func NewReader(ctx context.Context, db *sql.DB, query string, newRow func() interface{}, options ...option.Option) (*Reader, error) {
 	stmt, err := db.PrepareContext(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("failed to prepare query: %v, due to %w", query, err)
@@ -137,24 +137,24 @@ func NewReader(ctx context.Context, db *sql.DB, query string, newRow func() inte
 	return NewStmtReader(stmt, newRow, options...), err
 }
 
-func NewStmtReader(stmt *sql.Stmt, newRow func() interface{}, options ...opts.Option) *Reader {
+func NewStmtReader(stmt *sql.Stmt, newRow func() interface{}, options ...option.Option) *Reader {
 	var newRowMapper RowMapperProvider
 	var unmappedFn Resolve
-	if !opts.Assign(options, &newRowMapper) {
+	if !option.Assign(options, &newRowMapper) {
 		newRowMapper = newQueryMapper
 	}
-	opts.Assign(options, &unmappedFn)
+	option.Assign(options, &unmappedFn)
 
-	return &Reader{newRow: newRow, stmt: stmt, tagName: opts.Options(options).Tag(), newRowMapper: newRowMapper, unmappedFn: unmappedFn}
+	return &Reader{newRow: newRow, stmt: stmt, tagName: option.Options(options).Tag(), newRowMapper: newRowMapper, unmappedFn: unmappedFn}
 }
 
-func NewMapReader(ctx context.Context, db *sql.DB, query string, options ...opts.Option) (*Reader, error) {
+func NewMapReader(ctx context.Context, db *sql.DB, query string, options ...option.Option) (*Reader, error) {
 	return NewReader(ctx, db, query, func() interface{} {
 		return make(map[string]interface{})
 	}, options...)
 }
 
-func NewSliceReader(ctx context.Context, db *sql.DB, query string, columns int, options ...opts.Option) (*Reader, error) {
+func NewSliceReader(ctx context.Context, db *sql.DB, query string, columns int, options ...option.Option) (*Reader, error) {
 	return NewReader(ctx, db, query, func() interface{} {
 		return make([]interface{}, columns)
 	}, options...)

@@ -1,5 +1,0 @@
-package metadata
-
-func init() {
-
-}

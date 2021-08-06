@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"github.com/viant/sqlx/metadata/option"
-	"github.com/viant/sqlx/opts"
+	"github.com/viant/sqlx/option"
 	"os"
 
 	// "github.com/viant/sqlx/metadata/option"
@@ -88,7 +88,7 @@ func TestAbstractService_Info(t *testing.T) {
 		testCase
 		kind    info.Kind
 		product *database.Product
-		options []opts.Option
+		options []option.Option
 		sink    Sink
 		expect  interface{}
 	}{
@@ -156,7 +156,7 @@ func TestAbstractService_Info(t *testing.T) {
 		   	{"Name": "dept", "Owner": "table"}
 		   ]
 		   `,
-			options: []opts.Option{
+			options: []option.Option{
 				option.NewArgs(),
 			},
 		},
@@ -177,7 +177,7 @@ func TestAbstractService_Info(t *testing.T) {
 			},
 			kind: info.KindTable,
 			sink: pColumns([]sink.Column{}),
-			options: []opts.Option{
+			options: []option.Option{
 				option.NewArgs("", "", "emp"),
 			}, expect: `[
 		   	{"Table":"emp","Name":"id","Position":0,"Owner":"INTEGER","Nullable":"0","Key":"PRI"},
@@ -208,7 +208,7 @@ func TestAbstractService_Info(t *testing.T) {
 			},
 			kind: info.KindIndexes,
 			sink: pIndexes([]sink.Index{}),
-			options: []opts.Option{
+			options: []option.Option{
 				option.NewArgs("", "", "emp"),
 			},
 			expect: `[
@@ -235,7 +235,7 @@ func TestAbstractService_Info(t *testing.T) {
 			},
 			kind: info.KindIndex,
 			sink: pColumns([]sink.Column{}),
-			options: []opts.Option{
+			options: []option.Option{
 				option.NewArgs("", "", "emp", "emp_active"),
 			},
 			expect: `[
@@ -261,7 +261,7 @@ func TestAbstractService_Info(t *testing.T) {
 			},
 			kind: info.KindSequences,
 			sink: pSequences([]sink.Sequence{}),
-			options: []opts.Option{
+			options: []option.Option{
 				option.NewArgs(),
 			},
 			expect: `[{"Name":"emp","Value":2}]`,
@@ -283,7 +283,7 @@ func TestAbstractService_Info(t *testing.T) {
 			},
 			kind: info.KindSequences,
 			sink: pSequences([]sink.Sequence{}),
-			options: []opts.Option{
+			options: []option.Option{
 				option.NewArgs("", "", "emp"),
 			},
 			expect: `[{"Name":"emp","Value":2}]`,
@@ -306,7 +306,7 @@ func TestAbstractService_Info(t *testing.T) {
 			},
 			kind: info.KindPrimaryKeys,
 			sink: pKeys([]sink.Key{}),
-			options: []opts.Option{
+			options: []option.Option{
 				option.NewArgs("", "", "emp"),
 			},
 			expect: `[{"Name":"emp_pk","Owner":"PRIMARY KEY","Table":"emp","Position":0,"Column":"id"}]`,
@@ -329,7 +329,7 @@ func TestAbstractService_Info(t *testing.T) {
 			},
 			kind: info.KindForeignKeys,
 			sink: pKeys([]sink.Key{}),
-			options: []opts.Option{
+			options: []option.Option{
 				option.NewArgs("", "", "track"),
 			},
 			expect: `[{"Name":"track_artist_fk","Table":"track","Position":0,"Column":"trackartist","ReferenceTable":"artist","ReferenceColumn":"artistid","ConstrainPosition":0,"OnUpdate":"NO ACTION","OnDelete":"NO ACTION","OnMatch":"NONE"}]`,
@@ -350,7 +350,7 @@ func TestAbstractService_Info(t *testing.T) {
 			},
 			kind: info.KindFunctions,
 			sink: pFunction([]sink.Function{}),
-			options: []opts.Option{
+			options: []option.Option{
 				option.NewArgs("", "", "rank"),
 			},
 			expect: `[{
@@ -374,7 +374,7 @@ func TestAbstractService_Info(t *testing.T) {
 			},
 			kind: info.KindSchema,
 			sink: pSchemas([]sink.Schema{}),
-			options: []opts.Option{
+			options: []option.Option{
 				option.NewArgs("", "mysql"),
 			},
 			expect: `[{"Name": "mysql","Path": "","Sequence": 0}]`,
@@ -395,7 +395,7 @@ func TestAbstractService_Info(t *testing.T) {
 			},
 			kind: info.KindTable,
 			sink: pColumns([]sink.Column{}),
-			options: []opts.Option{
+			options: []option.Option{
 				option.NewArgs("", "mydb", "emp"),
 			},
 			expect: `[
@@ -421,7 +421,7 @@ func TestAbstractService_Info(t *testing.T) {
 			},
 			kind: info.KindSequences,
 			sink: pSequences([]sink.Sequence{}),
-			options: []opts.Option{
+			options: []option.Option{
 				option.NewArgs("", "mydb", "emp"),
 			},
 			expect: `[{"Schema":"mydb","Name":"emp","Value":1,"DataType":"mediumint(9)"}]`,
@@ -442,7 +442,7 @@ func TestAbstractService_Info(t *testing.T) {
 			},
 			kind: info.KindIndexes,
 			sink: pIndexes([]sink.Index{}),
-			options: []opts.Option{
+			options: []option.Option{
 				option.NewArgs("", "mydb", "emp"),
 			},
 			expect: `[
@@ -466,7 +466,7 @@ func TestAbstractService_Info(t *testing.T) {
 			},
 			kind: info.KindIndex,
 			sink: pColumns([]sink.Column{}),
-			options: []opts.Option{
+			options: []option.Option{
 				option.NewArgs("", "mydb", "emp", "PRIMARY"),
 			},
 			expect: `[
@@ -490,7 +490,7 @@ func TestAbstractService_Info(t *testing.T) {
 			},
 			kind: info.KindPrimaryKeys,
 			sink: pKeys([]sink.Key{}),
-			options: []opts.Option{
+			options: []option.Option{
 				option.NewArgs("", "mydb", "emp"),
 			},
 			expect: `[
@@ -529,7 +529,7 @@ func TestAbstractService_Info(t *testing.T) {
 			},
 			kind: info.KindForeignKeys,
 			sink: pKeys([]sink.Key{}),
-			options: []opts.Option{
+			options: []option.Option{
 				option.NewArgs("", "mydb", "shirt"),
 			},
 			expect: `[{"Name":"person_fk","Owner":"FOREIGN KEY","Table":"shirt","Position":0,"Column":"owner","ReferenceTable":"person","ReferenceColumn":"id"}]`,
@@ -571,7 +571,7 @@ func TestAbstractService_Execute(t *testing.T) {
 		testCase
 		kind    info.Kind
 		product *database.Product
-		options []opts.Option
+		options []option.Option
 		sink    Sink
 	}{
 		{

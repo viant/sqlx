@@ -1,4 +1,4 @@
-package opts
+package option
 
 import (
 	"github.com/viant/sqlx/metadata/database"
@@ -21,7 +21,7 @@ func (o Options) Tag() string {
 		return TagSqlx
 	}
 	for _, candidate := range o {
-		if tagOpt, ok := candidate.(TagOption); ok {
+		if tagOpt, ok := candidate.(Tag); ok {
 			return tagOpt.Tag
 		}
 	}
@@ -57,24 +57,35 @@ func (o Options) Product() *database.Product {
 	return nil
 }
 
-//BatchOption returns batch option
-func (o Options) Batch() *BatchOption {
+//Batch returns batch option
+func (o Options) Batch() *Batch {
 	if len(o) == 0 {
 		return nil
 	}
 	for _, candidate := range o {
-		if batch, ok := candidate.(*BatchOption); ok {
+		if batch, ok := candidate.(*Batch); ok {
 			return batch
 		}
 	}
 	return nil
 }
 
-//TagOption represent a annotation tag
-type TagOption struct {
+//Tag represent a annotation tag
+type Tag struct {
 	Tag string
 }
 
-type BatchOption struct {
+//NewTag creates a tag
+func NewTag(tag string) *Tag {
+	return &Tag{Tag:tag}
+}
+
+//Batch represents a batch options
+type Batch struct {
 	Size int
+}
+
+//NewBatch creates a batch
+func NewBatch(size int) *Batch {
+	return &Batch{Size: size}
 }

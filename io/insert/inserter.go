@@ -8,7 +8,7 @@ import (
 	"github.com/viant/sqlx/metadata/info"
 	"github.com/viant/sqlx/metadata/info/dialect"
 	"github.com/viant/sqlx/metadata/registry"
-	"github.com/viant/sqlx/opts"
+	"github.com/viant/sqlx/option"
 )
 
 //Inserter represents generic db writer
@@ -21,22 +21,22 @@ type Inserter struct {
 	columns       io.Columns
 	binder        io.PlaceholderBinder
 	builder       Builder
-	batch         *opts.BatchOption
+	batch         *option.Batch
 	autoIncrement *int
 }
 
 //New creates an inserter
-func New(ctx context.Context, db *sql.DB, tableName string, options ...opts.Option) (*Inserter, error) {
+func New(ctx context.Context, db *sql.DB, tableName string, options ...option.Option) (*Inserter, error) {
 	var columnMapper io.ColumnMapper
-	if !opts.Assign(options, &columnMapper) {
+	if !option.Assign(options, &columnMapper) {
 		columnMapper = io.GenericColumnMapper
 	}
 	writer := &Inserter{
 		db:        db,
-		dialect:   opts.Options(options).Dialect(),
+		dialect:   option.Options(options).Dialect(),
 		tableName: tableName,
-		batch:     opts.Options(options).Batch(),
-		tagName:   opts.Options(options).Tag(),
+		batch:     option.Options(options).Batch(),
+		tagName:   option.Options(options).Tag(),
 		mapper:    columnMapper,
 	}
 
@@ -47,7 +47,7 @@ func New(ctx context.Context, db *sql.DB, tableName string, options ...opts.Opti
 	return writer, nil
 }
 
-func (w *Inserter) init(ctx context.Context, db *sql.DB, options opts.Options) error {
+func (w *Inserter) init(ctx context.Context, db *sql.DB, options option.Options) error {
 	if w.dialect == nil {
 		product := options.Product()
 		if product == nil {
@@ -60,7 +60,7 @@ func (w *Inserter) init(ctx context.Context, db *sql.DB, options opts.Options) e
 	}
 
 	if w.batch == nil {
-		w.batch = &opts.BatchOption{
+		w.batch = &option.Batch{
 			Size: 1,
 		}
 	}
@@ -71,13 +71,13 @@ func (w *Inserter) init(ctx context.Context, db *sql.DB, options opts.Options) e
 }
 
 //Insert runs INSERT statement for supplied data
-func (w *Inserter) Insert(any interface{}, options ...opts.Option) (int64, int64, error) {
+func (w *Inserter) Insert(any interface{}, options ...option.Option) (int64, int64, error) {
 	recordsFn, err := io.AnyProvider(any)
 	if err != nil {
 		return 0, 0, err
 	}
 	record := recordsFn()
-	batch := opts.Options(options).Batch()
+	batch := option.Options(options).Batch()
 	if batch == nil {
 		batch = w.batch
 	}
@@ -99,7 +99,7 @@ func (w *Inserter) Insert(any interface{}, options ...opts.Option) (int64, int64
 	}
 	var tx *sql.Tx
 	transactional := w.dialect.Transactional
-	if opts.Assign(options, &tx) {//transaction supply as option, do not manage locally transaction
+	if option.Assign(options, &tx) { //transaction supply as option, do not manage locally transaction
 		transactional = false
 	}
 	if transactional {
@@ -128,7 +128,7 @@ func (w *Inserter) Insert(any interface{}, options ...opts.Option) (int64, int64
 	return rowsAffected, lastInsertedId, err
 }
 
-func (w *Inserter) insert(batch *opts.BatchOption, record interface{}, recordsFn func() interface{}, stmt *sql.Stmt, tx *sql.Tx) (int64, int64, error) {
+func (w *Inserter) insert(batch *option.Batch, record interface{}, recordsFn func() interface{}, stmt *sql.Stmt, tx *sql.Tx) (int64, int64, error) {
 	var recValues = make([]interface{}, batch.Size*len(w.columns))
 	var identities = make([]interface{}, batch.Size)
 	inBatchCount := 0

@@ -9,7 +9,7 @@ import (
 	"github.com/viant/sqlx/metadata/option"
 	"github.com/viant/sqlx/metadata/product/ansi"
 	"github.com/viant/sqlx/metadata/registry"
-	"github.com/viant/sqlx/opts"
+	"github.com/viant/sqlx/option"
 	"strings"
 )
 
@@ -41,9 +41,9 @@ func (s *Service) DetectProduct(ctx context.Context, db *sql.DB) (*database.Prod
 }
 
 //Execute execute the metadata kind corresponding SQL
-func (s *Service) Execute(ctx context.Context, db *sql.DB, kind info.Kind, options ...opts.Option) (sql.Result, error) {
+func (s *Service) Execute(ctx context.Context, db *sql.DB, kind info.Kind, options ...option.Option) (sql.Result, error) {
 	var err error
-	product := opts.Options(options).Product()
+	product := option.Options(options).Product()
 	if product == nil {
 		if product, err = s.DetectProduct(ctx, db); err != nil {
 			return nil, err
@@ -62,7 +62,7 @@ func (s *Service) Execute(ctx context.Context, db *sql.DB, kind info.Kind, optio
 }
 
 //Info execute the metadata kind corresponding Query, result are passed to sink
-func (s *Service) Info(ctx context.Context, db *sql.DB, product *database.Product, kind info.Kind, sink Sink, options ...opts.Option) error {
+func (s *Service) Info(ctx context.Context, db *sql.DB, product *database.Product, kind info.Kind, sink Sink, options ...option.Option) error {
 	var err error
 	if product == nil {
 		if product, err = s.DetectProduct(ctx, db); err != nil {
@@ -113,9 +113,9 @@ func (s *Service) matchVersion(ctx context.Context, db *sql.DB, product *databas
 	return nil, err
 }
 
-func (s *Service) executeQuery(ctx context.Context, db *sql.DB, query *info.Query, options ...opts.Option) (sql.Result, error) {
+func (s *Service) executeQuery(ctx context.Context, db *sql.DB, query *info.Query, options ...option.Option) (sql.Result, error) {
 	args := &option.Args{}
-	opts.Assign(options, &args)
+	option.Assign(options, &args)
 	SQL, params, err := prepareSQL(query, args)
 	if err != nil {
 		return nil, err
@@ -128,9 +128,9 @@ func (s *Service) executeQuery(ctx context.Context, db *sql.DB, query *info.Quer
 	return stmt.ExecContext(ctx, params...)
 }
 
-func (s *Service) runQuery(ctx context.Context, db *sql.DB, query *info.Query, sink Sink, options ...opts.Option) error {
+func (s *Service) runQuery(ctx context.Context, db *sql.DB, query *info.Query, sink Sink, options ...option.Option) error {
 	args := &option.Args{}
-	opts.Assign(options, &args)
+	option.Assign(options, &args)
 	SQL, params, err := prepareSQL(query, args)
 	if err != nil {
 		return err

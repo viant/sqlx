@@ -7,7 +7,7 @@ import (
 	"fmt"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/assert"
-	"github.com/viant/sqlx/opts"
+	"github.com/viant/sqlx/option"
 	"log"
 	"os"
 	"testing"
@@ -190,7 +190,7 @@ outer:
 			}
 		}
 
-		var options = make([]opts.Option, 0)
+		var options = make([]option.Option, 0)
 		if testCase.resolver != nil {
 			options = append(options, testCase.resolver.Resolve)
 		}

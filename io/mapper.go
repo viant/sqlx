@@ -2,7 +2,7 @@ package io
 
 import (
 	"fmt"
-	"github.com/viant/sqlx/opts"
+	"github.com/viant/sqlx/option"
 	"github.com/viant/xunsafe"
 	"reflect"
 	"strings"
@@ -34,7 +34,7 @@ type RowMapperProvider func(columns []Column, targetType reflect.Type, tagName s
 //newQueryMapper creates a new record mapped
 func newQueryMapper(columns []Column, targetType reflect.Type, tagName string, resolver Resolve) (RowMapper, error) {
 	if tagName == "" {
-		tagName = opts.TagSqlx
+		tagName = option.TagSqlx
 	}
 	if targetType.Kind() == reflect.Struct {
 		return newQueryStructMapper(columns, targetType, tagName, resolver)

@@ -3,7 +3,7 @@ package io
 import (
 	"database/sql"
 	"fmt"
-	"github.com/viant/sqlx/opts"
+	"github.com/viant/sqlx/option"
 	"reflect"
 	"strings"
 )
@@ -71,7 +71,7 @@ func StructColumns(recordType reflect.Type) ([]Column, error) {
 			continue
 		}
 		fieldName := field.Name
-		aTag := ParseTag(field.Tag.Get(opts.TagSqlx))
+		aTag := ParseTag(field.Tag.Get(option.TagSqlx))
 		aTag.FieldIndex = i
 		if aTag.Transient {
 			continue
