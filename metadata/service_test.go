@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"github.com/viant/sqlx/metadata/option"
 	"github.com/viant/sqlx/option"
 	"os"
 

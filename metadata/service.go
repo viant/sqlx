@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"github.com/viant/sqlx/metadata/database"
 	"github.com/viant/sqlx/metadata/info"
-	"github.com/viant/sqlx/metadata/option"
 	"github.com/viant/sqlx/metadata/product/ansi"
 	"github.com/viant/sqlx/metadata/registry"
 	"github.com/viant/sqlx/option"
