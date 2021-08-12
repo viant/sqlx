@@ -2,12 +2,10 @@ package insert
 
 import "fmt"
 
-
 //Builder represents SQL builder
 type Builder interface {
 	Build(options ...interface{}) string
 }
-
 
 //Insert represent insert DML builder
 type Insert struct {
@@ -52,7 +50,7 @@ func NewInsert(table string, batchSize int, columns, values []string) (*Insert, 
 	}
 	var valBuffer = make([]byte, valuesSize)
 
-	var buffer = make([]byte, 25+columnSize+(batchSize*valuesSize)+(batchSize-1))
+	var buffer = make([]byte, 23+columnSize+(batchSize*valuesSize)+(batchSize-1)+len(table))
 	offset := copy(buffer, "INSERT INTO ")
 	offset += copy(buffer[offset:], table)
 	offset += copy(buffer[offset:], "(")
