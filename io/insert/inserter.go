@@ -71,7 +71,7 @@ func (w *Inserter) init(ctx context.Context, db *sql.DB, options option.Options)
 }
 
 //Insert runs INSERT statement for supplied data
-func (w *Inserter) Insert(any interface{}, options ...option.Option) (int64, int64, error) {
+func (w *Inserter) Insert(ctx context.Context, any interface{}, options ...option.Option) (int64, int64, error) {
 	recordsFn, err := io.AnyProvider(any)
 	if err != nil {
 		return 0, 0, err
@@ -103,17 +103,17 @@ func (w *Inserter) Insert(any interface{}, options ...option.Option) (int64, int
 		transactional = false
 	}
 	if transactional {
-		tx, err = w.db.Begin()
+		tx, err = w.db.BeginTx(ctx, nil)
 		if err != nil {
 			return 0, 0, err
 		}
 	}
-	stmt, err := w.prepareInsertStatement(batch.Size, tx)
+	stmt, err := w.prepareInsertStatement(ctx, batch.Size, tx)
 	if err != nil {
 		return 0, 0, err
 	}
 	defer stmt.Close()
-	rowsAffected, lastInsertedId, err := w.insert(batch, record, recordsFn, stmt, tx)
+	rowsAffected, lastInsertedId, err := w.insert(ctx, batch, record, recordsFn, stmt, tx)
 	if err != nil {
 		if transactional {
 			if rErr := tx.Rollback(); rErr != nil {
@@ -128,7 +128,7 @@ func (w *Inserter) Insert(any interface{}, options ...option.Option) (int64, int
 	return rowsAffected, lastInsertedId, err
 }
 
-func (w *Inserter) insert(batch *option.Batch, record interface{}, recordsFn func() interface{}, stmt *sql.Stmt, tx *sql.Tx) (int64, int64, error) {
+func (w *Inserter) insert(ctx context.Context, batch *option.Batch, record interface{}, recordsFn func() interface{}, stmt *sql.Stmt, tx *sql.Tx) (int64, int64, error) {
 	var recValues = make([]interface{}, batch.Size*len(w.columns))
 	var identities = make([]interface{}, batch.Size)
 	inBatchCount := 0
@@ -148,7 +148,7 @@ func (w *Inserter) insert(batch *option.Batch, record interface{}, recordsFn fun
 		}
 		inBatchCount++
 		if inBatchCount == batch.Size {
-			rowsAffected, lastInsertedId, err = flush(stmt, recValues, lastInsertedId, identities[:identityIndex])
+			rowsAffected, lastInsertedId, err = flush(ctx, stmt, recValues, lastInsertedId, identities[:identityIndex])
 			if err != nil {
 				return 0, 0, err
 			}
@@ -159,12 +159,12 @@ func (w *Inserter) insert(batch *option.Batch, record interface{}, recordsFn fun
 	}
 
 	if inBatchCount > 0 { //overflow
-		stmt, err = w.prepareInsertStatement(inBatchCount, tx)
+		stmt, err = w.prepareInsertStatement(ctx, inBatchCount, tx)
 		if err != nil {
 			return 0, 0, nil
 		}
 		defer stmt.Close()
-		rowsAffected, lastInsertedId, err = flush(stmt, recValues[0:inBatchCount*len(w.columns)], lastInsertedId, identities[:identityIndex])
+		rowsAffected, lastInsertedId, err = flush(ctx, stmt, recValues[0:inBatchCount*len(w.columns)], lastInsertedId, identities[:identityIndex])
 		if err != nil {
 			return 0, 0, nil
 		}
@@ -173,18 +173,16 @@ func (w *Inserter) insert(batch *option.Batch, record interface{}, recordsFn fun
 	return totalRowsAffected, lastInsertedId, err
 }
 
-func (w *Inserter) prepareInsertStatement(batchSize int, tx *sql.Tx) (*sql.Stmt, error) {
+func (w *Inserter) prepareInsertStatement(ctx context.Context, batchSize int, tx *sql.Tx) (*sql.Stmt, error) {
 	SQL := w.builder.Build(batchSize)
 	if tx != nil {
 		return tx.Prepare(SQL)
 	}
-	return w.db.Prepare(SQL)
+	return w.db.PrepareContext(ctx, SQL)
 }
 
-
-
-func flush(stmt *sql.Stmt, values []interface{}, prevInsertedID int64, identities []interface{}) (int64, int64, error) {
-	result, err := stmt.Exec(values...)
+func flush(ctx context.Context, stmt *sql.Stmt, values []interface{}, prevInsertedID int64, identities []interface{}) (int64, int64, error) {
+	result, err := stmt.ExecContext(ctx, values...)
 	if err != nil {
 		return 0, 0, err
 	}
@@ -217,5 +215,3 @@ func flush(stmt *sql.Stmt, values []interface{}, prevInsertedID int64, identitie
 	}
 	return rowsAffected, newLastInsertedID, err
 }
-
-
