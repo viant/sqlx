@@ -151,7 +151,7 @@ outer:
 		if !assert.Nil(t, err, testCase.description) {
 			continue
 		}
-		affected, lastID, err := writer.Insert(testCase.records)
+		affected, lastID, err := writer.Insert(context.TODO(), testCase.records)
 		assert.Nil(t, err, testCase.description)
 		assert.EqualValues(t, testCase.affected, affected, testCase.description)
 		assert.EqualValues(t, testCase.lastID, lastID, testCase.description)
