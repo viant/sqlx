@@ -202,12 +202,12 @@ func (w *Inserter) prepareInsertStatement(ctx context.Context, batchSize int, tx
 }
 
 func flush(ctx context.Context, stmt *sql.Stmt, values []interface{}, prevInsertedID int64, identities []interface{}, hasAutoIncrement, canUseLastInsertedID bool) (int64, int64, error) {
+	var rowsAffected, newLastInsertedID int64
 	if hasAutoIncrement && !canUseLastInsertedID {
 		rows, err := stmt.QueryContext(ctx, values...)
 		if err != nil {
 			return 0, 0, err
 		}
-		var rowsAffected, newLastInsertedID int64
 		defer rows.Close()
 		for rows.Next() {
 			if err = rows.Scan(&newLastInsertedID); err != nil {
@@ -222,15 +222,16 @@ func flush(ctx context.Context, stmt *sql.Stmt, values []interface{}, prevInsert
 	if err != nil {
 		return 0, 0, err
 	}
-	rowsAffected, err := result.RowsAffected()
+	rowsAffected, err = result.RowsAffected()
 	if err != nil {
 		return 0, 0, err
 	}
-	newLastInsertedID, err := result.LastInsertId()
-	if err != nil {
-		return 0, 0, err
+	if !hasAutoIncrement {
+		newLastInsertedID, err = result.LastInsertId()
+		if err != nil {
+			return 0, 0, err
+		}
 	}
-
 	lastInsertedID := prevInsertedID
 	if lastInsertedID == 0 {
 		lastInsertedID = newLastInsertedID - int64(len(identities))

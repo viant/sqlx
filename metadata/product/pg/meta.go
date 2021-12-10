@@ -254,7 +254,7 @@ WHERE s.CONSTRAINT_TYPE = 'FOREIGN KEY'
 		Upsert:             dialect.UpsertTypeMergeInto,
 		Load:               dialect.LoadTypeUnsupported,
 		CanAutoincrement:   true,
-		CanUseLastInsertId: true,
+		CanUseLastInsertId: false,
 	})
 
 }
