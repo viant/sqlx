@@ -141,12 +141,9 @@ outer:
 			}
 		}
 
-		meta := metadata.New()
-		product, err := meta.DetectProduct(context.TODO(), db)
 		if !assert.Nil(t, err, testCase.description) {
 			continue
 		}
-		testCase.options = append(testCase.options, product)
 		writer, err := insert.New(context.TODO(), db, testCase.table, testCase.options...)
 		if !assert.Nil(t, err, testCase.description) {
 			continue

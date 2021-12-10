@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"github.com/viant/sqlx/io"
+	"github.com/viant/sqlx/metadata"
 	"github.com/viant/sqlx/metadata/info"
 	"github.com/viant/sqlx/metadata/info/dialect"
 	"github.com/viant/sqlx/metadata/registry"
@@ -51,7 +52,12 @@ func (w *Inserter) init(ctx context.Context, db *sql.DB, options option.Options)
 	if w.dialect == nil {
 		product := options.Product()
 		if product == nil {
-			return fmt.Errorf("missing product option: %T", db)
+			var err error
+			meta := metadata.New()
+			product, err = meta.DetectProduct(ctx, db)
+			if err != nil {
+				return fmt.Errorf("missing product option: %T", db)
+			}
 		}
 		w.dialect = registry.LookupDialect(product)
 		if w.dialect == nil {
