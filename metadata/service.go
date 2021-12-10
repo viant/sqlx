@@ -82,8 +82,8 @@ func (s *Service) Info(ctx context.Context, db *sql.DB, product *database.Produc
 func (s *Service) matchProduct(ctx context.Context, db *sql.DB) (*database.Product, error) {
 	driverClass := strings.ToLower(fmt.Sprintf("%T", db.Driver()))
 	var product *database.Product
-	for name := range registry.Products() {
-		if strings.Contains(driverClass, name) {
+	for name, candidate := range registry.Products() {
+		if strings.Contains(driverClass, name) || strings.Contains(candidate.Driver, driverClass) {
 			product = registry.Products()[name]
 		}
 	}

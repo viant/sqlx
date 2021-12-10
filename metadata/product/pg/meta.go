@@ -11,6 +11,7 @@ const product = "PostgreSQL"
 
 var pgSQL9 = database.Product{
 	Name:  product,
+	Driver: "pg.driver",
 	Major: 9,
 }
 
