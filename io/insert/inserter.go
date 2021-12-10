@@ -10,6 +10,7 @@ import (
 	"github.com/viant/sqlx/metadata/info/dialect"
 	"github.com/viant/sqlx/metadata/registry"
 	"github.com/viant/sqlx/option"
+	"strings"
 )
 
 //Inserter represents generic db writer
@@ -96,7 +97,12 @@ func (w *Inserter) Insert(ctx context.Context, any interface{}, options ...optio
 			w.columns = w.columns[:autoIncrement]
 		}
 		var values = make([]string, len(w.columns))
+		isTemplate := strings.Contains(w.dialect.Placeholder, "%d")
 		for i := range values {
+			if isTemplate {
+				values[i] = fmt.Sprintf(w.dialect.Placeholder, i)
+				continue
+			}
 			values[i] = w.dialect.Placeholder
 		}
 		if w.builder, err = NewInsert(w.tableName, batch.Size, w.columns.Names(), values); err != nil {

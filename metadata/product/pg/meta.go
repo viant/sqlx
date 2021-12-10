@@ -248,7 +248,7 @@ WHERE s.CONSTRAINT_TYPE = 'FOREIGN KEY'
 
 	registry.RegisterDialect(&info.Dialect{
 		Product:          pgSQL9,
-		Placeholder:      "?",
+		Placeholder:      "$%d",
 		Transactional:    true,
 		Insert:           dialect.InsertWithMultiValues,
 		Upsert:           dialect.UpsertTypeMergeInto,
