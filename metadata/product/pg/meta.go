@@ -3,6 +3,7 @@ package pg
 import (
 	"github.com/viant/sqlx/metadata/database"
 	"github.com/viant/sqlx/metadata/info"
+	"github.com/viant/sqlx/metadata/info/dialect"
 	"github.com/viant/sqlx/metadata/registry"
 	"log"
 )
@@ -244,5 +245,15 @@ WHERE s.CONSTRAINT_TYPE = 'FOREIGN KEY'
 	if err != nil {
 		log.Printf("failed to register queries: %v", err)
 	}
+
+	registry.RegisterDialect(&info.Dialect{
+		Product:          pgSQL9,
+		Placeholder:      "?",
+		Transactional:    true,
+		Insert:           dialect.InsertWithMultiValues,
+		Upsert:           dialect.UpsertTypeMergeInto,
+		Load:             dialect.LoadTypeUnsupported,
+		CanAutoincrement: true,
+	})
 
 }
