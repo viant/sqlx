@@ -150,7 +150,7 @@ func (w *Inserter) insert(ctx context.Context, batch *option.Batch, record inter
 	var err error
 	var rowsAffected, totalRowsAffected, lastInsertedId int64
 	//ToDo: get real lastInsertedId
-
+	hasAutoIncrement := w.autoIncrement != nil
 	for ; record != nil; record = recordsFn() {
 		offset := inBatchCount * len(w.columns)
 		w.binder(record, recValues[offset:], 0, len(w.columns))
@@ -162,7 +162,7 @@ func (w *Inserter) insert(ctx context.Context, batch *option.Batch, record inter
 		}
 		inBatchCount++
 		if inBatchCount == batch.Size {
-			rowsAffected, lastInsertedId, err = flush(ctx, stmt, recValues, lastInsertedId, identities[:identityIndex])
+			rowsAffected, lastInsertedId, err = flush(ctx, stmt, recValues, lastInsertedId, identities[:identityIndex], hasAutoIncrement, w.dialect.CanUseLastInsertId)
 			if err != nil {
 				return 0, 0, err
 			}
@@ -178,7 +178,7 @@ func (w *Inserter) insert(ctx context.Context, batch *option.Batch, record inter
 			return 0, 0, nil
 		}
 		defer stmt.Close()
-		rowsAffected, lastInsertedId, err = flush(ctx, stmt, recValues[0:inBatchCount*len(w.columns)], lastInsertedId, identities[:identityIndex])
+		rowsAffected, lastInsertedId, err = flush(ctx, stmt, recValues[0:inBatchCount*len(w.columns)], lastInsertedId, identities[:identityIndex], hasAutoIncrement, w.dialect.CanUseLastInsertId)
 		if err != nil {
 			return 0, 0, nil
 		}
@@ -201,7 +201,23 @@ func (w *Inserter) prepareInsertStatement(ctx context.Context, batchSize int, tx
 	return w.db.PrepareContext(ctx, SQL)
 }
 
-func flush(ctx context.Context, stmt *sql.Stmt, values []interface{}, prevInsertedID int64, identities []interface{}) (int64, int64, error) {
+func flush(ctx context.Context, stmt *sql.Stmt, values []interface{}, prevInsertedID int64, identities []interface{}, hasAutoIncrement, canUseLastInsertedID bool) (int64, int64, error) {
+	if hasAutoIncrement && !canUseLastInsertedID {
+		rows, err := stmt.QueryContext(ctx, values...)
+		if err != nil {
+			return 0, 0, err
+		}
+		var rowsAffected, newLastInsertedID int64
+		defer rows.Close()
+		for rows.Next() {
+			if err = rows.Scan(&newLastInsertedID); err != nil {
+				return 0, 0, err
+			}
+			rowsAffected++
+		}
+		return rowsAffected, newLastInsertedID, err
+	}
+
 	result, err := stmt.ExecContext(ctx, values...)
 	if err != nil {
 		return 0, 0, err
