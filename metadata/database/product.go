@@ -3,6 +3,7 @@ package database
 type Product struct {
 	Name    string
 	Driver  string
+	PkgName string
 	Major   int
 	Minor   int
 	Release int

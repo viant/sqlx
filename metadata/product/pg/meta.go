@@ -10,9 +10,9 @@ import (
 const product = "PostgreSQL"
 
 var pgSQL9 = database.Product{
-	Name:  product,
-	Driver: "pg.driver",
-	Major: 9,
+	Name:    product,
+	PkgName: "pg",
+	Major:   9,
 }
 
 //PqSQL9 return PostgreSQL 9.x product

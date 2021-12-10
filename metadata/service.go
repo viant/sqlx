@@ -9,6 +9,8 @@ import (
 	"github.com/viant/sqlx/metadata/product/ansi"
 	"github.com/viant/sqlx/metadata/registry"
 	"github.com/viant/sqlx/option"
+	"path"
+	"reflect"
 	"strings"
 )
 
@@ -80,10 +82,11 @@ func (s *Service) Info(ctx context.Context, db *sql.DB, product *database.Produc
 }
 
 func (s *Service) matchProduct(ctx context.Context, db *sql.DB) (*database.Product, error) {
-	driverClass := strings.ToLower(fmt.Sprintf("%T", db.Driver()))
+	pkgPath := reflect.TypeOf(db.Driver()).PkgPath()
+	_, pkgName := path.Split(pkgPath)
 	var product *database.Product
 	for name, candidate := range registry.Products() {
-		if strings.Contains(driverClass, name) || strings.Contains(candidate.Driver, driverClass) {
+		if strings.Contains(pkgName, name) || strings.Contains(candidate.Driver, pkgName) {
 			product = registry.Products()[name]
 		}
 	}
