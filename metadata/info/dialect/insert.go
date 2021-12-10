@@ -15,4 +15,5 @@ const (
 	InsertWithSingleValues = InsertFeatures(iota)
 	//InsertWithMultiValues multi values insert
 	InsertWithMultiValues
+	InsertWithMultiValuesWithReturning
 )

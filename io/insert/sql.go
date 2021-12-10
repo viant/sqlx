@@ -1,6 +1,10 @@
 package insert
 
-import "fmt"
+import (
+	"fmt"
+	"github.com/viant/sqlx/metadata/info/dialect"
+	"github.com/viant/sqlx/option"
+)
 
 //Builder represents SQL builder
 type Builder interface {
@@ -9,6 +13,7 @@ type Builder interface {
 
 //Insert represent insert DML builder
 type Insert struct {
+	id           string
 	valuesSize   int
 	sql          string
 	batchSize    int
@@ -16,17 +21,38 @@ type Insert struct {
 }
 
 func (i *Insert) Build(options ...interface{}) string {
-	batchSize := 1
-	if len(options) == 1 {
-		if value, ok := options[0].(int); ok {
-			batchSize = value
-		}
-	}
+	batchSize, insertDialect := i.applyOptions(options)
 	if batchSize == i.batchSize {
 		return i.sql
 	}
+
+	if insertDialect == dialect.InsertWithMultiValuesWithReturning {
+		i.sql += " RETURNING " + i.id
+	}
+
 	limit := i.valuesOffset + (batchSize * i.valuesSize) + (batchSize - 1)
 	return i.sql[:limit]
+}
+
+func (i *Insert) applyOptions(options []interface{}) (int, dialect.InsertFeatures) {
+	batchSize := 1
+	insertDialect := dialect.InsertWithSingleValues
+	if len(options) > 1 {
+		for _, value := range options {
+			switch actual := value.(type) {
+			case dialect.InsertFeatures:
+				insertDialect = actual
+			case int:
+				batchSize = actual
+				if batchSize > 0 && insertDialect == dialect.InsertWithSingleValues {
+					insertDialect = dialect.InsertWithMultiValues
+				}
+			case option.Identity:
+				i.id = string(actual)
+			}
+		}
+	}
+	return batchSize, insertDialect
 }
 
 //NewInsert return insert builder

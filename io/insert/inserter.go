@@ -15,16 +15,17 @@ import (
 
 //Inserter represents generic db writer
 type Inserter struct {
-	db            *sql.DB
-	dialect       *info.Dialect
-	tableName     string
-	tagName       string
-	mapper        io.ColumnMapper
-	columns       io.Columns
-	binder        io.PlaceholderBinder
-	builder       Builder
-	batch         *option.Batch
-	autoIncrement *int
+	db                  *sql.DB
+	dialect             *info.Dialect
+	tableName           string
+	tagName             string
+	mapper              io.ColumnMapper
+	columns             io.Columns
+	binder              io.PlaceholderBinder
+	builder             Builder
+	batch               *option.Batch
+	autoIncrementColumn io.Column
+	autoIncrement       *int
 }
 
 //New creates an inserter
@@ -94,6 +95,7 @@ func (w *Inserter) Insert(ctx context.Context, any interface{}, options ...optio
 		}
 		if autoIncrement := w.columns.Autoincrement(); autoIncrement != -1 {
 			w.autoIncrement = &autoIncrement
+			w.autoIncrementColumn = w.columns[autoIncrement]
 			w.columns = w.columns[:autoIncrement]
 		}
 		var values = make([]string, len(w.columns))
@@ -186,7 +188,13 @@ func (w *Inserter) insert(ctx context.Context, batch *option.Batch, record inter
 }
 
 func (w *Inserter) prepareInsertStatement(ctx context.Context, batchSize int, tx *sql.Tx) (*sql.Stmt, error) {
-	SQL := w.builder.Build(batchSize)
+	var options = []interface{}{
+		batchSize, w.dialect.Insert,
+	}
+	if w.autoIncrementColumn != nil {
+		options = append(options, option.Identity(w.autoIncrementColumn.Name()))
+	}
+	SQL := w.builder.Build(options...)
 	if tx != nil {
 		return tx.Prepare(SQL)
 	}

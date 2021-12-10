@@ -8,12 +8,13 @@ import (
 //Dialect represents dialect
 type Dialect struct {
 	database.Product
-	Placeholder      string // prepare statement placeholder, default '?', but oracle uses ':'
-	Transactional    bool
-	Insert           dialect.InsertFeatures
-	Upsert           dialect.UpsertFeatures
-	Load             dialect.LoadFeature
-	CanAutoincrement bool
+	Placeholder        string // prepare statement placeholder, default '?', but oracle uses ':'
+	Transactional      bool
+	Insert             dialect.InsertFeatures
+	Upsert             dialect.UpsertFeatures
+	Load               dialect.LoadFeature
+	CanAutoincrement   bool
+	CanUseLastInsertId bool
 }
 
 type Dialects []*Dialect

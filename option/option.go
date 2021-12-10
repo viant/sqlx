@@ -9,6 +9,9 @@ const (
 	TagSqlx = "sqlx"
 )
 
+//Identity represents identity option
+type Identity string
+
 //Option represents generic option
 type Option interface{}
 
@@ -77,7 +80,7 @@ type Tag struct {
 
 //NewTag creates a tag
 func NewTag(tag string) *Tag {
-	return &Tag{Tag:tag}
+	return &Tag{Tag: tag}
 }
 
 //Batch represents a batch options

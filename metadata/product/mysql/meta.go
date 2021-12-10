@@ -252,13 +252,14 @@ WHERE s.CONSTRAINT_TYPE = 'FOREIGN KEY'
 	}
 
 	registry.RegisterDialect(&info.Dialect{
-		Product:          mySQL5,
-		Placeholder:      "?",
-		Transactional:    true,
-		Insert:           dialect.InsertWithMultiValues,
-		Upsert:           dialect.UpsertTypeInsertOrReplace,
-		Load:             dialect.LoadTypeLocalData,
-		CanAutoincrement: true,
+		Product:            mySQL5,
+		Placeholder:        "?",
+		Transactional:      true,
+		Insert:             dialect.InsertWithMultiValues,
+		Upsert:             dialect.UpsertTypeInsertOrReplace,
+		Load:               dialect.LoadTypeLocalData,
+		CanAutoincrement:   true,
+		CanUseLastInsertId: true,
 	})
 
 }
