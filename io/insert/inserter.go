@@ -100,7 +100,7 @@ func (w *Inserter) Insert(ctx context.Context, any interface{}, options ...optio
 		isTemplate := strings.Contains(w.dialect.Placeholder, "%d")
 		for i := range values {
 			if isTemplate {
-				values[i] = fmt.Sprintf(w.dialect.Placeholder, i)
+				values[i] = fmt.Sprintf(w.dialect.Placeholder, i+1)
 				continue
 			}
 			values[i] = w.dialect.Placeholder
