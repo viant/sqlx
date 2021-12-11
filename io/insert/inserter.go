@@ -209,14 +209,11 @@ func flush(ctx context.Context, stmt *sql.Stmt, values []interface{}, prevInsert
 			return 0, 0, err
 		}
 		defer rows.Close()
-		for {
+		for rows.Next() {
 			if err = rows.Scan(&newLastInsertedID); err != nil {
 				return 0, 0, err
 			}
 			rowsAffected++
-			if !rows.Next() {
-				break
-			}
 		}
 		return rowsAffected, newLastInsertedID, err
 	}

@@ -22,16 +22,16 @@ type Insert struct {
 
 func (i *Insert) Build(options ...interface{}) string {
 	batchSize, insertDialect := i.applyOptions(options)
-	if batchSize == i.batchSize {
-		return i.sql
-	}
-
+	suffix := ""
 	if insertDialect == dialect.InsertWithMultiValuesWithReturning {
-		i.sql += " RETURNING " + i.id
+		suffix = " RETURNING " + i.id
 	}
 
+	if batchSize == i.batchSize {
+		return i.sql + suffix
+	}
 	limit := i.valuesOffset + (batchSize * i.valuesSize) + (batchSize - 1)
-	return i.sql[:limit]
+	return i.sql[:limit] + suffix
 }
 
 func (i *Insert) applyOptions(options []interface{}) (int, dialect.InsertFeatures) {
