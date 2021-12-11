@@ -210,7 +210,7 @@ func flush(ctx context.Context, stmt *sql.Stmt, values []interface{}, prevInsert
 		}
 		defer rows.Close()
 		for rows.Next() {
-			if err = rows.Scan(&newLastInsertedID); err != nil {
+			if err = rows.Scan(identities[rowsAffected]); err != nil {
 				return 0, 0, err
 			}
 			rowsAffected++
