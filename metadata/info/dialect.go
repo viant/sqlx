@@ -8,13 +8,14 @@ import (
 //Dialect represents dialect
 type Dialect struct {
 	database.Product
-	Placeholder        string // prepare statement placeholder, default '?', but oracle uses ':'
-	Transactional      bool
-	Insert             dialect.InsertFeatures
-	Upsert             dialect.UpsertFeatures
-	Load               dialect.LoadFeature
-	CanAutoincrement   bool
-	CanUseLastInsertId bool
+	Placeholder      string // prepare statement placeholder, default '?', but oracle uses ':'
+	Transactional    bool
+	Insert           dialect.InsertFeatures
+	Upsert           dialect.UpsertFeatures
+	Load             dialect.LoadFeature
+	CanAutoincrement bool
+	CanLastInsertId  bool
+	CanReturning     bool //Postgress supports Returning Data From Modified Rows in one statement
 }
 
 type Dialects []*Dialect

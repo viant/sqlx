@@ -2,7 +2,7 @@ package insert
 
 import (
 	"fmt"
-	"github.com/viant/sqlx/metadata/info/dialect"
+	"github.com/viant/sqlx/metadata/info"
 	"github.com/viant/sqlx/option"
 )
 
@@ -23,10 +23,9 @@ type Insert struct {
 func (i *Insert) Build(options ...interface{}) string {
 	batchSize, insertDialect := i.applyOptions(options)
 	suffix := ""
-	if insertDialect == dialect.InsertWithMultiValuesWithReturning {
+	if insertDialect.CanReturning && i.id != "" {
 		suffix = " RETURNING " + i.id
 	}
-
 	if batchSize == i.batchSize {
 		return i.sql + suffix
 	}
@@ -34,19 +33,16 @@ func (i *Insert) Build(options ...interface{}) string {
 	return i.sql[:limit] + suffix
 }
 
-func (i *Insert) applyOptions(options []interface{}) (int, dialect.InsertFeatures) {
+func (i *Insert) applyOptions(options []interface{}) (int, *info.Dialect) {
 	batchSize := 1
-	insertDialect := dialect.InsertWithSingleValues
+	var insertDialect *info.Dialect
 	if len(options) > 1 {
 		for _, value := range options {
 			switch actual := value.(type) {
-			case dialect.InsertFeatures:
+			case *info.Dialect:
 				insertDialect = actual
 			case int:
 				batchSize = actual
-				if batchSize > 0 && insertDialect == dialect.InsertWithSingleValues {
-					insertDialect = dialect.InsertWithMultiValues
-				}
 			case option.Identity:
 				i.id = string(actual)
 			}

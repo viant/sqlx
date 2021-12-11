@@ -162,7 +162,7 @@ func (w *Inserter) insert(ctx context.Context, batch *option.Batch, record inter
 		}
 		inBatchCount++
 		if inBatchCount == batch.Size {
-			rowsAffected, lastInsertedId, err = flush(ctx, stmt, recValues, lastInsertedId, identities[:identityIndex], hasAutoIncrement, w.dialect.CanUseLastInsertId)
+			rowsAffected, lastInsertedId, err = flush(ctx, stmt, recValues, lastInsertedId, identities[:identityIndex], hasAutoIncrement, w.dialect.CanLastInsertId)
 			if err != nil {
 				return 0, 0, err
 			}
@@ -178,7 +178,7 @@ func (w *Inserter) insert(ctx context.Context, batch *option.Batch, record inter
 			return 0, 0, nil
 		}
 		defer stmt.Close()
-		rowsAffected, lastInsertedId, err = flush(ctx, stmt, recValues[0:inBatchCount*len(w.columns)], lastInsertedId, identities[:identityIndex], hasAutoIncrement, w.dialect.CanUseLastInsertId)
+		rowsAffected, lastInsertedId, err = flush(ctx, stmt, recValues[0:inBatchCount*len(w.columns)], lastInsertedId, identities[:identityIndex], hasAutoIncrement, w.dialect.CanLastInsertId)
 		if err != nil {
 			return 0, 0, nil
 		}

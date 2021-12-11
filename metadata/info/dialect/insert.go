@@ -10,10 +10,8 @@ func (t InsertFeatures) MultiValues() bool {
 }
 
 const (
-
 	//InsertWithSingleValues single values insert
 	InsertWithSingleValues = InsertFeatures(iota)
 	//InsertWithMultiValues multi values insert
 	InsertWithMultiValues
-	InsertWithMultiValuesWithReturning
 )
