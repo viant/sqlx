@@ -226,7 +226,7 @@ func flush(ctx context.Context, stmt *sql.Stmt, values []interface{}, prevInsert
 	if err != nil {
 		return 0, 0, err
 	}
-	if !hasAutoIncrement {
+	if hasAutoIncrement && canUseLastInsertedID {
 		newLastInsertedID, err = result.LastInsertId()
 		if err != nil {
 			return 0, 0, err
