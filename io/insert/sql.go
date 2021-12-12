@@ -23,7 +23,7 @@ type Insert struct {
 func (i *Insert) Build(options ...interface{}) string {
 	batchSize, insertDialect := i.applyOptions(options)
 	suffix := ""
-	if insertDialect.CanReturning && i.id != "" {
+	if insertDialect.CanReturning && len(i.id) > 0 {
 		suffix = " RETURNING " + i.id
 	}
 	if batchSize == i.batchSize {
