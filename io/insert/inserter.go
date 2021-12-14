@@ -191,6 +191,10 @@ func (w *Inserter) prepareInsertStatement(ctx context.Context, batchSize int, tx
 	var options = []interface{}{
 		batchSize, w.dialect.Insert,
 	}
+
+	if w.dialect != nil {
+		options = append(options, w.dialect)
+	}
 	if w.autoIncrementColumn != nil {
 		options = append(options, option.Identity(w.autoIncrementColumn.Name()))
 	}
