@@ -77,7 +77,7 @@ func TestAbstractService_DetectVersion(t *testing.T) {
 }
 
 func TestAbstractService_Info(t *testing.T) {
-	os.Setenv("MYSQL_TEST_HOST", "127.0.0.1:3307")
+	//	os.Setenv("MYSQL_TEST_HOST", "127.0.0.1:3307")
 	mySQLTestHost := os.Getenv("MYSQL_TEST_HOST")
 	runMySQLTest := mySQLTestHost != ""
 	var ctx = context.Background()
@@ -547,7 +547,7 @@ func TestAbstractService_Info(t *testing.T) {
 		}
 		meta := New()
 		actual := testCase.sink
-		err = meta.Info(ctx, db, nil, testCase.kind, actual, testCase.options...)
+		err = meta.Info(ctx, db, testCase.kind, actual, testCase.options...)
 		if !assert.Nil(t, err, testCase.description) {
 			continue
 		}

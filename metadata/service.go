@@ -63,9 +63,11 @@ func (s *Service) Execute(ctx context.Context, db *sql.DB, kind info.Kind, optio
 }
 
 //Info execute the metadata kind corresponding Query, result are passed to sink
-func (s *Service) Info(ctx context.Context, db *sql.DB, product *database.Product, kind info.Kind, sink Sink, options ...option.Option) error {
+func (s *Service) Info(ctx context.Context, db *sql.DB, kind info.Kind, sink Sink, options ...option.Option) error {
 	var err error
-	if product == nil {
+
+	product := &database.Product{}
+	if !option.Assign(options, product) {
 		if product, err = s.DetectProduct(ctx, db); err != nil {
 			return err
 		}
