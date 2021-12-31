@@ -36,7 +36,7 @@ func (i *Insert) Build(options ...interface{}) string {
 func (i *Insert) applyOptions(options []interface{}) (int, *info.Dialect) {
 	batchSize := 1
 	var insertDialect *info.Dialect
-	if len(options) > 1 {
+	if len(options) > 0 {
 		for _, value := range options {
 			switch actual := value.(type) {
 			case *info.Dialect:

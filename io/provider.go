@@ -5,6 +5,7 @@ import (
 	"reflect"
 )
 
+//AnyProvider creates an iterator for any data structure
 func AnyProvider(any interface{}) (func() interface{}, error) {
 	switch actual := any.(type) {
 	case []interface{}:
@@ -49,5 +50,3 @@ func AnyProvider(any interface{}) (func() interface{}, error) {
 	}
 	return nil, fmt.Errorf("usnupported :%T", any)
 }
-
-

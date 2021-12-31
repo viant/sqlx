@@ -66,11 +66,20 @@ func (c *column) Nullable() (nullable, ok bool) {
 	return *c.nullable, true
 }
 
-func (t *column) Tag() *Tag {
-	return t.tag
+func (c *column) Tag() *Tag {
+	return c.tag
 }
 
 // Common type include "VARCHAR", "TEXT", "NVARCHAR", "DECIMAL", "BOOL", "INT", "BIGINT".
 func (c *column) DatabaseTypeName() string {
 	return c.databaseTypeName
+}
+
+//NewBasicColumn creates a column
+func NewBasicColumn(name, databaseTypeName string, rType reflect.Type) Column {
+	return &column{
+		name:             name,
+		databaseTypeName: databaseTypeName,
+		scanType:         rType,
+	}
 }

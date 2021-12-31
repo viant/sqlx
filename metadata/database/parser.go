@@ -9,7 +9,7 @@ func Parse(input []byte) (info *Product, err error) {
 	cursor := parsly.NewCursor("", input, 0)
 	info = &Product{}
 
-	if err = matchMarjoVersion(cursor, info);err != nil {
+	if err = matchMarjoVersion(cursor, info); err != nil {
 		return nil, err
 	}
 	matched := cursor.MatchOne(separator)
@@ -38,14 +38,13 @@ func Parse(input []byte) (info *Product, err error) {
 	return info, nil
 }
 
-
 func matchMarjoVersion(cursor *parsly.Cursor, info *Product) error {
 	matched := cursor.FindMatch(digits)
 	if matched.Code != digits.Code {
-		return  cursor.NewError(digits)
+		return cursor.NewError(digits)
 	}
 	if matched.Offset > 0 {
-		info.Name = strings.Trim(string(cursor.Input[:matched.Offset-1])," -\t\n")
+		info.Name = strings.Trim(string(cursor.Input[:matched.Offset-1]), " -\t\n")
 	}
 	major, _ := matched.Int(cursor)
 	info.Major = int(major)

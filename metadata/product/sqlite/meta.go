@@ -170,13 +170,13 @@ FROM pragma_function_list t`,
 	}
 
 	registry.RegisterDialect(&info.Dialect{
-		Product:          sqLite3,
-		Placeholder:      "?",
-		Transactional:    true,
-		Insert:           dialect.InsertWithMultiValues,
-		Upsert:           dialect.UpsertTypeUnsupported,
-		Load:             dialect.LoadTypeUnsupported,
-		CanAutoincrement: true,
-		CanLastInsertId:  true,
+		Product:       sqLite3,
+		Placeholder:   "?",
+		Transactional: true,
+		Insert:        dialect.InsertWithMultiValues,
+		Upsert:        dialect.UpsertTypeUnsupported,
+		Load:          dialect.LoadTypeUnsupported,
+		//CanAutoincrement: true,
+		//CanLastInsertId:  true,
 	})
 }

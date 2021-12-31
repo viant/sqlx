@@ -20,4 +20,3 @@ type Column struct {
 	IndexPosition int     `sqlx:"INDEX_POSITION"`
 	Collation     *string `sqlx:"COLLATION"`
 }
-

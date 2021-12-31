@@ -5,12 +5,12 @@ import (
 	"database/sql"
 	"fmt"
 	"github.com/viant/sqlx/io"
+	"github.com/viant/sqlx/io/insert/generators"
 	"github.com/viant/sqlx/metadata"
 	"github.com/viant/sqlx/metadata/info"
 	"github.com/viant/sqlx/metadata/info/dialect"
 	"github.com/viant/sqlx/metadata/registry"
 	"github.com/viant/sqlx/option"
-	"strings"
 )
 
 //Inserter represents generic db writer
@@ -51,6 +51,23 @@ func New(ctx context.Context, db *sql.DB, tableName string, options ...option.Op
 }
 
 func (w *Inserter) init(ctx context.Context, db *sql.DB, options option.Options) error {
+	err := w.initDialect(ctx, db, options)
+	if err != nil {
+		return err
+	}
+
+	if w.batch == nil {
+		w.batch = &option.Batch{
+			Size: 1,
+		}
+	}
+	if w.dialect.Insert == dialect.InsertWithSingleValues {
+		w.batch.Size = 1
+	}
+	return nil
+}
+
+func (w *Inserter) initDialect(ctx context.Context, db *sql.DB, options option.Options) error {
 	if w.dialect == nil {
 		product := options.Product()
 		if product == nil {
@@ -65,15 +82,6 @@ func (w *Inserter) init(ctx context.Context, db *sql.DB, options option.Options)
 		if w.dialect == nil {
 			return fmt.Errorf("failed to detect dialect for product: %v", product.Name)
 		}
-	}
-
-	if w.batch == nil {
-		w.batch = &option.Batch{
-			Size: 1,
-		}
-	}
-	if w.dialect.Insert == dialect.InsertWithSingleValues {
-		w.batch.Size = 1
 	}
 	return nil
 }
@@ -99,13 +107,9 @@ func (w *Inserter) Insert(ctx context.Context, any interface{}, options ...optio
 			w.columns = w.columns[:autoIncrement]
 		}
 		var values = make([]string, len(w.columns))
-		isTemplate := strings.Contains(w.dialect.Placeholder, "%d")
+		placeholderGetter := w.dialect.PlaceholderGetter()
 		for i := range values {
-			if isTemplate {
-				values[i] = fmt.Sprintf(w.dialect.Placeholder, i+1)
-				continue
-			}
-			values[i] = w.dialect.Placeholder
+			values[i] = placeholderGetter()
 		}
 		if w.builder, err = NewInsert(w.tableName, batch.Size, w.columns.Names(), values); err != nil {
 			return 0, 0, err
@@ -122,6 +126,15 @@ func (w *Inserter) Insert(ctx context.Context, any interface{}, options ...optio
 			return 0, 0, err
 		}
 	}
+
+	err = generators.NewDefault(w.dialect, w.db, nil).Apply(ctx, any, w.tableName)
+	if err != nil {
+		if transactional {
+			tx.Rollback()
+		}
+		return 0, 0, err
+	}
+
 	stmt, err := w.prepareInsertStatement(ctx, batch.Size, tx)
 	if err != nil {
 		return 0, 0, err

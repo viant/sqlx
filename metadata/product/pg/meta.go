@@ -6,6 +6,7 @@ import (
 	"github.com/viant/sqlx/metadata/info/dialect"
 	"github.com/viant/sqlx/metadata/registry"
 	"log"
+	"strconv"
 )
 
 const product = "PostgreSQL"
@@ -93,19 +94,17 @@ FROM INFORMATION_SCHEMA.TABLES`,
 		),
 
 		info.NewQuery(info.KindTable, `SELECT 
-TABLE_CATALOG,
-TABLE_SCHEMA,
-TABLE_NAME,
-COLUMN_NAME,
-ORDINAL_POSITION,
-COLUMN_COMMENT,
-DATA_TYPE,
-CHARACTER_MAXIMUM_LENGTH,
-NUMERIC_PRECISION,
-NUMERIC_SCALE,
-IS_NULLABLE,
-COLUMN_DEFAULT,
-COLUMN_KEY
+TABLE_CATALOG AS TABLE_CATALOG,
+TABLE_SCHEMA AS TABLE_SCHEMA,
+TABLE_NAME AS TABLE_NAME,
+COLUMN_NAME AS COLUMN_NAME,
+ORDINAL_POSITION AS ORDINAL_POSITION,
+DATA_TYPE AS DATA_TYPE,
+CHARACTER_MAXIMUM_LENGTH AS CHARACTER_MAXIMUM_LENGTH,
+NUMERIC_PRECISION AS NUMERIC_PRECISION,
+NUMERIC_SCALE AS "NUMERIC_SCALE",
+IS_NULLABLE AS IS_NULLABLE,
+COLUMN_DEFAULT AS COLUMN_DEFAULT
 FROM INFORMATION_SCHEMA.COLUMNS`,
 			pgSQL9,
 			info.NewCriterion(info.Catalog, "TABLE_CATALOG"),
@@ -119,7 +118,7 @@ FROM INFORMATION_SCHEMA.COLUMNS`,
   c.TABLE_NAME AS SEQUENCE_NAME,
   c.COLUMN_TYPE AS DATA_TYPE,
   c.MAX_VALUE,
-  t.AUTO_INCREMENT AS SEQUENCE_VALUE
+  t.AUTO_INCREMENT AS "SEQUENCE_VALUE"
 FROM 
   (SELECT 
      TABLE_SCHEMA,
@@ -228,6 +227,16 @@ WHERE s.CONSTRAINT_TYPE = 'FOREIGN KEY'
 			info.NewCriterion(info.Table, "c.TABLE_NAME"),
 		),
 
+		info.NewQuery(info.KindSession, `SELECT 
+    CAST(pid AS varchar) AS PID,
+	datname AS CATALOG_NAME,
+	usename AS USER_NAME, 
+	application_name AS APP_NAME,
+	'' AS SCHEMA_NAME
+FROM pg_stat_activity
+WHERE pid=pg_backend_pid() LIMIT 1;
+`, pgSQL9),
+
 		info.NewQuery(info.KindForeignKeysCheckOn, `SET FOREIGN_KEY_CHECKS=1`,
 			pgSQL9,
 			info.NewCriterion(info.Catalog, ""),
@@ -248,7 +257,7 @@ WHERE s.CONSTRAINT_TYPE = 'FOREIGN KEY'
 
 	registry.RegisterDialect(&info.Dialect{
 		Product:          pgSQL9,
-		Placeholder:      "$%d",
+		Placeholder:      "$",
 		Transactional:    true,
 		Insert:           dialect.InsertWithMultiValues,
 		Upsert:           dialect.UpsertTypeMergeInto,
@@ -256,6 +265,15 @@ WHERE s.CONSTRAINT_TYPE = 'FOREIGN KEY'
 		CanAutoincrement: true,
 		CanLastInsertId:  false,
 		CanReturning:     true,
+		QuoteCharacter:   byte(39), // 39 is single quote '
+		CustomPlaceholderGetter: func() func() string {
+			counter := 0
+			return func() string {
+				counter++
+				return "$" + strconv.Itoa(counter)
+			}
+		},
+		AutoincrementFunc: "nextval",
 	})
 
 }
