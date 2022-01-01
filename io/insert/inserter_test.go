@@ -20,7 +20,7 @@ func TestInserter_Insert(t *testing.T) {
 		Bar  float64
 	}
 	type entityWithAutoIncrement struct {
-		Id   int    `sqlx:"name=foo_id,autoincrement=true"`
+		Id   int    `sqlx:"name=foo_id,generator=autoincrement"`
 		Name string `sqlx:"foo_name"`
 		Desc string `sqlx:"-"`
 		Bar  float64

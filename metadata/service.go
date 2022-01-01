@@ -16,6 +16,7 @@ import (
 
 type (
 	Service struct {
+		dialect *info.Dialect
 		recent
 	}
 
@@ -28,12 +29,14 @@ type (
 //DetectProduct detect product for supplied *sql.DB
 func (s *Service) DetectProduct(ctx context.Context, db *sql.DB) (*database.Product, error) {
 	if product := s.recent.match(db); product != nil {
+		s.dialect = registry.LookupDialect(product)
 		return product, nil
 	}
 	product, err := s.matchProduct(ctx, db)
 	if err == nil {
 		s.recent.db = db
 		s.recent.product = product
+		s.dialect = registry.LookupDialect(product)
 	}
 	if err != nil {
 		err = fmt.Errorf("failed to detect product: %w", err)
@@ -120,7 +123,7 @@ func (s *Service) matchVersion(ctx context.Context, db *sql.DB, product *databas
 func (s *Service) executeQuery(ctx context.Context, db *sql.DB, query *info.Query, options ...option.Option) (sql.Result, error) {
 	args := &option.Args{}
 	option.Assign(options, &args)
-	SQL, params, err := prepareSQL(query, args)
+	SQL, params, err := prepareSQL(query, s.dialect.PlaceholderGetter(), args)
 	if err != nil {
 		return nil, err
 	}
@@ -135,7 +138,13 @@ func (s *Service) executeQuery(ctx context.Context, db *sql.DB, query *info.Quer
 func (s *Service) runQuery(ctx context.Context, db *sql.DB, query *info.Query, sink Sink, options ...option.Option) error {
 	args := &option.Args{}
 	option.Assign(options, &args)
-	SQL, params, err := prepareSQL(query, args)
+	placeholderGetter := func() string {
+		return "?"
+	}
+	if s.dialect != nil {
+		placeholderGetter = s.dialect.PlaceholderGetter()
+	}
+	SQL, params, err := prepareSQL(query, placeholderGetter, args)
 	if err != nil {
 		return err
 	}
@@ -164,7 +173,7 @@ func (s *Service) runQuery(ctx context.Context, db *sql.DB, query *info.Query, s
 	}
 }
 
-func prepareSQL(query *info.Query, argsOpt *option.Args) (string, []interface{}, error) {
+func prepareSQL(query *info.Query, placeholderGetter func() string, argsOpt *option.Args) (string, []interface{}, error) {
 	args := argsOpt.Unwrap()
 	var filterArgs = make([]interface{}, 0)
 	if len(args) == 0 && query.Criteria.Supported() == 0 {
@@ -189,7 +198,7 @@ func prepareSQL(query *info.Query, argsOpt *option.Args) (string, []interface{},
 				if args[i] == "" {
 					continue
 				}
-				criteriaValues = append(criteriaValues, fmt.Sprintf("%s = ?", column))
+				criteriaValues = append(criteriaValues, column+"="+placeholderGetter())
 				filterArgs = append(filterArgs, args[i])
 			}
 		}

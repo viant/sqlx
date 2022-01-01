@@ -51,10 +51,6 @@ func NamesToColumns(columns []string) []Column {
 	return result
 }
 
-
-
-
-
 //StructColumns returns column for the struct
 func StructColumns(recordType reflect.Type) ([]Column, error) {
 	var result []Column
@@ -67,7 +63,7 @@ func StructColumns(recordType reflect.Type) ([]Column, error) {
 			continue
 		}
 		fieldType := field.Type
-		if ! IsBaseType(fieldType) {
+		if !IsBaseType(fieldType) {
 			continue
 		}
 		fieldName := field.Name
@@ -88,7 +84,3 @@ func StructColumns(recordType reflect.Type) ([]Column, error) {
 	}
 	return result, nil
 }
-
-
-
-

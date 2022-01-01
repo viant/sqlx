@@ -8,14 +8,12 @@ import (
 //Resolve Resolver handler unresolved columns
 type Resolve func(column Column) func(pointer unsafe.Pointer) interface{}
 
-
 //Resolver represents unmatched column resolver
 type Resolver struct {
 	columns []Column
 	data    [][]interface{}
 	ptrs    []unsafe.Pointer
 }
-
 
 //Index returns column index or -1
 func (r *Resolver) Index(column string) int {

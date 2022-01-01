@@ -233,6 +233,15 @@ WHERE s.CONSTRAINT_TYPE = 'FOREIGN KEY'
 			info.NewCriterion(info.Table, "c.TABLE_NAME"),
 		),
 
+		info.NewQuery(info.KindSession, `SELECT 
+CAST(ID AS CHAR) AS PID,
+CAST(USER AS CHAR) AS USER_NAME,
+"" AS CATALOG,
+CAST(DB as CHAR) as SCHEMA_NAME,
+"" AS APP_NAME 
+from information_schema.processlist 
+where ID=CONNECTION_ID() LIMIT 1;
+`, mySQL5),
 		info.NewQuery(info.KindForeignKeysCheckOn, `SET FOREIGN_KEY_CHECKS=1`,
 			mySQL5,
 			info.NewCriterion(info.Catalog, ""),
@@ -258,8 +267,11 @@ WHERE s.CONSTRAINT_TYPE = 'FOREIGN KEY'
 		Insert:           dialect.InsertWithMultiValues,
 		Upsert:           dialect.UpsertTypeInsertOrReplace,
 		Load:             dialect.LoadTypeLocalData,
+		QuoteCharacter:   byte(39), // byte(39) is single quote '
 		CanAutoincrement: true,
 		CanLastInsertId:  true,
+		// TODO: provide real autoincrement function
+		AutoincrementFunc: "autoincrement",
 	})
 
 }

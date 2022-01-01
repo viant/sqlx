@@ -15,7 +15,6 @@ import (
 
 func TestReader_ReadAll(t *testing.T) {
 
-
 	type fooCase1 struct {
 		Id   int
 		Name string
@@ -41,7 +40,6 @@ func TestReader_ReadAll(t *testing.T) {
 		*case3FooID
 		Case3FooName `sqlx:"ns=foo"`
 	}
-
 
 	var useCases = []struct {
 		description    string
@@ -166,8 +164,8 @@ func TestReader_ReadAll(t *testing.T) {
 			newRow: func() interface{} {
 				return &case3Wrapper{}
 			},
-			resolver: NewResolver(),
-			expect:   `[{"Id":1,"Desc":"desc1","Name":"John"},{"Id":2,"Desc":"desc2","Name":"Bruce"}]`,
+			resolver:       NewResolver(),
+			expect:         `[{"Id":1,"Desc":"desc1","Name":"John"},{"Id":2,"Desc":"desc2","Name":"Bruce"}]`,
 			expectResolved: `["101","102"]`,
 		},
 	}

@@ -11,6 +11,7 @@ type Tag struct {
 	FieldIndex    int
 	Transient     bool
 	Ns            string
+	Generator     string
 }
 
 //ParseTag parses tag
@@ -34,14 +35,17 @@ func ParseTag(tagString string) *Tag {
 				tag.Ns = strings.TrimSpace(nv[1])
 			case "sequence":
 				tag.Sequence = strings.TrimSpace(nv[1])
-			case "autoincrement":
-				if strings.TrimSpace(nv[1]) == "true" {
-					tag.Autoincrement = true
-					tag.PrimaryKey = true
-				}
 			case "primaryKey":
 				if strings.TrimSpace(nv[1]) == "true" {
 					tag.PrimaryKey = true
+				}
+			case "generator":
+				generatorStrat := strings.TrimSpace(nv[1])
+				tag.Generator = generatorStrat
+				if generatorStrat == "autoincrement" {
+					tag.Autoincrement = true
+					tag.PrimaryKey = true
+					tag.Generator = ""
 				}
 			}
 			continue

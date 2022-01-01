@@ -32,6 +32,7 @@ const (
 	KindIndex
 	KindSequences
 	KindFunctions
+	KindSession
 	KindForeignKeysCheckOn
 	KindForeignKeysCheckOff
 	KindReserved
@@ -77,7 +78,8 @@ func (k Kind) String() string {
 		return "KindForeignKeysCheckOn"
 	case KindForeignKeysCheckOff:
 		return "KindForeignKeysCheckOff"
-
+	case KindSession:
+		return "KindSession"
 	}
 	return fmt.Sprintf("undefined: %v", k)
 }

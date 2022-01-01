@@ -41,7 +41,8 @@ func fetchStruct(rows *sql.Rows, dest Sink) error {
 			return reflect.New(targetType).Interface()
 		})
 		return reader.ReadAll(rows, func(row interface{}) error {
-			targetValue.Set(reflect.ValueOf(row).Elem())
+			// TODO: pointer or just a struct
+			targetValue.Elem().Set(reflect.ValueOf(row).Elem())
 			return nil
 		})
 	case reflect.Slice:

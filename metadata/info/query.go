@@ -14,8 +14,8 @@ type (
 		database.Product
 	}
 	Criterion struct {
-		Name      string
-		Column    string
+		Name   string
+		Column string
 	}
 	Criteria []*Criterion
 
@@ -55,7 +55,6 @@ func (c Criteria) Validate(kind Kind) error {
 	return nil
 }
 
-
 func (q Queries) Len() int {
 	return len(q)
 }
@@ -92,7 +91,7 @@ func (q Queries) Match(info *database.Product) *Query {
 //NewCriterion creates a new criteria, name refers to kind.Crtiera, column to local vendor column, use '?' for already defined placeholder, %v for substitution
 func NewCriterion(name, column string) *Criterion {
 	return &Criterion{
-		Name:      name,
-		Column:    column,
+		Name:   name,
+		Column: column,
 	}
 }

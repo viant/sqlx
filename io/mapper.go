@@ -37,21 +37,21 @@ func newQueryMapper(columns []Column, targetType reflect.Type, tagName string, r
 		tagName = option.TagSqlx
 	}
 	if targetType.Kind() == reflect.Struct {
-		return newQueryStructMapper(columns, targetType, tagName, resolver)
+		return NewQueryStructMapper(columns, targetType, tagName, resolver)
 	}
 	return genericRowMapper(columns)
 }
 
-//newQueryStructMapper creates a new record mapper for supplied struct type
-func newQueryStructMapper(columns []Column, recordType reflect.Type, tagName string, resolver Resolve) (RowMapper, error) {
-	fildGetters, err := columnPositions("", columns, recordType, tagName, resolver)
+//NewQueryStructMapper creates a new record mapper for supplied struct type
+func NewQueryStructMapper(columns []Column, recordType reflect.Type, tagName string, resolver Resolve) (RowMapper, error) {
+	fieldGetters, err := columnPositions("", columns, recordType, tagName, resolver)
 	if err != nil {
 		return nil, err
 	}
-	var record = make([]interface{}, len(fildGetters))
+	var record = make([]interface{}, len(fieldGetters))
 
-	var getters = make([]xunsafe.Getter, len(fildGetters))
-	for i, item := range fildGetters {
+	var getters = make([]xunsafe.Getter, len(fieldGetters))
+	for i, item := range fieldGetters {
 		getters[i] = item.AddrGetter()
 	}
 	var mapper = func(target interface{}) ([]interface{}, error) {
@@ -65,7 +65,7 @@ func newQueryStructMapper(columns []Column, recordType reflect.Type, tagName str
 	return mapper, nil
 }
 
-//newQueryStructMapper creates a new record mapper for supplied struct type
+//NewQueryStructMapper creates a new record mapper for supplied struct type
 func genericRowMapper(columns []Column) (RowMapper, error) {
 	var valueProviders = make([]func(index int, values []interface{}), len(columns))
 	defaultProvider := func(index int, values []interface{}) {
@@ -180,7 +180,7 @@ func GenericColumnMapper(src interface{}, tagName string) ([]Column, Placeholder
 	if len(identityColumns) > 0 {
 		for i, item := range identityColumns {
 			fieldIndex := item.Tag().FieldIndex
-			getter := xunsafe.FieldByIndex(recordType,  fieldIndex).AddrGetter()
+			getter := xunsafe.FieldByIndex(recordType, fieldIndex).AddrGetter()
 			getters = append(getters, getter)
 			columns = append(columns, identityColumns[i])
 		}
@@ -210,11 +210,13 @@ func columnPositions(ns string, columns []Column, recordType reflect.Type, tag s
 	for i, column := range columns {
 		columnName := column.Name()
 		aField, ok := indexedFields[column.Name()]
+		fieldNameLowerCase := strings.ToLower(columnName)
+
 		if !ok {
-			aField, ok = indexedFields[strings.ToLower(columnName)]
+			aField, ok = indexedFields[fieldNameLowerCase]
 		}
 		if !ok {
-			aField, ok = indexedFields[strings.Replace(strings.ToLower(columnName), "_", "", strings.Count(columnName, "_"))]
+			aField, ok = indexedFields[strings.Replace(fieldNameLowerCase, "_", "", strings.Count(columnName, "_"))]
 		}
 		if !ok {
 			if resolver != nil {
@@ -250,8 +252,7 @@ func matchFieldWithColumn(structType reflect.Type, field reflect.StructField, in
 	if IsBaseType(field.Type) {
 		fieldName := field.Name
 		aField := xunsafe.FieldByIndex(structType, index)
-		indexedFields[ns+fieldName] = aField
-		indexedFields[ns+strings.ToLower(fieldName)] = aField //to account for various matching strategies
+		addField(indexedFields, ns+fieldName, aField)
 	}
 
 	switch field.Type.Kind() {
@@ -261,10 +262,10 @@ func matchFieldWithColumn(structType reflect.Type, field reflect.StructField, in
 			matchFieldWithColumn(field.Type, field.Type.Field(i), subFields, i, tag, aTag.Ns)
 		}
 		if len(subFields) > 0 {
-			for k, v := range subFields {
-				field := xunsafe.FieldByIndex(structType, index)
-				field.Field = v
-				indexedFields[k] = field
+			for fieldName, v := range subFields {
+				aField := xunsafe.FieldByIndex(structType, index)
+				aField.Field = v
+				addField(indexedFields, ns+fieldName, aField)
 			}
 		}
 	case reflect.Ptr:
@@ -275,21 +276,32 @@ func matchFieldWithColumn(structType reflect.Type, field reflect.StructField, in
 				matchFieldWithColumn(fieldType, fieldType.Field(i), subFields, i, tag, aTag.Ns)
 			}
 			if len(subFields) > 0 {
-				for k, v := range subFields {
-					field := xunsafe.FieldByIndex(structType, index)
-					field.Field = v
-					indexedFields[k] = field
+				for fieldName, v := range subFields {
+					aField := xunsafe.FieldByIndex(structType, index)
+					aField.Field = v
+					addField(indexedFields, ns+fieldName, aField)
 				}
 			}
 		}
 	}
 	if names := aTag.Column; names != "" {
-		for _, column := range strings.Split(names, "|") {
-			column = strings.TrimSpace(column)
-			if column == "" {
+		for _, fieldName := range strings.Split(names, "|") {
+			fieldName = strings.TrimSpace(fieldName)
+			if fieldName == "" {
 				continue
 			}
-			indexedFields[ns+column] = xunsafe.FieldByIndex(structType, index)
+			aField := xunsafe.FieldByIndex(structType, index)
+			addField(indexedFields, ns+fieldName, aField)
 		}
+	}
+}
+
+func addField(indexedFields map[string]*xunsafe.Field, name string, field *xunsafe.Field) {
+	indexedFields[name] = field
+	lowerCased := strings.ToLower(name)
+	indexedFields[lowerCased] = field
+
+	if count := strings.Count(lowerCased, "_"); count > 0 {
+		indexedFields[strings.Replace(lowerCased, "_", "", count)] = field
 	}
 }

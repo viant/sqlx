@@ -45,7 +45,6 @@ func TestParse(t *testing.T) {
 		//SQLite
 	}
 
-
 	for _, useCase := range useCases {
 		actual, err := Parse([]byte(useCase.input))
 		if !assert.Nil(t, err, useCase.description) {
