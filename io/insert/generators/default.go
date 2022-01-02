@@ -32,7 +32,7 @@ func NewDefault(dialect *info.Dialect, db *sql.DB, session *sink.Session) *Defau
 
 //Apply generated values to the any
 func (d *Default) Apply(ctx context.Context, any interface{}, table string) error {
-	recordsFn, err := reader.AnyProvider(any)
+	recordsFn, _, err := io.Iterator(any)
 	if err != nil {
 		return err
 	}
@@ -80,7 +80,7 @@ func (d *Default) Apply(ctx context.Context, any interface{}, table string) erro
 		return nil
 	}
 
-	recordsFn, err = reader.AnyProvider(any)
+	recordsFn, _, err = io.Iterator(any)
 	if err != nil {
 		return err
 	}

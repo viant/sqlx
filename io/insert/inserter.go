@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"github.com/viant/sqlx/io"
 	"github.com/viant/sqlx/io/insert/generators"
-	"github.com/viant/sqlx/io/reader"
 	"github.com/viant/sqlx/metadata"
 	"github.com/viant/sqlx/metadata/info"
 	"github.com/viant/sqlx/metadata/info/dialect"
@@ -89,7 +88,7 @@ func (w *Inserter) initDialect(ctx context.Context, db *sql.DB, options option.O
 
 //Insert runs INSERT statement for supplied data
 func (w *Inserter) Insert(ctx context.Context, any interface{}, options ...option.Option) (int64, int64, error) {
-	recordsFn, err := reader.AnyProvider(any)
+	recordsFn, _, err := io.Iterator(any)
 	if err != nil {
 		return 0, 0, err
 	}
