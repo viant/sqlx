@@ -4,10 +4,16 @@ package dialect
 type UpsertFeatures int
 
 const (
-	UpsertTypeUnsupported     = UpsertFeatures(iota)
-	UpsertTypeMerge           //i.e PostgreSQL, BigQuery
-	UpsertTypeMergeInto       //i.e Oracle dialect
+	//UpsertTypeUnsupported defines uppsert types
+	UpsertTypeUnsupported = UpsertFeatures(iota)
+	//UpsertTypeMerge defines merge upsert type
+	UpsertTypeMerge //i.e PostgreSQL, BigQuery
+	//UpsertTypeMergeInto //defined merge into upsert
+	UpsertTypeMergeInto //i.e Oracle dialect
+	//UpsertTypeInsertOrReplace defined insert or replace upsert
 	UpsertTypeInsertOrReplace //i.e. SQLLite
-	UpsertTypeInsertOrUpdate  //i.e MySQL
-	UpsertTypeUpdateOrInsert  //i.e Firebird
+	//UpsertTypeInsertOrUpdate defined insert or update upsert
+	UpsertTypeInsertOrUpdate //i.e MySQL
+	//UpsertTypeUpdateOrInsert defined update or insert upsert
+	UpsertTypeUpdateOrInsert //i.e Firebird
 )

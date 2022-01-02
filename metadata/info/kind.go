@@ -3,38 +3,67 @@ package info
 import "fmt"
 
 const (
-	Catalog  = "Catalog"
-	Schema   = "Schema"
-	Table    = "Table"
-	Index    = "Index"
-	View     = "View"
+	//Catalog defines catalog kind literal
+	Catalog = "Catalog"
+	//Schema defines schema kind literal
+	Schema = "Schema"
+	//Table defines table kind literal
+	Table = "Table"
+	//Index defines index kind literal
+	Index = "Index"
+	//View defines view kind literal
+	View = "View"
+	//Sequence defines sequence kind literal
 	Sequence = "Sequence"
+	//Function defines function kind literal
 	Function = "Function"
 )
 
+//Kind represents dictionary info kind
 type Kind int
 
 const (
+	//KindVersion defines information kind
 	KindVersion = Kind(iota)
+	//KindCatalogs defines catalogs kind
 	KindCatalogs
+	//KindCatalog defines catalog kind
 	KindCatalog
+	//KindCurrentSchema defines current schema kind
 	KindCurrentSchema
+	//KindSchemas defines schemas kind
 	KindSchemas
+	//KindSchema defines schema kind
 	KindSchema
+	//KindTables defines tabkes kind
 	KindTables
+	//KindTable defines table kind
 	KindTable
+	//KindViews defines views kind
 	KindViews
+	//KindView defines view kind
 	KindView
+	//KindPrimaryKeys defines primary keys kind
 	KindPrimaryKeys
+	//KindForeignKeys defines foreign key kind
 	KindForeignKeys
+	//KindConstraints defines constraints kind
 	KindConstraints
+	//KindIndexes defines indexes kind
 	KindIndexes
+	//KindIndex defines index kind
 	KindIndex
+	//KindSequences defines sequences kind
 	KindSequences
+	//KindFunctions defines functions kind
 	KindFunctions
+	//KindSession defines session kind
 	KindSession
+	//KindForeignKeysCheckOn defines fk check on kind
 	KindForeignKeysCheckOn
+	//KindForeignKeysCheckOff defines fk check off kind
 	KindForeignKeysCheckOff
+	//KindReserved defines reserved kind
 	KindReserved
 )
 
@@ -81,7 +110,7 @@ func (k Kind) String() string {
 	case KindSession:
 		return "KindSession"
 	}
-	return fmt.Sprintf("undefined: %v", k)
+	return fmt.Sprintf("undefined kind: %v", int(k))
 }
 
 var emptyCriteria = []string{}

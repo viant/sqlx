@@ -1,8 +1,9 @@
-package io
+package reader
 
 import (
+	"github.com/viant/sqlx/io"
 	"reflect"
-	"strings"
+	"time"
 )
 
 func asDereferenceSlice(aSlice []interface{}) {
@@ -15,27 +16,17 @@ func asDereferenceSlice(aSlice []interface{}) {
 	}
 }
 
-func updateMap(columns []Column, values []interface{}, target map[string]interface{}) {
+func updateMap(columns []io.Column, values []interface{}, target map[string]interface{}) {
 	for i, column := range columns {
 		target[column.Name()] = values[i]
-		toLower := strings.ToLower(column.Name())
-		target[toLower] = values[i]
-		if count := strings.Count(toLower, "_"); count > 0 {
-			target[strings.Replace(toLower, "_", "", count)] = values[i]
-		}
+
 	}
 }
 
-func holderPointer(record interface{}) uintptr {
-	value := reflect.ValueOf(record)
-	if value.Kind() != reflect.Ptr { //convert to a pointer
-		vp := reflect.New(value.Type())
-		vp.Elem().Set(value)
-		value = vp
-	}
-	holderPtr := value.Elem().UnsafeAddr()
-	return holderPtr
-}
+var (
+	typeBytes = reflect.TypeOf([]byte{})
+	typeTime  = reflect.TypeOf(time.Time{})
+)
 
 //IsBaseType return true if base type
 func IsBaseType(aType reflect.Type) bool {
@@ -49,7 +40,7 @@ func IsBaseType(aType reflect.Type) bool {
 		reflect.Bool, reflect.String, reflect.Slice:
 		return true
 	default:
-		if byteType.AssignableTo(aType) || timeType.AssignableTo(aType) {
+		if typeBytes.AssignableTo(aType) || typeTime.AssignableTo(aType) {
 			return true
 		}
 	}

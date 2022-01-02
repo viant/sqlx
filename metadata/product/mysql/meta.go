@@ -269,7 +269,7 @@ where ID=CONNECTION_ID() LIMIT 1;
 		Load:             dialect.LoadTypeLocalData,
 		QuoteCharacter:   byte(39), // byte(39) is single quote '
 		CanAutoincrement: true,
-		CanLastInsertId:  true,
+		CanLastInsertID:  true,
 		// TODO: provide real autoincrement function
 		AutoincrementFunc: "autoincrement",
 	})

@@ -1,29 +1,31 @@
 package database
 
+//Product represents database product
 type Product struct {
-	Name    string
-	Driver  string
-	PkgName string
-	Major   int
-	Minor   int
-	Release int
+	Name      string
+	Driver    string
+	DriverPkg string
+	Major     int
+	Minor     int
+	Release   int
 }
 
-func (d Product) Equal(dialect *Product) bool {
-	if d.Name != dialect.Name {
+//Equal checks if product are equal
+func (p *Product) Equal(dialect *Product) bool {
+	if p.Name != dialect.Name {
 		return false
 	}
-	if d.Major != dialect.Major {
+	if p.Major != dialect.Major {
 		return false
 	}
-	if d.Minor != dialect.Minor {
+	if p.Minor != dialect.Minor {
 		return false
 	}
 	return false
 }
 
 //New crates new product with supplied version
-func (p Product) New(major, minor, release int) *Product {
+func (p *Product) New(major, minor, release int) *Product {
 	return &Product{
 		Name:    p.Name,
 		Major:   major,

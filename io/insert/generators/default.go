@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"github.com/viant/sqlx/io"
+	"github.com/viant/sqlx/io/reader"
 	"github.com/viant/sqlx/metadata"
 	"github.com/viant/sqlx/metadata/info"
 	"github.com/viant/sqlx/metadata/sink"
@@ -31,7 +32,7 @@ func NewDefault(dialect *info.Dialect, db *sql.DB, session *sink.Session) *Defau
 
 //Apply generated values to the any
 func (d *Default) Apply(ctx context.Context, any interface{}, table string) error {
-	recordsFn, err := io.AnyProvider(any)
+	recordsFn, err := reader.AnyProvider(any)
 	if err != nil {
 		return err
 	}
@@ -79,11 +80,11 @@ func (d *Default) Apply(ctx context.Context, any interface{}, table string) erro
 		return nil
 	}
 
-	recordsFn, err = io.AnyProvider(any)
+	recordsFn, err = reader.AnyProvider(any)
 	if err != nil {
 		return err
 	}
-	reader, err := io.NewReader(ctx, d.db, SQL, func() interface{} {
+	reader, err := reader.New(ctx, d.db, SQL, func() interface{} {
 		return recordsFn()
 	})
 	if err != nil {
@@ -97,7 +98,7 @@ func (d *Default) Apply(ctx context.Context, any interface{}, table string) erro
 	return err
 }
 
-func (d *Default) prepare(ctx context.Context, rType reflect.Type, table string) ([]sink.Column, io.RowMapper, error) {
+func (d *Default) prepare(ctx context.Context, rType reflect.Type, table string) ([]sink.Column, reader.RowMapper, error) {
 	columns, err := d.loadColumnsInfo(ctx, table)
 	if err != nil {
 		return nil, nil, err
@@ -109,11 +110,11 @@ func (d *Default) prepare(ctx context.Context, rType reflect.Type, table string)
 		if column.Default == nil || strings.HasPrefix(*column.Default, d.dialect.AutoincrementFunc) {
 			continue
 		}
-		ioColumns = append(ioColumns, io.NewBasicColumn(column.Name, column.Type, nil))
+		ioColumns = append(ioColumns, io.NewColumn(column.Name, column.Type, nil))
 		genColumns = append(genColumns, columns[i])
 	}
 
-	queryMapper, err := io.NewQueryStructMapper(ioColumns, rType.Elem(), option.TagSqlx, nil)
+	queryMapper, err := reader.NewStructMapper(ioColumns, rType.Elem(), option.TagSqlx, nil)
 
 	if err != nil {
 		return nil, nil, err

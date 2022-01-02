@@ -12,9 +12,9 @@ import (
 const product = "PostgreSQL"
 
 var pgSQL9 = database.Product{
-	Name:    product,
-	PkgName: "pg",
-	Major:   9,
+	Name:      product,
+	DriverPkg: "pg",
+	Major:     9,
 }
 
 //PqSQL9 return PostgreSQL 9.x product
@@ -263,10 +263,10 @@ WHERE pid=pg_backend_pid() LIMIT 1;
 		Upsert:           dialect.UpsertTypeMergeInto,
 		Load:             dialect.LoadTypeUnsupported,
 		CanAutoincrement: true,
-		CanLastInsertId:  false,
+		CanLastInsertID:  false,
 		CanReturning:     true,
 		QuoteCharacter:   byte(39), // 39 is single quote '
-		CustomPlaceholderGetter: func() func() string {
+		PlaceholderResolver: func() func() string {
 			counter := 0
 			return func() string {
 				counter++

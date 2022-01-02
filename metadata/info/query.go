@@ -7,18 +7,23 @@ import (
 
 //Query represents dialect metadata queries
 type (
+	//Query represents dictionary query
 	Query struct {
 		Kind     Kind
 		SQL      string
 		Criteria Criteria
 		database.Product
 	}
+	//Criterion represents query criterion
 	Criterion struct {
 		Name   string
 		Column string
 	}
+
+	//Criteria represents Criterion collection
 	Criteria []*Criterion
 
+	//Queries represents querties
 	Queries []*Query
 )
 
@@ -32,6 +37,7 @@ func NewQuery(kind Kind, SQL string, info database.Product, criteria ...*Criteri
 	}
 }
 
+//Supported returns true if supported
 func (c Criteria) Supported() int {
 	supported := 0
 	for _, item := range c {
@@ -42,6 +48,7 @@ func (c Criteria) Supported() int {
 	return supported
 }
 
+//Validate validates criteria kind
 func (c Criteria) Validate(kind Kind) error {
 	criteria := kind.Criteria()
 	if len(c) != len(criteria) {

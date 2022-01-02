@@ -14,10 +14,12 @@ var _registry = &registry{
 	dialects: make(map[string]info.Dialects),
 }
 
+//Register register query info
 func Register(queries ...*info.Query) error {
 	return _registry.Register(queries...)
 }
 
+//RegisterDialect register dialect
 func RegisterDialect(dialect *info.Dialect) {
 	_registry.RegisterDialect(dialect)
 }

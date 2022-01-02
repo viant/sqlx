@@ -6,20 +6,17 @@ import (
 	"fmt"
 	"github.com/viant/sqlx/metadata/database"
 	"github.com/viant/sqlx/metadata/info"
-	"github.com/viant/sqlx/metadata/product/ansi"
 	"github.com/viant/sqlx/metadata/registry"
 	"github.com/viant/sqlx/option"
-	"path"
-	"reflect"
 	"strings"
 )
 
 type (
+	//Service represents metadata service
 	Service struct {
 		dialect *info.Dialect
 		recent
 	}
-
 	recent struct {
 		db      *sql.DB
 		product *database.Product
@@ -87,17 +84,7 @@ func (s *Service) Info(ctx context.Context, db *sql.DB, kind info.Kind, sink Sin
 }
 
 func (s *Service) matchProduct(ctx context.Context, db *sql.DB) (*database.Product, error) {
-	pkgPath := reflect.TypeOf(db.Driver()).PkgPath()
-	_, pkgName := path.Split(pkgPath)
-	var product *database.Product
-	for name, candidate := range registry.Products() {
-		if strings.Contains(pkgName, name) || strings.Contains(candidate.Driver, pkgName) {
-			product = registry.Products()[name]
-		}
-	}
-	if product == nil {
-		product = &ansi.ANSI
-	}
+	product := registry.MatchProduct(db)
 	return s.matchVersion(ctx, db, product)
 }
 

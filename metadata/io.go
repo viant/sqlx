@@ -3,7 +3,7 @@ package metadata
 import (
 	"database/sql"
 	"fmt"
-	"github.com/viant/sqlx/io"
+	"github.com/viant/sqlx/io/reader"
 	"reflect"
 )
 
@@ -37,7 +37,7 @@ func fetchStruct(rows *sql.Rows, dest Sink) error {
 	switch valueType.Elem().Kind() {
 	case reflect.Struct:
 		targetType := valueType.Elem()
-		reader := io.NewStmtReader(nil, func() interface{} {
+		reader := reader.NewStmt(nil, func() interface{} {
 			return reflect.New(targetType).Interface()
 		})
 		return reader.ReadAll(rows, func(row interface{}) error {
@@ -49,7 +49,7 @@ func fetchStruct(rows *sql.Rows, dest Sink) error {
 
 		targetType := valueType.Elem().Elem()
 		isTargetPointer := targetType.Kind() == reflect.Ptr
-		reader := io.NewStmtReader(nil, func() interface{} {
+		reader := reader.NewStmt(nil, func() interface{} {
 			return reflect.New(targetType).Interface()
 		})
 		return reader.ReadAll(rows, func(row interface{}) error {

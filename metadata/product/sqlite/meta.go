@@ -11,8 +11,10 @@ import (
 const product = "SQLite"
 
 var sqLite3 = database.Product{
-	Name:  product,
-	Major: 3,
+	Name:      product,
+	Major:     3,
+	DriverPkg: "sqlite3",
+	Driver:    "SQLiteDriver",
 }
 
 //SQLite3 return SQLite3 product
@@ -151,6 +153,16 @@ FROM pragma_function_list t`,
 			info.NewCriterion(info.Schema, ""),
 			info.NewCriterion(info.Function, "t.name"),
 		),
+
+		info.NewQuery(info.KindSession, `SELECT
+		'' AS PID,
+		'' AS USER_NAME,
+		'' AS CATALOG,
+	    name AS SCHEMA_NAME,
+		'' AS APP_NAME
+FROM pragma_database_list
+`, sqLite3),
+
 		info.NewQuery(info.KindForeignKeysCheckOn, `PRAGMA foreign_keys = true`,
 			sqLite3,
 			info.NewCriterion(info.Catalog, ""),
@@ -170,13 +182,13 @@ FROM pragma_function_list t`,
 	}
 
 	registry.RegisterDialect(&info.Dialect{
-		Product:       sqLite3,
-		Placeholder:   "?",
-		Transactional: true,
-		Insert:        dialect.InsertWithMultiValues,
-		Upsert:        dialect.UpsertTypeUnsupported,
-		Load:          dialect.LoadTypeUnsupported,
-		//CanAutoincrement: true,
-		//CanLastInsertId:  true,
+		Product:          sqLite3,
+		Placeholder:      "?",
+		Transactional:    true,
+		Insert:           dialect.InsertWithMultiValues,
+		Upsert:           dialect.UpsertTypeUnsupported,
+		Load:             dialect.LoadTypeUnsupported,
+		CanAutoincrement: true,
+		CanLastInsertID:  true,
 	})
 }

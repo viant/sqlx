@@ -14,7 +14,7 @@ import (
 func TestInserter_Insert(t *testing.T) {
 
 	type entity struct {
-		Id   int    `sqlx:"name=foo_id,primaryKey=true"`
+		Id   int    `sqlx:"name=foo_id,primaryKey=true,generator=autoincrement"`
 		Name string `sqlx:"foo_name"`
 		Desc string `sqlx:"-"`
 		Bar  float64

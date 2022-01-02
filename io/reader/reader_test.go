@@ -1,4 +1,4 @@
-package io
+package reader
 
 import (
 	"context"
@@ -7,6 +7,7 @@ import (
 	"fmt"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/assert"
+	"github.com/viant/sqlx/io"
 	"github.com/viant/sqlx/option"
 	"log"
 	"os"
@@ -51,7 +52,7 @@ func TestReader_ReadAll(t *testing.T) {
 		expect         interface{}
 		initSQL        []string
 		hasMapperError bool
-		resolver       *Resolver
+		resolver       *io.Resolver
 		expectResolved interface{}
 	}{
 		{
@@ -164,7 +165,7 @@ func TestReader_ReadAll(t *testing.T) {
 			newRow: func() interface{} {
 				return &case3Wrapper{}
 			},
-			resolver:       NewResolver(),
+			resolver:       io.NewResolver(),
 			expect:         `[{"Id":1,"Desc":"desc1","Name":"John"},{"Id":2,"Desc":"desc2","Name":"Bruce"}]`,
 			expectResolved: `["101","102"]`,
 		},
@@ -192,7 +193,7 @@ outer:
 		if testCase.resolver != nil {
 			options = append(options, testCase.resolver.Resolve)
 		}
-		reader, err := NewReader(ctx, db, testCase.query, testCase.newRow, options...)
+		reader, err := New(ctx, db, testCase.query, testCase.newRow, options...)
 		if !assert.Nil(t, err, testCase.description) {
 			continue
 		}

@@ -30,6 +30,7 @@ func (r *Resolver) Data(index int) []interface{} {
 	return r.data[index]
 }
 
+//Resolve resolved unmapped column
 func (r *Resolver) Resolve(column Column) func(ptr unsafe.Pointer) interface{} {
 	index := len(r.columns)
 	r.columns = append(r.columns, column)

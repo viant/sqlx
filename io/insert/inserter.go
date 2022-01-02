@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/viant/sqlx/io"
 	"github.com/viant/sqlx/io/insert/generators"
+	"github.com/viant/sqlx/io/reader"
 	"github.com/viant/sqlx/metadata"
 	"github.com/viant/sqlx/metadata/info"
 	"github.com/viant/sqlx/metadata/info/dialect"
@@ -88,7 +89,7 @@ func (w *Inserter) initDialect(ctx context.Context, db *sql.DB, options option.O
 
 //Insert runs INSERT statement for supplied data
 func (w *Inserter) Insert(ctx context.Context, any interface{}, options ...option.Option) (int64, int64, error) {
-	recordsFn, err := io.AnyProvider(any)
+	recordsFn, err := reader.AnyProvider(any)
 	if err != nil {
 		return 0, 0, err
 	}
@@ -140,7 +141,7 @@ func (w *Inserter) Insert(ctx context.Context, any interface{}, options ...optio
 		return 0, 0, err
 	}
 	defer stmt.Close()
-	rowsAffected, lastInsertedId, err := w.insert(ctx, batch, record, recordsFn, stmt, tx)
+	rowsAffected, lastInsertedID, err := w.insert(ctx, batch, record, recordsFn, stmt, tx)
 	if err != nil {
 		if transactional {
 			if rErr := tx.Rollback(); rErr != nil {
@@ -152,7 +153,7 @@ func (w *Inserter) Insert(ctx context.Context, any interface{}, options ...optio
 	if transactional {
 		err = tx.Commit()
 	}
-	return rowsAffected, lastInsertedId, err
+	return rowsAffected, lastInsertedID, err
 }
 
 func (w *Inserter) insert(ctx context.Context, batch *option.Batch, record interface{}, recordsFn func() interface{}, stmt *sql.Stmt, tx *sql.Tx) (int64, int64, error) {
@@ -161,8 +162,8 @@ func (w *Inserter) insert(ctx context.Context, batch *option.Batch, record inter
 	inBatchCount := 0
 	identityIndex := 0
 	var err error
-	var rowsAffected, totalRowsAffected, lastInsertedId int64
-	//ToDo: get real lastInsertedId
+	var rowsAffected, totalRowsAffected, lastInsertedID int64
+	//ToDo: get real lastInsertedID
 	hasAutoIncrement := w.autoIncrement != nil
 	for ; record != nil; record = recordsFn() {
 		offset := inBatchCount * len(w.columns)
@@ -175,7 +176,7 @@ func (w *Inserter) insert(ctx context.Context, batch *option.Batch, record inter
 		}
 		inBatchCount++
 		if inBatchCount == batch.Size {
-			rowsAffected, lastInsertedId, err = flush(ctx, stmt, recValues, lastInsertedId, identities[:identityIndex], hasAutoIncrement, w.dialect.CanLastInsertId)
+			rowsAffected, lastInsertedID, err = flush(ctx, stmt, recValues, lastInsertedID, identities[:identityIndex], hasAutoIncrement, w.dialect.CanLastInsertID)
 			if err != nil {
 				return 0, 0, err
 			}
@@ -191,13 +192,13 @@ func (w *Inserter) insert(ctx context.Context, batch *option.Batch, record inter
 			return 0, 0, nil
 		}
 		defer stmt.Close()
-		rowsAffected, lastInsertedId, err = flush(ctx, stmt, recValues[0:inBatchCount*len(w.columns)], lastInsertedId, identities[:identityIndex], hasAutoIncrement, w.dialect.CanLastInsertId)
+		rowsAffected, lastInsertedID, err = flush(ctx, stmt, recValues[0:inBatchCount*len(w.columns)], lastInsertedID, identities[:identityIndex], hasAutoIncrement, w.dialect.CanLastInsertID)
 		if err != nil {
 			return 0, 0, nil
 		}
 		totalRowsAffected += rowsAffected
 	}
-	return totalRowsAffected, lastInsertedId, err
+	return totalRowsAffected, lastInsertedID, err
 }
 
 func (w *Inserter) prepareInsertStatement(ctx context.Context, batchSize int, tx *sql.Tx) (*sql.Stmt, error) {

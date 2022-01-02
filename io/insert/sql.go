@@ -20,6 +20,7 @@ type Insert struct {
 	valuesOffset int
 }
 
+//Build builds insert statement
 func (i *Insert) Build(options ...interface{}) string {
 	batchSize, insertDialect := i.applyOptions(options)
 	suffix := ""

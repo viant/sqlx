@@ -5,6 +5,7 @@ import (
 	"strings"
 )
 
+//Parse parses product info
 func Parse(input []byte) (info *Product, err error) {
 	cursor := parsly.NewCursor("", input, 0)
 	info = &Product{}

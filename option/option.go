@@ -6,6 +6,7 @@ import (
 )
 
 const (
+	//TagSqlx defines sqlx annotation
 	TagSqlx = "sqlx"
 )
 

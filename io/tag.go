@@ -1,6 +1,9 @@
 package io
 
-import "strings"
+import (
+	"reflect"
+	"strings"
+)
 
 //Tag represent field tag
 type Tag struct {
@@ -12,6 +15,21 @@ type Tag struct {
 	Transient     bool
 	Ns            string
 	Generator     string
+}
+
+//CanExpand return true if field can expend fied struct fields
+func (f *Field) CanExpand() bool {
+	if f.Tag.Ns != "" {
+		return true
+	}
+	if !f.Anonymous {
+		return false
+	}
+	candidateType := f.Type
+	if candidateType.Kind() == reflect.Ptr {
+		candidateType = candidateType.Elem()
+	}
+	return candidateType.Kind() == reflect.Struct
 }
 
 //ParseTag parses tag

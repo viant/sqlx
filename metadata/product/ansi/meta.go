@@ -10,9 +10,11 @@ import (
 //Product represents product
 const product = "ANSI"
 
+//ANSI defines default product
 var ANSI = database.Product{
-	Name:  product,
-	Major: 1,
+	Name:   product,
+	Major:  1,
+	Driver: "ansi",
 }
 
 func init() {
@@ -23,7 +25,6 @@ func init() {
 		Insert:        dialect.InsertWithSingleValues,
 		Upsert:        dialect.UpsertTypeUnsupported,
 		Load:          dialect.LoadTypeUnsupported,
-		//CanAutoincrement: false,
 	})
 }
 

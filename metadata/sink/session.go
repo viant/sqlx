@@ -1,5 +1,6 @@
 package sink
 
+//Session represents connection session info
 type Session struct {
 	PID      string `sqlx:"PID"`
 	Username string `sqlx:"USER_NAME"`

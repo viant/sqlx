@@ -37,7 +37,7 @@ func (c Columns) Names() []string {
 func TypesToColumns(columns []*sql.ColumnType) []Column {
 	var result = make([]Column, len(columns))
 	for i := range columns {
-		result[i] = &columnType{columns[i]}
+		result[i] = &columnType{ColumnType: columns[i]}
 	}
 	return result
 }
@@ -60,10 +60,6 @@ func StructColumns(recordType reflect.Type) ([]Column, error) {
 	for i := 0; i < recordType.NumField(); i++ {
 		field := recordType.Field(i)
 		if isExported := field.PkgPath == ""; !isExported {
-			continue
-		}
-		fieldType := field.Type
-		if !IsBaseType(fieldType) {
 			continue
 		}
 		fieldName := field.Name
