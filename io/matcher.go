@@ -17,7 +17,7 @@ type Matcher struct {
 func (f *Matcher) Match(targetType reflect.Type, columns []Column) ([]Field, error) {
 	if len(columns) == 0 {
 		var err error
-		if columns, err = StructColumns(targetType); err != nil {
+		if columns, err = StructColumns(targetType, f.tagName); err != nil {
 			return nil, fmt.Errorf("failed to create column for struct: %v, %w", targetType.String(), err)
 		}
 	}

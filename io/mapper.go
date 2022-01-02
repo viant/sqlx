@@ -37,7 +37,7 @@ func GenericColumnMapper(src interface{}, tagName string) ([]Column, Placeholder
 		if tag.Column != "" {
 			columnName = tag.Column
 		}
-		if tag.PrimaryKey || strings.ToLower(columnName) == "id" {
+		if tag.Autoincrement || tag.PrimaryKey || strings.ToLower(columnName) == "id" {
 			if tag == nil {
 				tag = &Tag{Column: columnName, PrimaryKey: true}
 			}

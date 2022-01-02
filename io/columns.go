@@ -3,7 +3,6 @@ package io
 import (
 	"database/sql"
 	"fmt"
-	"github.com/viant/sqlx/option"
 	"reflect"
 	"strings"
 )
@@ -52,7 +51,7 @@ func NamesToColumns(columns []string) []Column {
 }
 
 //StructColumns returns column for the struct
-func StructColumns(recordType reflect.Type) ([]Column, error) {
+func StructColumns(recordType reflect.Type, tagName string) ([]Column, error) {
 	var result []Column
 	if recordType.Kind() != reflect.Struct {
 		return nil, fmt.Errorf("expected struct, but had: %v", recordType.Name())
@@ -63,11 +62,12 @@ func StructColumns(recordType reflect.Type) ([]Column, error) {
 			continue
 		}
 		fieldName := field.Name
-		aTag := ParseTag(field.Tag.Get(option.TagSqlx))
+		aTag := ParseTag(field.Tag.Get(tagName))
 		aTag.FieldIndex = i
 		if aTag.Transient {
 			continue
 		}
+		aTag.PrimaryKey = aTag.Autoincrement || aTag.PrimaryKey || strings.ToLower(fieldName) == "id"
 		columnName := fieldName
 		if names := aTag.Column; names != "" {
 			columns := strings.Split(names, "|")
@@ -76,6 +76,7 @@ func StructColumns(recordType reflect.Type) ([]Column, error) {
 		result = append(result, &column{
 			name:     columnName,
 			scanType: field.Type,
+			tag:      aTag,
 		})
 	}
 	return result, nil
