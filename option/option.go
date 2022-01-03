@@ -61,17 +61,32 @@ func (o Options) Product() *database.Product {
 	return nil
 }
 
-//Batch returns batch option
-func (o Options) Batch() *Batch {
+//BatchSize returns batch size option
+func (o Options) BatchSize() int {
 	if len(o) == 0 {
-		return nil
+		return 1
 	}
 	for _, candidate := range o {
-		if batch, ok := candidate.(*Batch); ok {
-			return batch
+		switch actual := candidate.(type) {
+		case BatchSize:
+			return int(actual)
 		}
 	}
-	return nil
+	return 1
+}
+
+//Identity returns identity column
+func (o Options) Identity() string {
+	if len(o) == 0 {
+		return ""
+	}
+	for _, candidate := range o {
+		switch actual := candidate.(type) {
+		case Identity:
+			return string(actual)
+		}
+	}
+	return ""
 }
 
 //Tag represent a annotation tag
@@ -84,12 +99,5 @@ func NewTag(tag string) *Tag {
 	return &Tag{Tag: tag}
 }
 
-//Batch represents a batch options
-type Batch struct {
-	Size int
-}
-
-//NewBatch creates a batch
-func NewBatch(size int) *Batch {
-	return &Batch{Size: size}
-}
+//BatchSize represents a batch size options
+type BatchSize int

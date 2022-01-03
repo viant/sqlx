@@ -50,7 +50,7 @@ func GenericColumnMapper(src interface{}, tagName string) ([]Column, Placeholder
 		getters = append(getters, getter)
 	}
 
-	//make sure id column are at the end
+	//make sure identity columns are at the end
 	if len(identityColumns) > 0 {
 		for i, item := range identityColumns {
 			fieldIndex := item.Tag().FieldIndex

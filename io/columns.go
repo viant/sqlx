@@ -10,13 +10,26 @@ import (
 //Columns represents columns
 type Columns []Column
 
-//Autoincrement returns position of autoincrement column or -1
+//Autoincrement returns position of autoincrement column position or -1
 func (c Columns) Autoincrement() int {
 	if len(c) == 0 {
 		return -1
 	}
 	for i, item := range c {
 		if tag := item.Tag(); tag != nil && tag.Autoincrement {
+			return i
+		}
+	}
+	return -1
+}
+
+//PrimaryKeys returns position of primary key position or -1
+func (c Columns) PrimaryKeys() int {
+	if len(c) == 0 {
+		return -1
+	}
+	for i, item := range c {
+		if tag := item.Tag(); tag != nil && tag.PrimaryKey {
 			return i
 		}
 	}

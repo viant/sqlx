@@ -2,17 +2,14 @@ package insert
 
 import (
 	"fmt"
+	"github.com/viant/sqlx/io"
 	"github.com/viant/sqlx/metadata/info"
 	"github.com/viant/sqlx/option"
 )
 
-//Builder represents SQL builder
-type Builder interface {
-	Build(options ...interface{}) string
-}
-
-//Insert represent insert DML builder
-type Insert struct {
+//Builder represent insert DML builder
+type Builder struct {
+	dialect      *info.Dialect
 	id           string
 	valuesSize   int
 	sql          string
@@ -21,47 +18,30 @@ type Insert struct {
 }
 
 //Build builds insert statement
-func (i *Insert) Build(options ...interface{}) string {
-	batchSize, insertDialect := i.applyOptions(options)
+func (b *Builder) Build(options ...option.Option) string {
+	batchSize := option.Options(options).BatchSize()
 	suffix := ""
-	if insertDialect != nil && insertDialect.CanReturning && len(i.id) > 0 {
-		suffix = " RETURNING " + i.id
+	if b.dialect.CanReturning && len(b.id) > 0 {
+		suffix = " RETURNING " + b.id
 	}
-	if batchSize == i.batchSize {
-		return i.sql + suffix
+	if batchSize == b.batchSize {
+		return b.sql + suffix
 	}
-	limit := i.valuesOffset + (batchSize * i.valuesSize) + (batchSize - 1)
-	return i.sql[:limit] + suffix
+	limit := b.valuesOffset + (batchSize * b.valuesSize) + (batchSize - 1)
+	return b.sql[:limit] + suffix
 }
 
-func (i *Insert) applyOptions(options []interface{}) (int, *info.Dialect) {
-	batchSize := 1
-	var insertDialect *info.Dialect
-	if len(options) > 0 {
-		for _, value := range options {
-			switch actual := value.(type) {
-			case *info.Dialect:
-				insertDialect = actual
-			case int:
-				batchSize = actual
-			case option.Identity:
-				i.id = string(actual)
-			}
-		}
-	}
-	return batchSize, insertDialect
-}
-
-//NewInsert return insert builder
-func NewInsert(table string, batchSize int, columns, values []string) (*Insert, error) {
+//NewBuilder return insert builder
+func NewBuilder(table string, columns []string, dialect *info.Dialect, opts ...option.Option) (io.Builder, error) {
 	if len(columns) == 0 {
 		return nil, fmt.Errorf("columns were empty")
 	}
-	if batchSize == 0 {
-		batchSize = 1
-	}
-	if len(values) != len(columns) {
-		return nil, fmt.Errorf("values size(%v) differs from columns size(%v)", len(values), len(columns))
+	options := option.Options(opts)
+	batchSize := options.BatchSize()
+	var values = make([]string, len(columns))
+	placeholderGetter := dialect.PlaceholderGetter()
+	for i := range values {
+		values[i] = placeholderGetter()
 	}
 	columnSize := len(columns) - 1
 	for _, column := range columns {
@@ -96,10 +76,12 @@ func NewInsert(table string, batchSize int, columns, values []string) (*Insert, 
 		offset += copy(buffer[offset:], ",")
 		offset += copy(buffer[offset:], valBuffer)
 	}
-	return &Insert{
+	return &Builder{
 		sql:          string(buffer[:offset]),
 		valuesSize:   valuesSize,
 		batchSize:    batchSize,
 		valuesOffset: valuesOffset,
+		dialect:      dialect,
+		id:           options.Identity(),
 	}, nil
 }

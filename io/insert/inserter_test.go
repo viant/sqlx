@@ -40,7 +40,7 @@ func TestInserter_Insert(t *testing.T) {
 		lastID      int64
 	}{
 		{
-			description: "Inserter.Insert ",
+			description: "Inserter.Builder ",
 			driver:      "sqlite3",
 			dsn:         "/tmp/sqllite.db",
 			table:       "t1",
@@ -57,7 +57,7 @@ func TestInserter_Insert(t *testing.T) {
 			lastID:   3,
 		},
 		{
-			description: "Inserter.Insert: batch size: 2 ",
+			description: "Inserter.Builder: batchSize size: 2 ",
 			driver:      "sqlite3",
 			dsn:         "/tmp/sqllite.db",
 			table:       "t2",
@@ -73,11 +73,11 @@ func TestInserter_Insert(t *testing.T) {
 			affected: 3,
 			lastID:   3,
 			options: []option.Option{
-				&option.Batch{2},
+				option.BatchSize(2),
 			},
 		},
 		{
-			description: "Inserter.Insert - autoincrement batch - empty table ",
+			description: "Inserter.Builder - autoincrement batchSize - empty table ",
 			driver:      "sqlite3",
 			dsn:         "/tmp/sqllite.db",
 			table:       "t3",
@@ -93,11 +93,11 @@ func TestInserter_Insert(t *testing.T) {
 			affected: 3,
 			lastID:   3,
 			options: []option.Option{
-				&option.Batch{2},
+				option.BatchSize(2),
 			},
 		},
 		{
-			description: "Inserter.Insert - autoincrement batch - existing data",
+			description: "Inserter.Builder - autoincrement batchSize - existing data",
 			driver:      "sqlite3",
 			dsn:         "/tmp/sqllite.db",
 			table:       "t4",
@@ -116,7 +116,7 @@ func TestInserter_Insert(t *testing.T) {
 			affected: 5,
 			lastID:   6,
 			options: []option.Option{
-				&option.Batch{3},
+				option.BatchSize(3),
 			},
 		},
 	}

@@ -6,10 +6,9 @@ import (
 	"fmt"
 	"github.com/viant/sqlx/io"
 	"github.com/viant/sqlx/io/insert/generators"
-	"github.com/viant/sqlx/metadata"
+	"github.com/viant/sqlx/io/internal"
 	"github.com/viant/sqlx/metadata/info"
 	"github.com/viant/sqlx/metadata/info/dialect"
-	"github.com/viant/sqlx/metadata/registry"
 	"github.com/viant/sqlx/option"
 )
 
@@ -22,8 +21,8 @@ type Inserter struct {
 	mapper              io.ColumnMapper
 	columns             io.Columns
 	binder              io.PlaceholderBinder
-	builder             Builder
-	batch               *option.Batch
+	builder             io.Builder
+	batchSize           int
 	autoIncrementColumn io.Column
 	autoIncrement       *int
 }
@@ -34,69 +33,41 @@ func New(ctx context.Context, db *sql.DB, tableName string, options ...option.Op
 	if !option.Assign(options, &columnMapper) {
 		columnMapper = io.GenericColumnMapper
 	}
-	writer := &Inserter{
+	inserter := &Inserter{
 		db:        db,
 		dialect:   option.Options(options).Dialect(),
 		tableName: tableName,
-		batch:     option.Options(options).Batch(),
+		batchSize: option.Options(options).BatchSize(),
 		tagName:   option.Options(options).Tag(),
 		mapper:    columnMapper,
 	}
 
-	err := writer.init(ctx, db, options)
+	err := inserter.init(ctx, db, options)
 	if err != nil {
 		return nil, err
 	}
-	return writer, nil
+	return inserter, nil
 }
 
-func (w *Inserter) init(ctx context.Context, db *sql.DB, options option.Options) error {
-	err := w.initDialect(ctx, db, options)
-	if err != nil {
+func (w *Inserter) init(ctx context.Context, db *sql.DB, options option.Options) (err error) {
+	if w.dialect, err = internal.Dialect(ctx, db, options); err != nil {
 		return err
 	}
-
-	if w.batch == nil {
-		w.batch = &option.Batch{
-			Size: 1,
-		}
-	}
+	w.batchSize = options.BatchSize()
 	if w.dialect.Insert == dialect.InsertWithSingleValues {
-		w.batch.Size = 1
+		w.batchSize = 1
 	}
 	return nil
 }
 
-func (w *Inserter) initDialect(ctx context.Context, db *sql.DB, options option.Options) error {
-	if w.dialect == nil {
-		product := options.Product()
-		if product == nil {
-			var err error
-			meta := metadata.New()
-			product, err = meta.DetectProduct(ctx, db)
-			if err != nil {
-				return fmt.Errorf("missing product option: %T", db)
-			}
-		}
-		w.dialect = registry.LookupDialect(product)
-		if w.dialect == nil {
-			return fmt.Errorf("failed to detect dialect for product: %v", product.Name)
-		}
-	}
-	return nil
-}
-
-//Insert runs INSERT statement for supplied data
+//Builder runs INSERT statement for supplied data
 func (w *Inserter) Insert(ctx context.Context, any interface{}, options ...option.Option) (int64, int64, error) {
 	recordsFn, _, err := io.Iterator(any)
 	if err != nil {
 		return 0, 0, err
 	}
 	record := recordsFn()
-	batch := option.Options(options).Batch()
-	if batch == nil {
-		batch = w.batch
-	}
+	w.batchSize = option.Options(options).BatchSize()
 	if len(w.columns) == 0 {
 		if w.columns, w.binder, err = w.mapper(record, w.tagName); err != nil {
 			return 0, 0, err
@@ -105,16 +76,13 @@ func (w *Inserter) Insert(ctx context.Context, any interface{}, options ...optio
 			w.autoIncrement = &autoIncrement
 			w.autoIncrementColumn = w.columns[autoIncrement]
 			w.columns = w.columns[:autoIncrement]
+			options = append(options, option.Identity(w.autoIncrementColumn.Name()))
 		}
-		var values = make([]string, len(w.columns))
-		placeholderGetter := w.dialect.PlaceholderGetter()
-		for i := range values {
-			values[i] = placeholderGetter()
-		}
-		if w.builder, err = NewInsert(w.tableName, batch.Size, w.columns.Names(), values); err != nil {
+		if w.builder, err = NewBuilder(w.tableName, w.columns.Names(), w.dialect, options...); err != nil {
 			return 0, 0, err
 		}
 	}
+
 	var tx *sql.Tx
 	transactional := w.dialect.Transactional
 	if option.Assign(options, &tx) { //transaction supply as option, do not manage locally transaction
@@ -135,12 +103,12 @@ func (w *Inserter) Insert(ctx context.Context, any interface{}, options ...optio
 		return 0, 0, err
 	}
 
-	stmt, err := w.prepareInsertStatement(ctx, batch.Size, tx)
+	stmt, err := w.prepareStatement(ctx, w.batchSize, tx)
 	if err != nil {
 		return 0, 0, err
 	}
 	defer stmt.Close()
-	rowsAffected, lastInsertedID, err := w.insert(ctx, batch, record, recordsFn, stmt, tx)
+	rowsAffected, lastInsertedID, err := w.insert(ctx, w.batchSize, record, recordsFn, stmt, tx)
 	if err != nil {
 		if transactional {
 			if rErr := tx.Rollback(); rErr != nil {
@@ -155,9 +123,9 @@ func (w *Inserter) Insert(ctx context.Context, any interface{}, options ...optio
 	return rowsAffected, lastInsertedID, err
 }
 
-func (w *Inserter) insert(ctx context.Context, batch *option.Batch, record interface{}, recordsFn func() interface{}, stmt *sql.Stmt, tx *sql.Tx) (int64, int64, error) {
-	var recValues = make([]interface{}, batch.Size*len(w.columns))
-	var identities = make([]interface{}, batch.Size)
+func (w *Inserter) insert(ctx context.Context, batchSize int, record interface{}, recordsFn func() interface{}, stmt *sql.Stmt, tx *sql.Tx) (int64, int64, error) {
+	var recValues = make([]interface{}, batchSize*len(w.columns))
+	var identities = make([]interface{}, batchSize)
 	inBatchCount := 0
 	identityIndex := 0
 	var err error
@@ -174,7 +142,7 @@ func (w *Inserter) insert(ctx context.Context, batch *option.Batch, record inter
 			}
 		}
 		inBatchCount++
-		if inBatchCount == batch.Size {
+		if inBatchCount == batchSize {
 			rowsAffected, lastInsertedID, err = flush(ctx, stmt, recValues, lastInsertedID, identities[:identityIndex], hasAutoIncrement, w.dialect.CanLastInsertID)
 			if err != nil {
 				return 0, 0, err
@@ -186,7 +154,7 @@ func (w *Inserter) insert(ctx context.Context, batch *option.Batch, record inter
 	}
 
 	if inBatchCount > 0 { //overflow
-		stmt, err = w.prepareInsertStatement(ctx, inBatchCount, tx)
+		stmt, err = w.prepareStatement(ctx, inBatchCount, tx)
 		if err != nil {
 			return 0, 0, nil
 		}
@@ -200,18 +168,8 @@ func (w *Inserter) insert(ctx context.Context, batch *option.Batch, record inter
 	return totalRowsAffected, lastInsertedID, err
 }
 
-func (w *Inserter) prepareInsertStatement(ctx context.Context, batchSize int, tx *sql.Tx) (*sql.Stmt, error) {
-	var options = []interface{}{
-		batchSize, w.dialect.Insert,
-	}
-
-	if w.dialect != nil {
-		options = append(options, w.dialect)
-	}
-	if w.autoIncrementColumn != nil {
-		options = append(options, option.Identity(w.autoIncrementColumn.Name()))
-	}
-	SQL := w.builder.Build(options...)
+func (w *Inserter) prepareStatement(ctx context.Context, batchSize int, tx *sql.Tx) (*sql.Stmt, error) {
+	SQL := w.builder.Build(option.BatchSize(batchSize))
 	if tx != nil {
 		return tx.Prepare(SQL)
 	}
