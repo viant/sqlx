@@ -23,6 +23,7 @@ func New(tableName string) *Config {
 	return &Config{TableName: tableName}
 }
 
+//ApplyOption applied config option
 func (c *Config) ApplyOption(ctx context.Context, db *sql.DB, options ...option.Option) error {
 	for _, opt := range options {
 		switch actual := opt.(type) {
