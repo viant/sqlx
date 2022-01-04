@@ -40,7 +40,7 @@ func TestInserter_Insert(t *testing.T) {
 		lastID      int64
 	}{
 		{
-			description: "Inserter.Builder ",
+			description: "Service.Builder ",
 			driver:      "sqlite3",
 			dsn:         "/tmp/sqllite.db",
 			table:       "t1",
@@ -57,7 +57,7 @@ func TestInserter_Insert(t *testing.T) {
 			lastID:   3,
 		},
 		{
-			description: "Inserter.Builder: batchSize size: 2 ",
+			description: "Service.Builder: batchSize size: 2 ",
 			driver:      "sqlite3",
 			dsn:         "/tmp/sqllite.db",
 			table:       "t2",
@@ -77,7 +77,7 @@ func TestInserter_Insert(t *testing.T) {
 			},
 		},
 		{
-			description: "Inserter.Builder - autoincrement batchSize - empty table ",
+			description: "Service.Builder - autoincrement batchSize - empty table ",
 			driver:      "sqlite3",
 			dsn:         "/tmp/sqllite.db",
 			table:       "t3",
@@ -97,7 +97,7 @@ func TestInserter_Insert(t *testing.T) {
 			},
 		},
 		{
-			description: "Inserter.Builder - autoincrement batchSize - existing data",
+			description: "Service.Builder - autoincrement batchSize - existing data",
 			driver:      "sqlite3",
 			dsn:         "/tmp/sqllite.db",
 			table:       "t4",
@@ -132,14 +132,12 @@ outer:
 		if !assert.Nil(t, err, testCase.description) {
 			continue
 		}
-
 		for _, SQL := range testCase.initSQL {
 			_, err := db.Exec(SQL)
 			if !assert.Nil(t, err, testCase.description) {
 				continue outer
 			}
 		}
-
 		if !assert.Nil(t, err, testCase.description) {
 			continue
 		}

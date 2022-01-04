@@ -211,8 +211,8 @@ func TestAbstractService_Info(t *testing.T) {
 				option.NewArgs("", "", "emp"),
 			},
 			expect: `[
-		   				{"Table":"emp","Position":0,"Name":"emp_active","Unique":"0","Origin":"c","Partial":"0", "Columns":"active,last_access_time"},
-		   				{"Table":"emp","Position":1,"Name":"emp_name","Unique":"1","Origin":"c","Partial":"0", "Columns":"name"}
+		   				{"Table":"emp","Position":0,"Name":"emp_active","Unique":"0","Origin":"c","Partial":"0", "columns":"active,last_access_time"},
+		   				{"Table":"emp","Position":1,"Name":"emp_name","Unique":"1","Origin":"c","Partial":"0", "columns":"name"}
 		   ]`,
 		},
 
@@ -445,7 +445,7 @@ func TestAbstractService_Info(t *testing.T) {
 				option.NewArgs("", "mydb", "emp"),
 			},
 			expect: `[
-	{"Table":"emp","Owner":"BTREE","TableSchema":"mydb","Schema":"mydb","Position":0,"Name":"PRIMARY","Columns":"id"}
+	{"Table":"emp","Owner":"BTREE","TableSchema":"mydb","Schema":"mydb","Position":0,"Name":"PRIMARY","columns":"id"}
 ]
 `,
 		},

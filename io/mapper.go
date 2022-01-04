@@ -10,8 +10,8 @@ import (
 //ColumnMapper maps src to columns and its placeholders
 type ColumnMapper func(src interface{}, tagName string) ([]Column, PlaceholderBinder, error)
 
-//GenericColumnMapper returns genertic column mapper
-func GenericColumnMapper(src interface{}, tagName string) ([]Column, PlaceholderBinder, error) {
+//StructColumnMapper returns genertic column mapper
+func StructColumnMapper(src interface{}, tagName string) ([]Column, PlaceholderBinder, error) {
 	recordType := reflect.TypeOf(src)
 	if recordType.Kind() == reflect.Ptr {
 		recordType = recordType.Elem()
@@ -19,7 +19,6 @@ func GenericColumnMapper(src interface{}, tagName string) ([]Column, Placeholder
 	if recordType.Kind() != reflect.Struct {
 		return nil, nil, fmt.Errorf("invalid record type: %v", recordType.Kind())
 	}
-
 	var columns []Column
 	var identityColumns []Column
 	var getters []xunsafe.Getter

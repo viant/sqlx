@@ -4,13 +4,13 @@ import (
 	"context"
 	"database/sql"
 	"github.com/viant/sqlx/io"
-	"github.com/viant/sqlx/io/internal"
+	"github.com/viant/sqlx/io/config"
 	"github.com/viant/sqlx/metadata/info"
 	"github.com/viant/sqlx/option"
 )
 
-//Updater represents updater
-type Updater struct {
+//Service represents updater
+type Service struct {
 	db        *sql.DB
 	tableName string
 	dialect   *info.Dialect
@@ -21,16 +21,25 @@ type Updater struct {
 	binder    io.PlaceholderBinder
 }
 
+func (u *Service) Update() {
+
+}
+
 //New creates an updater
-func New(ctx context.Context, db *sql.DB, tableName string, options ...option.Option) (*Updater, error) {
-	dialect, err := internal.Dialect(ctx, db, options)
+func New(ctx context.Context, db *sql.DB, tableName string, options ...option.Option) (*Service, error) {
+	dialect, err := config.Dialect(ctx, db, options)
 	if err != nil {
 		return nil, err
 	}
-	result := &Updater{
+	var columnMapper io.ColumnMapper
+	if !option.Assign(options, &columnMapper) {
+		columnMapper = io.StructColumnMapper
+	}
+	result := &Service{
 		db:        db,
 		dialect:   dialect,
 		tableName: tableName,
+		mapper:    columnMapper,
 		tagName:   option.Options(options).Tag(),
 	}
 

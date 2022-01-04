@@ -12,7 +12,8 @@ func TestInsert_Build(t *testing.T) {
 	var testCases = []struct {
 		description   string
 		table         string
-		batchSize     option.BatchSize
+		batchSize     int
+		identity      string
 		callBatchSize int
 		columns       []string
 		dialect       *info.Dialect
@@ -54,7 +55,7 @@ func TestInsert_Build(t *testing.T) {
 	}
 
 	for _, testCase := range testCases {
-		builder, err := NewBuilder(testCase.table, testCase.columns, testCase.dialect, testCase.batchSize)
+		builder, err := NewBuilder(testCase.table, testCase.columns, testCase.dialect, testCase.identity, testCase.batchSize)
 		assert.Nil(t, err, testCase.description)
 		actual := builder.Build(option.BatchSize(testCase.callBatchSize))
 		assert.EqualValues(t, testCase.expect, actual, testCase.description)

@@ -1,6 +1,7 @@
 package option
 
 import (
+	"database/sql"
 	"github.com/viant/sqlx/metadata/database"
 	"github.com/viant/sqlx/metadata/info"
 )
@@ -26,7 +27,7 @@ func (o Options) Tag() string {
 	}
 	for _, candidate := range o {
 		if tagOpt, ok := candidate.(Tag); ok {
-			return tagOpt.Tag
+			return string(tagOpt)
 		}
 	}
 	return TagSqlx
@@ -89,15 +90,21 @@ func (o Options) Identity() string {
 	return ""
 }
 
-//Tag represent a annotation tag
-type Tag struct {
-	Tag string
+//Tx returns *sql.Tx or nil
+func (o Options) Tx() *sql.Tx {
+	if len(o) == 0 {
+		return nil
+	}
+	for _, candidate := range o {
+		if v, ok := candidate.(*sql.Tx); ok {
+			return v
+		}
+	}
+	return nil
 }
 
-//NewTag creates a tag
-func NewTag(tag string) *Tag {
-	return &Tag{Tag: tag}
-}
+//Tag represent a annotation tag name
+type Tag string
 
 //BatchSize represents a batch size options
 type BatchSize int

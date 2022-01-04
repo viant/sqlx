@@ -1,4 +1,4 @@
-package internal
+package config
 
 import (
 	"context"
@@ -11,7 +11,8 @@ import (
 )
 
 //Dialect returns a dialect
-func Dialect(ctx context.Context, db *sql.DB, options option.Options) (*info.Dialect, error) {
+func Dialect(ctx context.Context, db *sql.DB, opts ...option.Option) (*info.Dialect, error) {
+	options := option.Options(opts)
 	product := options.Product()
 	if product == nil {
 		var err error

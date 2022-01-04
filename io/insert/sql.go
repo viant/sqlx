@@ -32,12 +32,10 @@ func (b *Builder) Build(options ...option.Option) string {
 }
 
 //NewBuilder return insert builder
-func NewBuilder(table string, columns []string, dialect *info.Dialect, opts ...option.Option) (io.Builder, error) {
+func NewBuilder(table string, columns []string, dialect *info.Dialect, identity string, batchSize int) (io.Builder, error) {
 	if len(columns) == 0 {
 		return nil, fmt.Errorf("columns were empty")
 	}
-	options := option.Options(opts)
-	batchSize := options.BatchSize()
 	var values = make([]string, len(columns))
 	placeholderGetter := dialect.PlaceholderGetter()
 	for i := range values {
@@ -82,6 +80,6 @@ func NewBuilder(table string, columns []string, dialect *info.Dialect, opts ...o
 		batchSize:    batchSize,
 		valuesOffset: valuesOffset,
 		dialect:      dialect,
-		id:           options.Identity(),
+		id:           identity,
 	}, nil
 }
