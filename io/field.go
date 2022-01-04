@@ -7,7 +7,7 @@ import (
 	"unsafe"
 )
 
-//Field represents a mapper filed
+//Field represents column mapped field
 type Field struct {
 	Tag
 	Column
