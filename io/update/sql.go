@@ -1,4 +1,4 @@
-package updater
+package update
 
 import (
 	"fmt"
@@ -11,10 +11,9 @@ const (
 	columnSeparator = ", "
 )
 
-//Builder represent insert DML builder
+//Builder represent update DML builder
 type Builder struct {
 	id            string
-	batchSize     int
 	identityIndex int
 	fragments     []string
 	sqlPrefix     string
@@ -23,8 +22,7 @@ type Builder struct {
 }
 
 //Build builds update statement
-func (b *Builder) Build(options ...option.Option) string {
-
+func (b *Builder) Build(...option.Option) string {
 	size := b.baseSize
 	for i := 0; i < b.identityIndex; i++ {
 		if i > 0 {

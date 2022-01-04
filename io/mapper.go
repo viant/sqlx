@@ -2,20 +2,23 @@ package io
 
 import (
 	"fmt"
+	"github.com/viant/sqlx/option"
 	"github.com/viant/xunsafe"
 	"reflect"
 	"strings"
 )
 
 //ColumnMapper maps src to columns and its placeholders
-type ColumnMapper func(src interface{}, tagName string) ([]Column, PlaceholderBinder, error)
+type ColumnMapper func(src interface{}, tagName string, options ...option.Option) ([]Column, PlaceholderBinder, error)
 
 //StructColumnMapper returns genertic column mapper
-func StructColumnMapper(src interface{}, tagName string) ([]Column, PlaceholderBinder, error) {
+func StructColumnMapper(src interface{}, tagName string, options ...option.Option) ([]Column, PlaceholderBinder, error) {
 	recordType := reflect.TypeOf(src)
 	if recordType.Kind() == reflect.Ptr {
 		recordType = recordType.Elem()
 	}
+
+	identityOnly := option.Options(options).IdentityOnly()
 	if recordType.Kind() != reflect.Struct {
 		return nil, nil, fmt.Errorf("invalid record type: %v", recordType.Kind())
 	}
@@ -42,6 +45,9 @@ func StructColumnMapper(src interface{}, tagName string) ([]Column, PlaceholderB
 			}
 			tag.FieldIndex = i
 			identityColumns = append(identityColumns, NewColumn(columnName, "", field.Type, tag))
+			continue
+		}
+		if identityOnly {
 			continue
 		}
 		columns = append(columns, NewColumn(columnName, "", field.Type, tag))

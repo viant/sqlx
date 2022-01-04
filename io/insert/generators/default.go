@@ -4,7 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"github.com/viant/sqlx/io"
-	"github.com/viant/sqlx/io/reader"
+	"github.com/viant/sqlx/io/read"
 	"github.com/viant/sqlx/metadata"
 	"github.com/viant/sqlx/metadata/info"
 	"github.com/viant/sqlx/metadata/sink"
@@ -84,7 +84,7 @@ func (d *Default) Apply(ctx context.Context, any interface{}, table string) erro
 	if err != nil {
 		return err
 	}
-	reader, err := reader.New(ctx, d.db, SQL, func() interface{} {
+	reader, err := read.New(ctx, d.db, SQL, func() interface{} {
 		return recordsFn()
 	})
 	if err != nil {
@@ -98,7 +98,7 @@ func (d *Default) Apply(ctx context.Context, any interface{}, table string) erro
 	return err
 }
 
-func (d *Default) prepare(ctx context.Context, rType reflect.Type, table string) ([]sink.Column, reader.RowMapper, error) {
+func (d *Default) prepare(ctx context.Context, rType reflect.Type, table string) ([]sink.Column, read.RowMapper, error) {
 	columns, err := d.loadColumnsInfo(ctx, table)
 	if err != nil {
 		return nil, nil, err
@@ -114,7 +114,7 @@ func (d *Default) prepare(ctx context.Context, rType reflect.Type, table string)
 		genColumns = append(genColumns, columns[i])
 	}
 
-	queryMapper, err := reader.NewStructMapper(ioColumns, rType.Elem(), option.TagSqlx, nil)
+	queryMapper, err := read.NewStructMapper(ioColumns, rType.Elem(), option.TagSqlx, nil)
 
 	if err != nil {
 		return nil, nil, err

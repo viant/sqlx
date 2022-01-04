@@ -14,6 +14,9 @@ const (
 //Identity represents identity option
 type Identity string
 
+//IdentityOnly  represents identity (pk) only option
+type IdentityOnly bool
+
 //Option represents generic option
 type Option interface{}
 
@@ -74,6 +77,20 @@ func (o Options) BatchSize() int {
 		}
 	}
 	return 1
+}
+
+//IdentityOnly returns identity only option value or false
+func (o Options) IdentityOnly() bool {
+	if len(o) == 0 {
+		return false
+	}
+	for _, candidate := range o {
+		switch actual := candidate.(type) {
+		case IdentityOnly:
+			return bool(actual)
+		}
+	}
+	return false
 }
 
 //Identity returns identity column

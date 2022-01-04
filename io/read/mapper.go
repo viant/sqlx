@@ -1,4 +1,4 @@
-package reader
+package read
 
 import (
 	"github.com/viant/sqlx/io"

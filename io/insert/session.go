@@ -150,7 +150,6 @@ func (s *session) flush(ctx context.Context, values []interface{}, prevInsertedI
 		}
 		return rowsAffected, newLastInsertedID, err
 	}
-
 	result, err := s.stmt.ExecContext(ctx, values...)
 	if err != nil {
 		return 0, 0, err

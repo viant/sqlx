@@ -1,4 +1,4 @@
-package reader
+package read_test
 
 import (
 	"context"
@@ -8,6 +8,7 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/assert"
 	"github.com/viant/sqlx/io"
+	"github.com/viant/sqlx/io/read"
 	"github.com/viant/sqlx/option"
 	"log"
 	"os"
@@ -193,7 +194,7 @@ outer:
 		if testCase.resolver != nil {
 			options = append(options, testCase.resolver.Resolve)
 		}
-		reader, err := New(ctx, db, testCase.query, testCase.newRow, options...)
+		reader, err := read.New(ctx, db, testCase.query, testCase.newRow, options...)
 		if !assert.Nil(t, err, testCase.description) {
 			continue
 		}

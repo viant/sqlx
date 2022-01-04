@@ -13,6 +13,7 @@ type Config struct {
 	TableName string
 	TagName   string
 	Identity  string
+	Columns   io.Columns
 	Dialect   *info.Dialect
 	Mapper    io.ColumnMapper
 	Builder   io.Builder
@@ -31,6 +32,8 @@ func (c *Config) ApplyOption(ctx context.Context, db *sql.DB, options ...option.
 			c.Dialect = actual
 		case option.Tag:
 			c.TagName = string(actual)
+		case io.Columns:
+			c.Columns = actual
 		case option.Identity:
 			c.Identity = string(actual)
 		default:
