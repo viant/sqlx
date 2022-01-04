@@ -75,7 +75,7 @@ func (w *session) end(err error) error {
 }
 
 func (s *session) prepare(ctx context.Context, batchSize int) error {
-	SQL := s.Builder.Build(batchSize)
+	SQL := s.Builder.Build(option.BatchSize(batchSize))
 	var err error
 	if s.stmt != nil {
 		if err = s.stmt.Close(); err != nil {

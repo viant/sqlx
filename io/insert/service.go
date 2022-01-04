@@ -33,29 +33,29 @@ func New(ctx context.Context, db *sql.DB, tableName string, options ...option.Op
 	return inserter, err
 }
 
-//Insert runs insert SQL
-func (w *Service) Insert(ctx context.Context, any interface{}, options ...option.Option) (int64, int64, error) {
+//Exec runs insert SQL
+func (s *Service) Exec(ctx context.Context, any interface{}, options ...option.Option) (int64, int64, error) {
 	recordsFn, _, err := io.Iterator(any)
 	if err != nil {
 		return 0, 0, err
 	}
 	record := recordsFn()
 	batchSize := option.Options(options).BatchSize()
-	if err = generators.NewDefault(w.Dialect, w.db, nil).Apply(ctx, any, w.TableName); err != nil {
+	if err = generators.NewDefault(s.Dialect, s.db, nil).Apply(ctx, any, s.TableName); err != nil {
 		return 0, 0, err
 	}
 	var sess *session
-	if sess, err = w.ensureSession(record, batchSize); err != nil {
+	if sess, err = s.ensureSession(record, batchSize); err != nil {
 		return 0, 0, err
 	}
-	if err = sess.begin(ctx, w.db, options); err != nil {
+	if err = sess.begin(ctx, s.db, options); err != nil {
 		return 0, 0, err
 	}
 	if err = sess.prepare(ctx, batchSize); err != nil {
 		return 0, 0, err
 	}
-	rowsAffected, lastInsertedID, err := w.insert(ctx, w.batchSize, record, recordsFn)
-	err = w.end(err)
+	rowsAffected, lastInsertedID, err := s.insert(ctx, s.batchSize, record, recordsFn)
+	err = s.end(err)
 	return rowsAffected, lastInsertedID, err
 }
 

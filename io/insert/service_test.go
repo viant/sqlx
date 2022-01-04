@@ -11,7 +11,7 @@ import (
 	"testing"
 )
 
-func TestInserter_Insert(t *testing.T) {
+func TestService_Exec(t *testing.T) {
 
 	type entity struct {
 		Id   int    `sqlx:"name=foo_id,primaryKey=true,generator=autoincrement"`
@@ -145,7 +145,7 @@ outer:
 		if !assert.Nil(t, err, testCase.description) {
 			continue
 		}
-		affected, lastID, err := writer.Insert(context.TODO(), testCase.records)
+		affected, lastID, err := writer.Exec(context.TODO(), testCase.records)
 		assert.Nil(t, err, testCase.description)
 		assert.EqualValues(t, testCase.affected, affected, testCase.description)
 		assert.EqualValues(t, testCase.lastID, lastID, testCase.description)

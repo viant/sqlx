@@ -3,6 +3,7 @@ package updater
 import (
 	"fmt"
 	"github.com/viant/sqlx/metadata/info"
+	"github.com/viant/sqlx/option"
 	"strings"
 )
 
@@ -22,7 +23,7 @@ type Builder struct {
 }
 
 //Build builds update statement
-func (b *Builder) Build(options ...interface{}) string {
+func (b *Builder) Build(options ...option.Option) string {
 
 	size := b.baseSize
 	for i := 0; i < b.identityIndex; i++ {
