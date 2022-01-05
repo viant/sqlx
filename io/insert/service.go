@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"github.com/viant/sqlx/io"
 	"github.com/viant/sqlx/io/config"
-	"github.com/viant/sqlx/io/insert/generators"
+	"github.com/viant/sqlx/io/insert/generator"
 	"github.com/viant/sqlx/option"
 	"reflect"
 	"sync"
@@ -41,7 +41,7 @@ func (s *Service) Exec(ctx context.Context, any interface{}, options ...option.O
 	}
 	record := recordsFn()
 	batchSize := option.Options(options).BatchSize()
-	if err = generators.NewDefault(s.Dialect, s.db, nil).Apply(ctx, any, s.TableName); err != nil {
+	if err = generator.NewDefault(s.Dialect, s.db, nil).Apply(ctx, any, s.TableName, batchSize); err != nil {
 		return 0, 0, err
 	}
 	var sess *session

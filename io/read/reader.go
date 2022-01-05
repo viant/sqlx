@@ -63,7 +63,7 @@ func (r *Reader) ReadAll(rows *sql.Rows, emit func(row interface{}) error) error
 			return err
 		}
 	}
-	return nil
+	return rows.Err()
 }
 
 //QueryAllWithSlice query all with a slice

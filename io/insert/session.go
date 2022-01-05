@@ -32,6 +32,7 @@ func (s *session) init(record interface{}) (err error) {
 		s.autoIncrement = &autoIncrement
 		s.autoIncrementColumn = s.columns[autoIncrement]
 		s.columns = s.columns[:autoIncrement]
+		s.Identity = s.autoIncrementColumn.Name()
 	}
 	s.Builder, err = NewBuilder(s.TableName, s.columns.Names(), s.Dialect, s.Identity, s.batchSize)
 	return err
@@ -75,7 +76,7 @@ func (w *session) end(err error) error {
 }
 
 func (s *session) prepare(ctx context.Context, batchSize int) error {
-	SQL := s.Builder.Build(option.BatchSize(batchSize))
+	SQL := s.Dialect.EnsurePlaceholders(s.Builder.Build(option.BatchSize(batchSize)))
 	var err error
 	if s.stmt != nil {
 		if err = s.stmt.Close(); err != nil {
