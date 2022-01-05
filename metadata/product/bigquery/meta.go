@@ -14,7 +14,7 @@ var bigQuery = database.Product{
 	Name: product,
 }
 
-//bigQuery return MySQL 5.x product
+//BigQuery return BigQuery product
 func BigQuery() *database.Product {
 	return &bigQuery
 }
