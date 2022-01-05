@@ -51,7 +51,7 @@ func (d *Default) Apply(ctx context.Context, any interface{}, table string, batc
 	valuesOffset := 0
 	batchCount := 0
 	i := 0
-	for ; i < size; {
+	for i < size {
 		record := valueAt(i)
 		ptrs, err := rowMapper(record)
 		if err != nil {

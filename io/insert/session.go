@@ -55,22 +55,22 @@ func (s *session) begin(ctx context.Context, db *sql.DB, options []option.Option
 	return nil
 }
 
-func (w *session) end(err error) error {
-	if w.stmt != nil {
-		if sErr := w.stmt.Close(); sErr != nil {
+func (s *session) end(err error) error {
+	if s.stmt != nil {
+		if sErr := s.stmt.Close(); sErr != nil {
 			err = fmt.Errorf("%w, %v", sErr, err)
 		}
 	}
 	if err != nil {
-		if w.transactional {
-			if rErr := w.tx.Rollback(); rErr != nil {
+		if s.transactional {
+			if rErr := s.tx.Rollback(); rErr != nil {
 				return fmt.Errorf("failed to rollback: %w, %v", err, rErr)
 			}
 		}
 		return err
 	}
-	if w.transactional {
-		err = w.tx.Commit()
+	if s.transactional {
+		err = s.tx.Commit()
 	}
 	return err
 }

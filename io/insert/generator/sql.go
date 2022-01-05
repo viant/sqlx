@@ -14,8 +14,8 @@ const (
 	asFragment       = " AS "
 )
 
+//NewBuilder returns default values builder
 func NewBuilder(columns []sink.Column, batchSize int) *Builder {
-
 	sb := strings.Builder{}
 	itemSize := 0
 	for i := 0; i < batchSize; i++ {
@@ -48,27 +48,25 @@ func NewBuilder(columns []sink.Column, batchSize int) *Builder {
 	}
 
 	return &Builder{
-		sql: sb.String(),
+		sql:       sb.String(),
 		itemsSize: itemSize,
 		batchSize: batchSize,
 	}
 }
 
+//Builder represent default value builder
 type Builder struct {
 	sql       string
 	batchSize int
 	itemsSize int
 }
 
+//Build builds default values statement
 func (b Builder) Build(options ...option.Option) string {
 	batchSize := option.Options(options).BatchSize()
 	if batchSize == b.batchSize {
 		return b.sql
 	}
-	limit := batchSize * b.itemsSize + (batchSize - 1) * len(unionAllFragment)
+	limit := batchSize*b.itemsSize + (batchSize-1)*len(unionAllFragment)
 	return b.sql[:limit]
 }
-
-//  SELECT COALESCE(?, uuidv4()) as ID ? AS SQL_ORDER FROM FOOS,
-//	UNION
-//	SELECT COALESCE(?, uuidv4()) as ID, ? AS SQL_ORDER FROM FOOS

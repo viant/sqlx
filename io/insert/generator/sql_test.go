@@ -61,6 +61,6 @@ func TestUpdate_Build(t *testing.T) {
 
 }
 
-func stringPtr(value string) *string  {
+func stringPtr(value string) *string {
 	return &value
 }

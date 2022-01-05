@@ -55,4 +55,3 @@ func Values(any interface{}) (func(index int) interface{}, int, error) {
 	}
 	return nil, 0, fmt.Errorf("usnupported :%T", any)
 }
-
