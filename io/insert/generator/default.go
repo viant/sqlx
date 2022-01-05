@@ -1,4 +1,4 @@
-package generators
+package generator
 
 import (
 	"context"
@@ -11,11 +11,13 @@ import (
 	"github.com/viant/sqlx/option"
 	"reflect"
 	"strings"
+	"unsafe"
 )
 
 //Default represents generator for default strategy
 // TODO: Add order to union
 type Default struct {
+	builder *Builder
 	dialect *info.Dialect
 	db      *sql.DB
 	session *sink.Session
@@ -31,71 +33,63 @@ func NewDefault(dialect *info.Dialect, db *sql.DB, session *sink.Session) *Defau
 }
 
 //Apply generated values to the any
-func (d *Default) Apply(ctx context.Context, any interface{}, table string) error {
-	recordsFn, _, err := io.Iterator(any)
-	if err != nil {
+func (d *Default) Apply(ctx context.Context, any interface{}, table string, batchSize int) error {
+	valueAt, size, err := io.Values(any)
+	if err != nil || size == 0 {
 		return err
 	}
 
-	record := recordsFn()
-	columns, rowMapper, err := d.prepare(ctx, reflect.TypeOf(record), table)
+	aRecord := valueAt(0)
+	columns, rowMapper, err := d.prepare(ctx, reflect.TypeOf(aRecord), table)
 	if err != nil || len(columns) == 0 {
 		return err
 	}
 
-	SQL := ""
-	defaultValues := make([]string, 0)
-	values := make([]interface{}, 0) // +1 - Order By column value
-	placeholderGetter := d.dialect.PlaceholderGetter()
-
+	d.ensureBuilder(columns, batchSize)
+	inBatchSoFar := 0
+	values := make([]interface{}, (len(columns)+1)*batchSize) // +1 - Order By column value
+	valuesOffset := 0
+	batchCount := 0
 	i := 0
-	for {
-		if i > 0 {
-			record = recordsFn()
-		}
-		if record == nil {
-			break
-		}
-		i++
-
+	for i < size {
+		record := valueAt(i)
 		ptrs, err := rowMapper(record)
 		if err != nil {
 			return err
 		}
-		for j, valuePtr := range ptrs {
-			genCol := columns[j]
-			values = append(values, sqlNil(valuePtr))
-			defaultValues = append(defaultValues, sqlValue(*genCol.Default, genCol.Name, placeholderGetter))
+
+		for j := 0; j < len(columns); j++ {
+			values[valuesOffset] = sqlNil(ptrs[j])
+			valuesOffset++
 		}
-		newRowSelect := "SELECT " + strings.Join(defaultValues, ", ")
-		if SQL == "" {
-			SQL = newRowSelect
-		} else {
-			SQL = SQL + " UNION " + newRowSelect
+		values[valuesOffset] = i
+		valuesOffset++
+		inBatchSoFar++
+		i++
+
+		if inBatchSoFar >= batchSize {
+			err = d.flush(ctx, values, batchSize*batchCount, i, valueAt)
+			if err != nil {
+				return err
+			}
+			batchCount++
+			inBatchSoFar = 0
+			valuesOffset = 0
+			continue
 		}
-		defaultValues = make([]string, 0)
 	}
 
-	if len(SQL) == 0 {
-		return nil
+	if inBatchSoFar > 0 {
+		err = d.flush(ctx, values[:valuesOffset], batchCount*batchSize, i, valueAt)
 	}
-
-	recordsFn, _, err = io.Iterator(any)
-	if err != nil {
-		return err
-	}
-	reader, err := read.New(ctx, d.db, SQL, func() interface{} {
-		return recordsFn()
-	})
-	if err != nil {
-		return err
-	}
-
-	err = reader.QueryAll(ctx, func(row interface{}) error {
-		return nil
-	}, values...)
-
 	return err
+}
+
+func (d *Default) ensureBuilder(columns []sink.Column, batchSize int) {
+	if d.builder == nil {
+		d.builder = NewBuilder(columns, batchSize)
+		d.builder.Build()
+	}
 }
 
 func (d *Default) prepare(ctx context.Context, rType reflect.Type, table string) ([]sink.Column, read.RowMapper, error) {
@@ -114,24 +108,15 @@ func (d *Default) prepare(ctx context.Context, rType reflect.Type, table string)
 		genColumns = append(genColumns, columns[i])
 	}
 
-	queryMapper, err := read.NewStructMapper(ioColumns, rType.Elem(), option.TagSqlx, nil)
+	ioColumns = append(ioColumns, io.NewColumn(sqlxOrderColumn, "", reflect.TypeOf(0)))
+
+	queryMapper, err := read.NewStructMapper(ioColumns, rType.Elem(), option.TagSqlx, resolveSqlxPosition)
 
 	if err != nil {
 		return nil, nil, err
 	}
 
 	return genColumns, queryMapper, err
-}
-
-func (d *Default) countGeneratedColumns(columns []sink.Column) int {
-	counter := 0
-	for _, column := range columns {
-		if column.Default != nil {
-			counter++
-		}
-	}
-
-	return counter
 }
 
 func (d *Default) loadColumnsInfo(ctx context.Context, table string) ([]sink.Column, error) {
@@ -155,4 +140,31 @@ func (d *Default) ensureSession(ctx context.Context, meta *metadata.Service) (*s
 		return session, err
 	}
 	return d.session, nil
+}
+
+func (d *Default) flush(ctx context.Context, values []interface{}, offset int, limit int, at func(index int) interface{}) error {
+	batchSize := limit - offset
+	SQL := d.builder.Build(option.BatchSize(batchSize))
+	dataReader, err := read.New(ctx, d.db, SQL, func() interface{} {
+		result := at(offset)
+		offset++
+		return result
+	}, io.Resolve(resolveSqlxPosition))
+
+	if err != nil {
+		return err
+	}
+
+	err = dataReader.QueryAll(ctx, func(row interface{}) error {
+		return nil
+	}, values...)
+
+	return err
+}
+
+func resolveSqlxPosition(_ io.Column) func(pointer unsafe.Pointer) interface{} {
+	i := 0
+	return func(pointer unsafe.Pointer) interface{} {
+		return &i
+	}
 }

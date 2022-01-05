@@ -32,6 +32,7 @@ func (s *session) init(record interface{}) (err error) {
 		s.autoIncrement = &autoIncrement
 		s.autoIncrementColumn = s.columns[autoIncrement]
 		s.columns = s.columns[:autoIncrement]
+		s.Identity = s.autoIncrementColumn.Name()
 	}
 	s.Builder, err = NewBuilder(s.TableName, s.columns.Names(), s.Dialect, s.Identity, s.batchSize)
 	return err
@@ -54,28 +55,28 @@ func (s *session) begin(ctx context.Context, db *sql.DB, options []option.Option
 	return nil
 }
 
-func (w *session) end(err error) error {
-	if w.stmt != nil {
-		if sErr := w.stmt.Close(); sErr != nil {
+func (s *session) end(err error) error {
+	if s.stmt != nil {
+		if sErr := s.stmt.Close(); sErr != nil {
 			err = fmt.Errorf("%w, %v", sErr, err)
 		}
 	}
 	if err != nil {
-		if w.transactional {
-			if rErr := w.tx.Rollback(); rErr != nil {
+		if s.transactional {
+			if rErr := s.tx.Rollback(); rErr != nil {
 				return fmt.Errorf("failed to rollback: %w, %v", err, rErr)
 			}
 		}
 		return err
 	}
-	if w.transactional {
-		err = w.tx.Commit()
+	if s.transactional {
+		err = s.tx.Commit()
 	}
 	return err
 }
 
 func (s *session) prepare(ctx context.Context, batchSize int) error {
-	SQL := s.Builder.Build(option.BatchSize(batchSize))
+	SQL := s.Dialect.EnsurePlaceholders(s.Builder.Build(option.BatchSize(batchSize)))
 	var err error
 	if s.stmt != nil {
 		if err = s.stmt.Close(); err != nil {

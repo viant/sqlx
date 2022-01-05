@@ -37,9 +37,8 @@ func NewBuilder(table string, columns []string, dialect *info.Dialect, identity 
 		return nil, fmt.Errorf("columns were empty")
 	}
 	var values = make([]string, len(columns))
-	placeholderGetter := dialect.PlaceholderGetter()
 	for i := range values {
-		values[i] = placeholderGetter()
+		values[i] = "?"
 	}
 	columnSize := len(columns) - 1
 	for _, column := range columns {
