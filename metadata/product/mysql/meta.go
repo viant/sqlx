@@ -267,7 +267,7 @@ where ID=CONNECTION_ID() LIMIT 1;
 		Insert:           dialect.InsertWithMultiValues,
 		Upsert:           dialect.UpsertTypeInsertOrReplace,
 		Load:             dialect.LoadTypeLocalData,
-		QuoteCharacter:   byte(39), // byte(39) is single quote '
+		QuoteCharacter:   '\'',
 		CanAutoincrement: true,
 		CanLastInsertID:  true,
 		// TODO: provide real autoincrement function

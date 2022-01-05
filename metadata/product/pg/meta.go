@@ -265,7 +265,7 @@ WHERE pid=pg_backend_pid() LIMIT 1;
 		CanAutoincrement: true,
 		CanLastInsertID:  false,
 		CanReturning:     true,
-		QuoteCharacter:   byte(39), // 39 is single quote '
+		QuoteCharacter:   '\'', // 39 is single quote '
 		PlaceholderResolver: func() func() string {
 			counter := 0
 			return func() string {

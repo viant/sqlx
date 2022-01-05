@@ -171,7 +171,9 @@ func prepareSQL(query *info.Query, placeholderGetter func() string, argsOpt *opt
 	if len(args) > len(criteria) {
 		return "", filterArgs, fmt.Errorf("invalid arguments, expected: %v, but had: %v", criteria, args)
 	}
+
 	SQL := query.SQL
+
 	var criteriaValues = make([]string, 0)
 	for i := range args {
 		if column := query.Criteria[i].Column; column != "" {

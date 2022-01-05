@@ -185,6 +185,7 @@ FROM pragma_database_list
 		Product:          sqLite3,
 		Placeholder:      "?",
 		Transactional:    true,
+		QuoteCharacter:   '\'',
 		Insert:           dialect.InsertWithMultiValues,
 		Upsert:           dialect.UpsertTypeUnsupported,
 		Load:             dialect.LoadTypeUnsupported,

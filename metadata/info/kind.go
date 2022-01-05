@@ -3,6 +3,8 @@ package info
 import "fmt"
 
 const (
+	//Region defines catalog region (only for cloud database)
+	Region = "Region"
 	//Catalog defines catalog kind literal
 	Catalog = "Catalog"
 	//Schema defines schema kind literal

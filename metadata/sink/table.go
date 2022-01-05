@@ -13,5 +13,5 @@ type Table struct {
 	Rows          int    `sqlx:"TABLE_ROWS"`
 	Version       string `sqlx:"VERSION"`
 	Engine        string `sqlx:"ENGINE"`
-	SQL           string `sqlx:"SQL"`
+	SQL           string `sqlx:"DDL"`
 }

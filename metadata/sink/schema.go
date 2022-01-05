@@ -8,4 +8,5 @@ type Schema struct {
 	Collation    string `sqlx:"DEFAULT_COLLATION_NAME"`
 	Path         string `sqlx:"SCHEMA_FILE|SQL_PATH"`
 	Sequence     int64  `sqlx:"SCHEMA_POS"`
+	Region       string `sqlx:"REGION"`
 }

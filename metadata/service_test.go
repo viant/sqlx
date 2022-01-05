@@ -4,12 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"github.com/viant/sqlx/option"
-	"os"
-
-	// "github.com/viant/sqlx/metadata/option"
-	"github.com/viant/sqlx/metadata/sink"
-
 	_ "github.com/go-sql-driver/mysql"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/assert"
@@ -18,6 +12,9 @@ import (
 	"github.com/viant/sqlx/metadata/info"
 	_ "github.com/viant/sqlx/metadata/product/mysql"
 	_ "github.com/viant/sqlx/metadata/product/sqlite"
+	"github.com/viant/sqlx/metadata/sink"
+	"github.com/viant/sqlx/option"
+	"os"
 	"path"
 	"testing"
 )
