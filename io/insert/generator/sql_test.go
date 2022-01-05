@@ -32,7 +32,7 @@ func TestUpdate_Build(t *testing.T) {
 			},
 			batchSize:        2,
 			builderBatchSize: 2,
-			expect:           `SELECT COALESCE(?,uuid_v4()) AS NAME,COALESCE(?,nextval) AS ID, ? AS SQLX_POS UNION SELECT COALESCE(?,uuid_v4()) AS NAME,COALESCE(?,nextval) AS ID, ? AS SQLX_POS`,
+			expect:           `SELECT COALESCE(?,uuid_v4()) AS NAME,COALESCE(?,nextval) AS ID, ?+0 AS SQLX_POS UNION SELECT COALESCE(?,uuid_v4()) AS NAME,COALESCE(?,nextval) AS ID, ?+0 AS SQLX_POS`,
 		},
 		{
 			description: "generate with batch size",
@@ -49,7 +49,7 @@ func TestUpdate_Build(t *testing.T) {
 			},
 			batchSize:        2,
 			builderBatchSize: 3,
-			expect:           `SELECT COALESCE(?,uuid_v4()) AS NAME,COALESCE(?,nextval) AS ID, ? AS SQLX_POS UNION SELECT COALESCE(?,uuid_v4()) AS NAME,COALESCE(?,nextval) AS ID, ? AS SQLX_POS`,
+			expect:           `SELECT COALESCE(?,uuid_v4()) AS NAME,COALESCE(?,nextval) AS ID, ?+0 AS SQLX_POS UNION SELECT COALESCE(?,uuid_v4()) AS NAME,COALESCE(?,nextval) AS ID, ?+0 AS SQLX_POS`,
 		},
 	}
 
