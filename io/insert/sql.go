@@ -5,16 +5,21 @@ import (
 	"github.com/viant/sqlx/io"
 	"github.com/viant/sqlx/metadata/info"
 	"github.com/viant/sqlx/option"
+	"strings"
+)
+
+const (
+	insertIntoFragment = "INSERT INTO "
 )
 
 //Builder represent insert DML builder
 type Builder struct {
-	dialect      *info.Dialect
-	id           string
-	valuesSize   int
-	sql          string
-	batchSize    int
-	valuesOffset int
+	dialect    *info.Dialect
+	id         string
+	valuesSize int
+	sql        string
+	batchSize  int
+	offsets    []uint32
 }
 
 //Build builds insert statement
@@ -27,7 +32,7 @@ func (b *Builder) Build(options ...option.Option) string {
 	if batchSize == b.batchSize {
 		return b.sql + suffix
 	}
-	limit := b.valuesOffset + (batchSize * b.valuesSize) + (batchSize - 1)
+	limit := b.offsets[batchSize-1]
 	return b.sql[:limit] + suffix
 }
 
@@ -36,49 +41,48 @@ func NewBuilder(table string, columns []string, dialect *info.Dialect, identity 
 	if len(columns) == 0 {
 		return nil, fmt.Errorf("columns were empty")
 	}
-	var values = make([]string, len(columns))
-	for i := range values {
-		values[i] = "?"
+	sqlBuilder := strings.Builder{}
+	sqlBuilder.Grow(estimateBufferSize(table, columns, batchSize))
+	var offsets []uint32
+	sqlBuilder.WriteString(insertIntoFragment)
+	sqlBuilder.WriteString(table)
+	sqlBuilder.WriteString("(")
+	for i, column := range columns {
+		if i > 0 {
+			sqlBuilder.WriteString(",")
+		}
+		sqlBuilder.WriteString(column)
 	}
-	columnSize := len(columns) - 1
-	for _, column := range columns {
-		columnSize += len(column)
+	sqlBuilder.WriteString(") VALUES ")
+	getPlaceholder := dialect.PlaceholderGetter()
+	for i := 0; i < batchSize; i++ {
+		if i > 0 {
+			sqlBuilder.WriteString(",")
+		}
+		sqlBuilder.WriteString("(")
+		for j := range columns {
+			if j > 0 {
+				sqlBuilder.WriteString(",")
+			}
+			sqlBuilder.WriteString(getPlaceholder())
+		}
+		sqlBuilder.WriteString(")")
+		offsets = append(offsets, uint32(sqlBuilder.Len()))
 	}
-	valuesSize := len(values) + 1
-	for _, value := range values {
-		valuesSize += len(value)
-	}
-	var valBuffer = make([]byte, valuesSize)
 
-	var buffer = make([]byte, 23+columnSize+(batchSize*valuesSize)+(batchSize-1)+len(table))
-	offset := copy(buffer, "INSERT INTO ")
-	offset += copy(buffer[offset:], table)
-	offset += copy(buffer[offset:], "(")
-	offset += copy(buffer[offset:], columns[0])
-
-	valOffset := copy(valBuffer, "(")
-	valOffset += copy(valBuffer[valOffset:], values[0])
-
-	for i := 1; i < len(columns); i++ {
-		offset += copy(buffer[offset:], ",")
-		offset += copy(buffer[offset:], columns[i])
-		valOffset += copy(valBuffer[valOffset:], ",")
-		valOffset += copy(valBuffer[valOffset:], values[i])
-	}
-	valOffset += copy(valBuffer[valOffset:], ")")
-	offset += copy(buffer[offset:], ") VALUES ")
-	valuesOffset := offset
-	offset += copy(buffer[offset:], valBuffer)
-	for i := 1; i < batchSize; i++ {
-		offset += copy(buffer[offset:], ",")
-		offset += copy(buffer[offset:], valBuffer)
-	}
 	return &Builder{
-		sql:          string(buffer[:offset]),
-		valuesSize:   valuesSize,
-		batchSize:    batchSize,
-		valuesOffset: valuesOffset,
-		dialect:      dialect,
-		id:           identity,
+		sql:       sqlBuilder.String(),
+		dialect:   dialect,
+		batchSize: batchSize,
+		offsets:   offsets,
+		id:        identity,
 	}, nil
+}
+
+func estimateBufferSize(table string, columns []string, batchSize int) int {
+	estimateSize := 0
+	for _, column := range columns {
+		estimateSize += len(column) + 4
+	}
+	return len(table) + len(insertIntoFragment) + 10 + estimateSize*batchSize
 }

@@ -1,5 +1,4 @@
-# sqlx
-Go lang sql extensions
+# sqlx - Comprehensive SQL Extensions For Go
 
 ## Motivation
 
