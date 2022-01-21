@@ -51,6 +51,7 @@ func (s *Service) Exec(ctx context.Context, any interface{}, options ...option.O
 	if err = sess.begin(ctx, s.db, options); err != nil {
 		return 0, 0, err
 	}
+
 	if err = sess.prepare(ctx, batchSize); err != nil {
 		return 0, 0, err
 	}

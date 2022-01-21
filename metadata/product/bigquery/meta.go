@@ -216,5 +216,4 @@ SESSION_USER() AS USER_NAME,
 		CanLastInsertID:   false,
 		AutoincrementFunc: "",
 	})
-
 }

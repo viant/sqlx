@@ -4,8 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"github.com/viant/sqlx/io"
+	"github.com/viant/sqlx/io/config"
 	"github.com/viant/sqlx/io/read"
-	"github.com/viant/sqlx/metadata"
 	"github.com/viant/sqlx/metadata/info"
 	"github.com/viant/sqlx/metadata/sink"
 	"github.com/viant/sqlx/option"
@@ -16,11 +16,14 @@ import (
 
 //Default represents generator for default strategy
 // TODO: Add order to union
+// TODO: Refresh session when rType changes
 type Default struct {
-	builder *Builder
-	dialect *info.Dialect
-	db      *sql.DB
-	session *sink.Session
+	builder     *Builder
+	dialect     *info.Dialect
+	db          *sql.DB
+	session     *sink.Session
+	queryMapper read.RowMapper
+	columns     []sink.Column
 }
 
 //NewDefault creates a default generator
@@ -93,6 +96,19 @@ func (d *Default) ensureBuilder(columns []sink.Column, batchSize int) {
 }
 
 func (d *Default) prepare(ctx context.Context, rType reflect.Type, table string) ([]sink.Column, read.RowMapper, error) {
+	if d.queryMapper != nil && d.columns != nil {
+		return d.columns, d.queryMapper, nil
+	}
+
+	if !d.shouldLoadColumnInfo(rType) {
+		d.columns = []sink.Column{}
+		d.queryMapper = func(target interface{}) ([]interface{}, error) {
+			return []interface{}{}, nil
+		}
+
+		return d.columns, d.queryMapper, nil
+	}
+
 	columns, err := d.loadColumnsInfo(ctx, table)
 	if err != nil {
 		return nil, nil, err
@@ -116,30 +132,32 @@ func (d *Default) prepare(ctx context.Context, rType reflect.Type, table string)
 		return nil, nil, err
 	}
 
+	d.columns = genColumns
+	d.queryMapper = queryMapper
+
 	return genColumns, queryMapper, err
 }
 
 func (d *Default) loadColumnsInfo(ctx context.Context, table string) ([]sink.Column, error) {
-	meta := metadata.New()
-	session, err := d.ensureSession(ctx, meta)
-
+	session, err := d.ensureSession(ctx)
 	if err != nil {
 		return nil, err
 	}
-	tableColumns := make([]sink.Column, 0)
-	err = meta.Info(ctx, d.db, info.KindTable, &tableColumns, option.NewArgs(session.Catalog, session.Schema, table))
+	return config.Columns(ctx, session, d.db, table)
 
-	return tableColumns, err
 }
 
-func (d *Default) ensureSession(ctx context.Context, meta *metadata.Service) (*sink.Session, error) {
-	if d.session == nil {
-		session := new(sink.Session)
-		err := meta.Info(ctx, d.db, info.KindSession, session)
-		d.session = session
-		return session, err
+func (d *Default) ensureSession(ctx context.Context) (*sink.Session, error) {
+	if d.session != nil {
+		return d.session, nil
 	}
-	return d.session, nil
+	session, err := config.Session(ctx, d.db)
+	if err != nil {
+		return nil, err
+	}
+
+	d.session = session
+	return session, nil
 }
 
 func (d *Default) flush(ctx context.Context, values []interface{}, offset int, limit int, at func(index int) interface{}) error {
@@ -160,6 +178,20 @@ func (d *Default) flush(ctx context.Context, values []interface{}, offset int, l
 	}, values...)
 
 	return err
+}
+
+func (d *Default) shouldLoadColumnInfo(rType reflect.Type) bool {
+	if rType.Kind() == reflect.Ptr {
+		rType = rType.Elem()
+	}
+
+	for i := 0; i < rType.NumField(); i++ {
+		tag := io.ParseTag(rType.Field(i).Tag.Get(option.TagSqlx))
+		if tag.Generator != "" && !(tag.PrimaryKey && tag.Autoincrement) {
+			return true
+		}
+	}
+	return false
 }
 
 func resolveSqlxPosition(_ io.Column) func(pointer unsafe.Pointer) interface{} {

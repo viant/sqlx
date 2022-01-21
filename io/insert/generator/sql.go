@@ -7,11 +7,15 @@ import (
 )
 
 const (
-	selectFragment   = "SELECT "
-	sqlxOrderColumn  = "SQLX_POS"
-	unionAllFragment = " UNION "
-	coalesceFragment = "COALESCE"
-	asFragment       = " AS "
+	selectFragment             = "SELECT "
+	sqlxOrderColumn            = "SQLX_POS"
+	unionAllFragment           = " UNION "
+	coalesceFragment           = "COALESCE"
+	asFragment                 = " AS "
+	separatorFragment          = ","
+	valuePlaceholderFragment   = "(?,"
+	coalesceClosureFragment    = ")"
+	sqlxOrderColumnPlaceholder = ", ?+0"
 )
 
 //NewBuilder returns default values builder
@@ -27,18 +31,18 @@ func NewBuilder(columns []sink.Column, batchSize int) *Builder {
 			if k == 0 {
 				sb.WriteString(selectFragment)
 			} else {
-				sb.WriteString(",")
+				sb.WriteString(separatorFragment)
 			}
 
 			sb.WriteString(coalesceFragment)
-			sb.WriteString("(?,")
+			sb.WriteString(valuePlaceholderFragment)
 			sb.WriteString(*column.Default)
-			sb.WriteString(")")
+			sb.WriteString(coalesceClosureFragment)
 			sb.WriteString(asFragment)
 			sb.WriteString(column.Name)
 		}
 
-		sb.WriteString(", ?+0")
+		sb.WriteString(sqlxOrderColumnPlaceholder)
 		sb.WriteString(asFragment)
 		sb.WriteString(sqlxOrderColumn)
 

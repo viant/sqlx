@@ -3,6 +3,7 @@ package info
 import (
 	"github.com/viant/sqlx/metadata/database"
 	"github.com/viant/sqlx/metadata/info/dialect"
+	"github.com/viant/sqlx/metadata/info/placeholder"
 	"strings"
 )
 
@@ -10,16 +11,17 @@ import (
 type Dialect struct {
 	database.Product
 	Placeholder         string // prepare statement placeholder, default '?', but oracle uses ':'
-	PlaceholderResolver func() func() string
+	PlaceholderResolver placeholder.Generator
 	Transactional       bool
 	Insert              dialect.InsertFeatures
 	Upsert              dialect.UpsertFeatures
 	Load                dialect.LoadFeature
-	CanAutoincrement    bool
-	AutoincrementFunc   string
-	CanLastInsertID     bool
-	CanReturning        bool //Postgress supports Returning Data From Modified Rows in one statement
-	QuoteCharacter      byte
+	//LoadResolver        temp.SessionResolver
+	CanAutoincrement  bool
+	AutoincrementFunc string
+	CanLastInsertID   bool
+	CanReturning      bool //Postgress supports Returning Data From Modified Rows in one statement
+	QuoteCharacter    byte
 	// TODO: check if column has a space or exist in keywords in this case use quote if keyword is specified
 	// i.e. normalized column on the dialect
 	Keywords map[string]bool
@@ -31,23 +33,22 @@ type Dialects []*Dialect
 //PlaceholderGetter returns PlaceholderResolver if not nil, otherwise returns function that returns Placeholder
 func (d *Dialect) PlaceholderGetter() func() string {
 	if d.PlaceholderResolver != nil {
-		return d.PlaceholderResolver()
+		return d.PlaceholderResolver.Resolver()
 	}
-	return func() string {
-		return d.Placeholder
-	}
+	return (&placeholder.DefaultGenerator{}).Resolver()
 }
 
 //EnsurePlaceholders converts '?' to specific dialect placeholders if needed
 func (d *Dialect) EnsurePlaceholders(SQL string) string {
-	if d.Placeholder == "?" {
+	if d.Placeholder == placeholder.Default {
 		return SQL
 	}
 	placeholders := indexPlaceholders(SQL)
-	if len(placeholders) == 0 {
+	placeholderLen := len(placeholders)
+	if placeholderLen == 0 || placeholders[0] == -1 {
 		return SQL
 	}
-	var result = make([]byte, len(SQL)+4*len(placeholders))
+	var result = make([]byte, len(SQL)-placeholderLen+d.countPlaceholdersLen(0, placeholderLen))
 	sqlPos := 0
 	resultPos := 0
 	getPlaceholder := d.PlaceholderGetter()
@@ -64,11 +65,22 @@ func (d *Dialect) EnsurePlaceholders(SQL string) string {
 	return string(result[:resultPos])
 }
 
+func (d *Dialect) name() {
+
+}
+
+func (d *Dialect) countPlaceholdersLen(start, numOfPlaceholders int) int {
+	if d.PlaceholderResolver != nil {
+		return d.PlaceholderResolver.Len(start, numOfPlaceholders)
+	}
+	return (&placeholder.DefaultGenerator{}).Len(start, numOfPlaceholders)
+}
+
 func indexPlaceholders(SQL string) []int {
-	index := strings.Index(SQL, "?")
+	index := strings.Index(SQL, placeholder.Default)
 	var indexes = []int{index}
 	for index+1 < len(SQL) {
-		next := strings.Index(SQL[index+1:], "?")
+		next := strings.Index(SQL[index+1:], placeholder.Default)
 		if next == -1 {
 			break
 		}

@@ -1,6 +1,7 @@
 package registry
 
 import (
+	"github.com/viant/sqlx/io"
 	"github.com/viant/sqlx/metadata/database"
 	"github.com/viant/sqlx/metadata/info"
 	"sort"
@@ -12,11 +13,22 @@ var _registry = &registry{
 	queries:  make(map[string][]info.Queries),
 	products: make(map[string]*database.Product),
 	dialects: make(map[string]info.Dialects),
+	loads:    make(map[string]io.SessionResolver),
 }
 
 //Register register query info
 func Register(queries ...*info.Query) error {
 	return _registry.Register(queries...)
+}
+
+//RegisterLoad register session provider
+func RegisterLoad(load io.SessionResolver, productName string) {
+	_registry.RegisterLoad(load, productName)
+}
+
+//MatchLoadSession returns Session for Dialect
+func MatchLoadSession(dialect *info.Dialect) io.Session {
+	return _registry.loads[dialect.Product.Name](dialect)
 }
 
 //RegisterDialect register dialect
@@ -44,6 +56,7 @@ type registry struct {
 	queries  map[string][]info.Queries
 	products map[string]*database.Product
 	dialects map[string]info.Dialects
+	loads    map[string]io.SessionResolver
 }
 
 func (r *registry) LookupDialect(product *database.Product) *info.Dialect {
@@ -122,4 +135,8 @@ func (r *registry) Register(queries ...*info.Query) error {
 		sort.Sort(r.queries[query.Product.Name][query.Kind])
 	}
 	return nil
+}
+
+func (r *registry) RegisterLoad(load io.SessionResolver, product string) {
+	r.loads[product] = load
 }

@@ -15,6 +15,7 @@ type Tag struct {
 	Transient     bool
 	Ns            string
 	Generator     string
+	NullifyEmpty  bool
 }
 
 //CanExpand return true if field can expend fied struct fields
@@ -65,6 +66,9 @@ func ParseTag(tagString string) *Tag {
 					tag.PrimaryKey = true
 					tag.Generator = ""
 				}
+			case "nullify":
+				nullify := strings.TrimSpace(nv[1])
+				tag.NullifyEmpty = nullify == "true" || nullify == ""
 			}
 			continue
 		}

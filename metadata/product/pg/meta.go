@@ -6,7 +6,6 @@ import (
 	"github.com/viant/sqlx/metadata/info/dialect"
 	"github.com/viant/sqlx/metadata/registry"
 	"log"
-	"strconv"
 )
 
 const product = "PostgreSQL"
@@ -256,24 +255,18 @@ WHERE pid=pg_backend_pid() LIMIT 1;
 	}
 
 	registry.RegisterDialect(&info.Dialect{
-		Product:          pgSQL9,
-		Placeholder:      "$",
-		Transactional:    true,
-		Insert:           dialect.InsertWithMultiValues,
-		Upsert:           dialect.UpsertTypeMergeInto,
-		Load:             dialect.LoadTypeUnsupported,
-		CanAutoincrement: true,
-		CanLastInsertID:  false,
-		CanReturning:     true,
-		QuoteCharacter:   '\'', // 39 is single quote '
-		PlaceholderResolver: func() func() string {
-			counter := 0
-			return func() string {
-				counter++
-				return "$" + strconv.Itoa(counter)
-			}
-		},
-		AutoincrementFunc: "nextval",
+		Product:             pgSQL9,
+		Placeholder:         "$",
+		Transactional:       true,
+		Insert:              dialect.InsertWithMultiValues,
+		Upsert:              dialect.UpsertTypeMergeInto,
+		Load:                dialect.LoadTypeUnsupported,
+		CanAutoincrement:    true,
+		CanLastInsertID:     false,
+		CanReturning:        true,
+		QuoteCharacter:      '\'',
+		PlaceholderResolver: &PlaceholderGenerator{},
+		AutoincrementFunc:   "nextval",
 	})
 
 }

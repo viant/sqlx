@@ -4,6 +4,7 @@ import (
 	"github.com/viant/sqlx/metadata/database"
 	"github.com/viant/sqlx/metadata/info"
 	"github.com/viant/sqlx/metadata/info/dialect"
+	"github.com/viant/sqlx/metadata/info/placeholder"
 	"github.com/viant/sqlx/metadata/registry"
 )
 
@@ -19,12 +20,13 @@ var ANSI = database.Product{
 
 func init() {
 	registry.RegisterDialect(&info.Dialect{
-		Product:       ANSI,
-		Placeholder:   "?",
-		Transactional: true,
-		Insert:        dialect.InsertWithSingleValues,
-		Upsert:        dialect.UpsertTypeUnsupported,
-		Load:          dialect.LoadTypeUnsupported,
+		Product:             ANSI,
+		Placeholder:         "?",
+		Transactional:       true,
+		Insert:              dialect.InsertWithSingleValues,
+		Upsert:              dialect.UpsertTypeUnsupported,
+		Load:                dialect.LoadTypeUnsupported,
+		PlaceholderResolver: &placeholder.DefaultGenerator{},
 	})
 }
 

@@ -6,6 +6,9 @@ import (
 	"reflect"
 )
 
+//ValueAccessor represents function that returns value at given index.
+type ValueAccessor = func(index int) interface{}
+
 //Iterator creates an iterator for any data structure, it returns next function, len, or error
 func Iterator(any interface{}) (func() interface{}, int, error) {
 	next, size, err := Values(any)
@@ -25,7 +28,7 @@ func Iterator(any interface{}) (func() interface{}, int, error) {
 }
 
 //Values return function to access value at position
-func Values(any interface{}) (func(index int) interface{}, int, error) {
+func Values(any interface{}) (ValueAccessor, int, error) {
 	switch actual := any.(type) {
 	case []interface{}:
 		return func(index int) interface{} {
