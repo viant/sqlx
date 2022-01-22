@@ -58,3 +58,12 @@ func ensureScanType(columnTypeName string, scanType reflect.Type) reflect.Type {
 	}
 	return interfaceType
 }
+
+//EnsureDereference returns Type of value dereferenced e.g. if any is type of *Foo, it will return Foo
+func EnsureDereference(value interface{}) reflect.Type {
+	rType := reflect.TypeOf(value)
+	if rType.Kind() == reflect.Ptr {
+		return rType.Elem()
+	}
+	return rType
+}
