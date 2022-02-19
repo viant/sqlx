@@ -1,5 +1,20 @@
 # sqlx - Comprehensive SQL Extensions For Go
 
+
+Please refer to [`CHANGELOG.md`](CHANGELOG.md) if you encounter breaking changes.
+
+- [Motivation](#motivation)
+- [Usage](#usage)
+  - [Dictionary metadata](#dictionary-metadata)
+  - [Reader Service](#reader-service)
+  - [Inserter Service](#inserter-service)
+  - [Updater Service](#updater-service)
+  - [Merger Service](#merger-service)
+  - [Loader Service](#loader-service)
+- [Contibution](#contributing-to-bqtail)
+- [License](#license)
+
+
 ## Motivation
 
 The goal of this library is to extend and simplify interaction with database/sql api.
@@ -10,7 +25,7 @@ This library defines
 
 ## Usage
 
-### Accessing database dictionary metadata
+### Dictionary metadata
 
 ```go
 package mypkg
@@ -77,9 +92,9 @@ The following info kind and sink are available:
 - info.KindSequences:(sink.Sequence) list of sequences values for catalog, schema
 - info.KindFunctions: ([]sink.Function) list of functions for catalog, schema
 
+### I/O Services
 
-### Reading data
-
+### Reader Service
 
 ```go
 package mypkg
@@ -122,31 +137,97 @@ func ExampleReader_ReadAll() {
 }
 ```
 
-### Inserting data
-
-
-
-
-### Loading data
-
-
-
-
-Before using any of the CRUD operation, You have to import package with required product. All of the supported products
-are specified at the `sqlx/metadata/product` package e.g. If you want to use `MySQL` database you need to import `MySQL`
-product:
+### Inserter Service
 
 ```go
-    import _ "github.com/viant/sqlx/metadata/product/mysql"
+package insert_test
+
+import (
+  "context"
+  "database/sql"
+  "fmt"
+  "github.com/viant/sqlx/io/insert"
+  //Make sure to add specific databas product import
+  _ "github.com/viant/sqlx/metadata/product/mysql"
+  "github.com/viant/sqlx/option"
+  "log"
+)
+
+func ExampleService_Exec() {
+  type Foo struct {
+    ID   int
+    Name string
+  }
+  dsn := ""
+  db, err := sql.Open("mysql", dsn)
+  if err != nil {
+    log.Fatalln(err)
+  }
+
+  insert, err := insert.New(context.TODO(), db, "mytable", option.BatchSize(1024))
+  if err != nil {
+    log.Fatalln(err)
+  }
+  var records []*Foo
+  //records = getAppRecords()
+
+  affected, lastID, err := insert.Exec(context.TODO(), records)
+  if err != nil {
+    log.Fatalln(err)
+  }
+  fmt.Printf("affected: %v, last ID: %v\n", affected, lastID)
+}
+
 ```
 
-You also need to import `load` package if you want to use `sqlx/io/load` e.g. If you want to load data into `MySQL`
-database, you need to import `MySQL` load package:
+### Updater Service
+
+### Merger Service
+
+### Deleter Service
+
+
+### Loader Service
 
 ```go
-    import _ "github.com/viant/sqlx/metadata/product/mysql/load"
-```
+package load_test
 
+import (
+	"context"
+	"database/sql"
+	"fmt"
+	
+	//Make sure to import specific database loader implementation
+     _ "github.com/viant/sqlx/metadata/product/mysql/load"
+	"github.com/viant/sqlx/io/load"
+	"log"
+)
+
+func ExampleService_Exec() {
+	type Foo struct {
+		ID int
+		Name string
+	}
+	dsn := ""
+	db, err := sql.Open("mysql", dsn)
+	if err != nil {
+		log.Fatalln(err)
+	}
+	loader, err := load.New(context.Background(), db, "dest_table")
+	if err != nil {
+		log.Fatalln(err)
+	}
+	var data []Foo
+	
+	//data = getAppData()
+	count,  err := loader.Exec(context.TODO(), &data)
+	if err != nil {
+		log.Fatalln(err)
+	}
+	fmt.Printf("loaded %v\n", count)
+}
+
+```
 
 
 
