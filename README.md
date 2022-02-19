@@ -8,6 +8,7 @@ This library defines
 - services for reading/inserting/loading/updating/deleting
 
 
+## Usage
 
 ### Accessing database dictionary metadata
 
