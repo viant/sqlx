@@ -6,6 +6,7 @@ import (
 	"github.com/viant/sqlx/io/config"
 	"github.com/viant/sqlx/metadata/info"
 	"github.com/viant/sqlx/metadata/sink"
+	"github.com/viant/sqlx/option"
 )
 
 //Service represents service used to
@@ -33,12 +34,11 @@ func New(ctx context.Context, db *sql.DB, tableName string) (*Service, error) {
 }
 
 //Exec executes load statement specific for database
-func (s *Service) Exec(ctx context.Context, any interface{}) (int, error) {
+func (s *Service) Exec(ctx context.Context, any interface{}, options ...option.Option) (int, error) {
 	dialect, err := s.ensureDialect(ctx)
 	if err != nil {
 		return 0, err
 	}
-
 	session := config.LoadSession(dialect)
 	exec, err := session.Exec(ctx, any, s.db, s.tableName)
 	if err != nil {
