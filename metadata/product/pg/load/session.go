@@ -3,7 +3,6 @@ package load
 import (
 	"context"
 	"database/sql"
-	"fmt"
 	"github.com/lib/pq"
 	"github.com/viant/sqlx/io"
 	"github.com/viant/sqlx/io/read"
@@ -16,10 +15,9 @@ import (
 
 //Session represents Postgres load session
 type Session struct {
-	dialect       *info.Dialect
-	reader        goIo.Reader
-	transactional bool
-	tx            *sql.Tx
+	*io.Transaction
+	dialect *info.Dialect
+	reader  goIo.Reader
 }
 
 //Exec inserts data to table using "Copy in"
@@ -46,14 +44,16 @@ func (s *Session) Exec(ctx context.Context, data interface{}, db *sql.DB, tableN
 		return nil, err
 	}
 
-	stmt, err := s.tx.Prepare(pq.CopyIn(tableName, names...))
+	stmt, err := s.Transaction.Prepare(pq.CopyIn(tableName, names...))
 	if err != nil {
 		return nil, s.end(err)
 	}
+
 	result, err := s.load(ctx, dataAccessor, size, mapper, stmt)
 	if err != nil {
 		return result, s.end(err)
 	}
+
 	exec, err := stmt.ExecContext(ctx)
 	return exec, s.end(err)
 
@@ -85,32 +85,29 @@ func (s *Session) mapColumnsToLowerCasedNames(columns []io.Column) []string {
 }
 
 func (s *Session) begin(ctx context.Context, db *sql.DB, options []option.Option) error {
+	if err := s.ensureTransaction(ctx, options, db); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (s *Session) ensureTransaction(ctx context.Context, options option.Options, db *sql.DB) error {
 	var err error
-	s.transactional = s.dialect.Transactional
-	if option.Assign(options, s.tx) { //transaction supply as option, do not manage locally transaction
-		s.transactional = false
+	s.Transaction, err = io.TransactionFor(ctx, s.dialect, options, db)
+	if err != nil {
+		return err
 	}
-	if s.transactional {
-		if s.tx, err = db.BeginTx(ctx, nil); err != nil {
-			if rErr := s.tx.Rollback(); rErr != nil {
-				return fmt.Errorf("%w, %v", err, rErr)
-			}
-		}
-	}
+
 	return nil
 }
 
 func (s *Session) end(err error) error {
-	if err != nil && s.tx != nil {
-		if rErr := s.tx.Rollback(); rErr != nil {
-			return fmt.Errorf("failed to rollback: %w, %v", err, rErr)
-		}
-		return err
+	if err != nil {
+		return s.Transaction.RollbackWithErr(err)
 	}
-	if s.transactional {
-		err = s.tx.Commit()
-	}
-	return err
+
+	return s.Transaction.Commit()
 }
 
 //NewSession returns new Postgres load session

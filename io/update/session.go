@@ -11,14 +11,13 @@ import (
 )
 
 type session struct {
+	*io.Transaction
 	rType reflect.Type
 	*config.Config
 	binder        io.PlaceholderBinder
 	columns       io.Columns
 	identityIndex int
-	transactional bool
 	db            *sql.DB
-	tx            *sql.Tx
 	stmt          *sql.Stmt
 }
 
@@ -35,18 +34,11 @@ func (s *session) init(record interface{}) (err error) {
 
 func (s *session) begin(ctx context.Context, db *sql.DB, options []option.Option) error {
 	var err error
-	s.db = db
-	s.transactional = s.Dialect.Transactional
-	if option.Assign(options, s.tx) { //transaction supply as option, do not manage locally transaction
-		s.transactional = false
+	s.Transaction, err = io.TransactionFor(ctx, s.Dialect, options, db)
+	if err != nil {
+		return err
 	}
-	if s.transactional {
-		if s.tx, err = db.BeginTx(ctx, nil); err != nil {
-			if rErr := s.tx.Rollback(); rErr != nil {
-				return fmt.Errorf("%w, %v", err, rErr)
-			}
-		}
-	}
+
 	return nil
 }
 
@@ -58,8 +50,8 @@ func (s *session) prepare(ctx context.Context) error {
 			return fmt.Errorf("failed to close stetement: %w", err)
 		}
 	}
-	if s.tx != nil {
-		s.stmt, err = s.tx.Prepare(SQL)
+	if s.Transaction != nil {
+		s.stmt, err = s.Transaction.Prepare(SQL)
 		return err
 	}
 	s.stmt, err = s.db.PrepareContext(ctx, SQL)
@@ -81,22 +73,20 @@ func (s *session) update(ctx context.Context, record interface{}, recordsFn func
 	return affectedRecords, nil
 }
 
-func (w *session) end(err error) error {
-	if w.stmt != nil {
-		if sErr := w.stmt.Close(); sErr != nil {
+func (s *session) end(err error) error {
+	if s.stmt != nil {
+		if sErr := s.stmt.Close(); sErr != nil {
 			err = fmt.Errorf("%w, %v", sErr, err)
 		}
 	}
+
+	if s.Transaction == nil {
+		return nil
+	}
+
 	if err != nil {
-		if w.transactional {
-			if rErr := w.tx.Rollback(); rErr != nil {
-				return fmt.Errorf("failed to rollback: %w, %v", err, rErr)
-			}
-		}
-		return err
+		return s.Transaction.RollbackWithErr(err)
 	}
-	if w.transactional {
-		err = w.tx.Commit()
-	}
-	return err
+
+	return s.Transaction.Commit()
 }
