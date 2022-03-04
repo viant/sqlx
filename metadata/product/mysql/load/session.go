@@ -89,11 +89,9 @@ func (s *Session) begin(ctx context.Context, db *sql.DB, options []option.Option
 }
 
 func (s *Session) end(err error) error {
-	if err != nil {
-		if s.transactional {
-			if rErr := s.tx.Rollback(); rErr != nil {
-				return fmt.Errorf("failed to rollback: %w, %v", err, rErr)
-			}
+	if err != nil && s.tx != nil {
+		if rErr := s.tx.Rollback(); rErr != nil {
+			return fmt.Errorf("failed to rollback: %w, %v", err, rErr)
 		}
 		return err
 	}

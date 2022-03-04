@@ -3,6 +3,7 @@ package load
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"github.com/lib/pq"
 	"github.com/viant/sqlx/io"
 	"github.com/viant/sqlx/io/read"
@@ -15,12 +16,14 @@ import (
 
 //Session represents Postgres load session
 type Session struct {
-	dialect *info.Dialect
-	reader  goIo.Reader
+	dialect       *info.Dialect
+	reader        goIo.Reader
+	transactional bool
+	tx            *sql.Tx
 }
 
 //Exec inserts data to table using "Copy in"
-func (s *Session) Exec(ctx context.Context, data interface{}, db *sql.DB, tableName string) (sql.Result, error) {
+func (s *Session) Exec(ctx context.Context, data interface{}, db *sql.DB, tableName string, options ...option.Option) (sql.Result, error) {
 	dataAccessor, size, err := io.Values(data)
 	if err != nil {
 		return nil, err
@@ -38,43 +41,34 @@ func (s *Session) Exec(ctx context.Context, data interface{}, db *sql.DB, tableN
 	}
 
 	names := s.mapColumnsToLowerCasedNames(columns)
-	tx, err := db.Begin()
-	if err != nil {
+
+	if err = s.begin(ctx, db, options); err != nil {
 		return nil, err
 	}
 
-	stmt, err := tx.Prepare(pq.CopyIn(tableName, names...))
+	stmt, err := s.tx.Prepare(pq.CopyIn(tableName, names...))
 	if err != nil {
-		tx.Rollback()
-		return nil, err
+		return nil, s.end(err)
 	}
-
-	result, err := s.load(ctx, dataAccessor, size, mapper, tx, stmt)
+	result, err := s.load(ctx, dataAccessor, size, mapper, stmt)
 	if err != nil {
-		return result, err
+		return result, s.end(err)
 	}
-
 	exec, err := stmt.ExecContext(ctx)
-	if err != nil {
-		tx.Rollback()
-		return nil, err
-	}
-	tx.Commit()
-	return exec, err
+	return exec, s.end(err)
+
 }
 
-func (s *Session) load(ctx context.Context, dataAccessor io.ValueAccessor, size int, mapper read.RowMapper, tx *sql.Tx, stmt *sql.Stmt) (sql.Result, error) {
+func (s *Session) load(ctx context.Context, dataAccessor io.ValueAccessor, size int, mapper read.RowMapper, stmt *sql.Stmt) (sql.Result, error) {
 	var ptrs []interface{}
 	var err error
 	for i := 0; i < size; i++ {
 		ptrs, err = mapper(dataAccessor(i))
 		if err != nil {
-			tx.Rollback()
 			return nil, err
 		}
 		_, err = stmt.ExecContext(ctx, ptrs...)
 		if err != nil {
-			tx.Rollback()
 			return nil, err
 		}
 	}
@@ -88,6 +82,35 @@ func (s *Session) mapColumnsToLowerCasedNames(columns []io.Column) []string {
 		names[i] = strings.ToLower(columns[i].Name())
 	}
 	return names
+}
+
+func (s *Session) begin(ctx context.Context, db *sql.DB, options []option.Option) error {
+	var err error
+	s.transactional = s.dialect.Transactional
+	if option.Assign(options, s.tx) { //transaction supply as option, do not manage locally transaction
+		s.transactional = false
+	}
+	if s.transactional {
+		if s.tx, err = db.BeginTx(ctx, nil); err != nil {
+			if rErr := s.tx.Rollback(); rErr != nil {
+				return fmt.Errorf("%w, %v", err, rErr)
+			}
+		}
+	}
+	return nil
+}
+
+func (s *Session) end(err error) error {
+	if err != nil && s.tx != nil {
+		if rErr := s.tx.Rollback(); rErr != nil {
+			return fmt.Errorf("failed to rollback: %w, %v", err, rErr)
+		}
+		return err
+	}
+	if s.transactional {
+		err = s.tx.Commit()
+	}
+	return err
 }
 
 //NewSession returns new Postgres load session
