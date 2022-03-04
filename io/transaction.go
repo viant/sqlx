@@ -13,12 +13,13 @@ type Transaction struct {
 	Global bool
 }
 
-func TransactionFor(ctx context.Context, dialect *info.Dialect, options option.Options, db *sql.DB) (*Transaction, error) {
+func TransactionFor(ctx context.Context, dialect *info.Dialect, db *sql.DB, options []option.Option) (*Transaction, error) {
 	if !dialect.Transactional {
 		return nil, nil
 	}
 
-	tx := options.Tx()
+	var tx *sql.Tx
+	option.Assign(options, &tx)
 	if tx != nil {
 		return &Transaction{
 			Tx:     tx,

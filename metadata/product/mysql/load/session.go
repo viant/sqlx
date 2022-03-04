@@ -64,7 +64,7 @@ func (s *Session) Exec(ctx context.Context, data interface{}, db *sql.DB, tableN
 
 	var result sql.Result
 	if s.Transaction != nil {
-		result, err = s.Transaction.ExecCtx(ctx, SQL)
+		result, err = s.Transaction.ExecContext(ctx, SQL)
 	} else {
 		result, err = db.ExecContext(ctx, SQL)
 	}
@@ -72,9 +72,9 @@ func (s *Session) Exec(ctx context.Context, data interface{}, db *sql.DB, tableN
 	return result, err
 }
 
-func (s *Session) begin(ctx context.Context, db *sql.DB, options option.Options) error {
+func (s *Session) begin(ctx context.Context, db *sql.DB, options []option.Option) error {
 	var err error
-	s.Transaction, err = io.TransactionFor(ctx, s.dialect, options, db)
+	s.Transaction, err = io.TransactionFor(ctx, s.dialect, db, options)
 	if err != nil {
 		return err
 	}

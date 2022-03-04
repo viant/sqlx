@@ -39,7 +39,7 @@ func (s *session) init(record interface{}) (err error) {
 
 func (s *session) begin(ctx context.Context, db *sql.DB, options []option.Option) error {
 	var err error
-	s.Transaction, err = io.TransactionFor(ctx, s.Dialect, options, db)
+	s.Transaction, err = io.TransactionFor(ctx, s.Dialect, db, options)
 	if err != nil {
 		return err
 	}

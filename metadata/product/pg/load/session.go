@@ -94,7 +94,7 @@ func (s *Session) begin(ctx context.Context, db *sql.DB, options []option.Option
 
 func (s *Session) ensureTransaction(ctx context.Context, options option.Options, db *sql.DB) error {
 	var err error
-	s.Transaction, err = io.TransactionFor(ctx, s.dialect, options, db)
+	s.Transaction, err = io.TransactionFor(ctx, s.dialect, db, options)
 	if err != nil {
 		return err
 	}

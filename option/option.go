@@ -107,7 +107,7 @@ func (o Options) Identity() string {
 	return ""
 }
 
-//Tx returns *Transaction or nil
+//Tx returns *sql.Tx or nil
 func (o Options) Tx() *sql.Tx {
 	if len(o) == 0 {
 		return nil

@@ -41,7 +41,7 @@ func (s *Service) Exec(ctx context.Context, any interface{}, options ...option.O
 	}
 	session := config.LoadSession(dialect)
 
-	exec, err := session.Exec(ctx, any, s.db, s.tableName, options)
+	exec, err := session.Exec(ctx, any, s.db, s.tableName, options...)
 	if err != nil {
 		return 0, err
 	}
