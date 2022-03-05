@@ -187,7 +187,7 @@ FROM pragma_database_list
 		Transactional:    true,
 		QuoteCharacter:   '\'',
 		Insert:           dialect.InsertWithMultiValues,
-		Upsert:           dialect.UpsertTypeUnsupported,
+		Upsert:           dialect.UpsertTypeInsertOrReplace,
 		Load:             dialect.LoadTypeUnsupported,
 		CanAutoincrement: true,
 		CanLastInsertID:  true,
