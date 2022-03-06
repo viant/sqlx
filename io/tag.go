@@ -54,7 +54,7 @@ func ParseTag(tagString string) *Tag {
 				tag.Ns = strings.TrimSpace(nv[1])
 			case "sequence":
 				tag.Sequence = strings.TrimSpace(nv[1])
-			case "primaryKey":
+			case "primarykey":
 				if strings.TrimSpace(nv[1]) == "true" {
 					tag.PrimaryKey = true
 				}

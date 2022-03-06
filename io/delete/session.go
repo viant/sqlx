@@ -11,6 +11,7 @@ import (
 )
 
 type session struct {
+	*io.Transaction
 	rType     reflect.Type
 	batchSize int
 	*config.Config
@@ -18,7 +19,6 @@ type session struct {
 	columns       io.Columns
 	transactional bool
 	db            *sql.DB
-	tx            *sql.Tx
 	stmt          *sql.Stmt
 }
 
@@ -36,18 +36,11 @@ func (s *session) init(record interface{}) (err error) {
 
 func (s *session) begin(ctx context.Context, db *sql.DB, options []option.Option) error {
 	var err error
-	s.db = db
-	s.transactional = s.Dialect.Transactional
-	if option.Assign(options, s.tx) { //transaction supply as option, do not manage locally transaction
-		s.transactional = false
+	s.Transaction, err = io.TransactionFor(ctx, s.Dialect, db, options)
+	if err != nil {
+		return err
 	}
-	if s.transactional {
-		if s.tx, err = db.BeginTx(ctx, nil); err != nil {
-			if rErr := s.tx.Rollback(); rErr != nil {
-				return fmt.Errorf("%w, %v", err, rErr)
-			}
-		}
-	}
+
 	return nil
 }
 
@@ -59,8 +52,8 @@ func (s *session) prepare(ctx context.Context, batchSize int) error {
 			return fmt.Errorf("failed to close stetement: %w", err)
 		}
 	}
-	if s.tx != nil {
-		s.stmt, err = s.tx.Prepare(SQL)
+	if s.Transaction != nil {
+		s.stmt, err = s.Transaction.Prepare(SQL)
 		return err
 	}
 	s.stmt, err = s.db.PrepareContext(ctx, SQL)
@@ -106,18 +99,16 @@ func (s *session) end(err error) error {
 			err = fmt.Errorf("%w, %v", sErr, err)
 		}
 	}
-	if err != nil {
-		if s.transactional {
-			if rErr := s.tx.Rollback(); rErr != nil {
-				return fmt.Errorf("failed to rollback: %w, %v", err, rErr)
-			}
-		}
+
+	if s.Transaction == nil {
 		return err
 	}
-	if s.transactional {
-		err = s.tx.Commit()
+
+	if err != nil {
+		return s.Transaction.RollbackWithErr(err)
 	}
-	return err
+
+	return s.Transaction.Commit()
 }
 
 func (s *session) flush(ctx context.Context, values []interface{}) (int64, error) {

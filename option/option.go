@@ -112,6 +112,7 @@ func (o Options) Tx() *sql.Tx {
 	if len(o) == 0 {
 		return nil
 	}
+
 	for _, candidate := range o {
 		if v, ok := candidate.(*sql.Tx); ok {
 			return v

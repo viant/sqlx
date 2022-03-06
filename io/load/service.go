@@ -40,7 +40,8 @@ func (s *Service) Exec(ctx context.Context, any interface{}, options ...option.O
 		return 0, err
 	}
 	session := config.LoadSession(dialect)
-	exec, err := session.Exec(ctx, any, s.db, s.tableName)
+
+	exec, err := session.Exec(ctx, any, s.db, s.tableName, options...)
 	if err != nil {
 		return 0, err
 	}
@@ -56,24 +57,4 @@ func (s *Service) ensureDialect(ctx context.Context) (*info.Dialect, error) {
 	dialect, err := config.Dialect(ctx, s.db)
 	s.dialect = dialect
 	return dialect, err
-}
-
-func (s *Service) ensureSession(ctx context.Context) (*sink.Session, error) {
-	if s.session != nil {
-		return s.session, nil
-	}
-
-	session, err := config.Session(ctx, s.db)
-	s.session = session
-
-	return session, err
-}
-
-func (s *Service) ensureColumns(ctx context.Context, err error, session *sink.Session) ([]sink.Column, error) {
-	if s.columns != nil {
-		return s.columns, nil
-	}
-	columns, err := config.Columns(ctx, session, s.db, s.tableName)
-	s.columns = columns
-	return columns, err
 }
