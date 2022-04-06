@@ -265,7 +265,7 @@ where ID=CONNECTION_ID() LIMIT 1;
 		Placeholder:      "?",
 		Transactional:    true,
 		Insert:           dialect.InsertWithMultiValues,
-		Upsert:           dialect.UpsertTypeInsertOrReplace,
+		Upsert:           dialect.UpsertTypeInsertOrUpdate,
 		Load:             dialect.LoadTypeLocalData,
 		QuoteCharacter:   '\'',
 		CanAutoincrement: true,
