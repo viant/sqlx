@@ -13,7 +13,6 @@ import (
 type Service struct {
 	dialect   *info.Dialect
 	tableName string
-	session   *sink.Session
 	columns   []sink.Column
 	db        *sql.DB
 }

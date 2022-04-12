@@ -13,9 +13,9 @@ import (
 //Service represents deleter
 type Service struct {
 	*config.Config
-	*session
-	mux sync.Mutex
-	db  *sql.DB
+	initSession *session
+	mux         sync.Mutex
+	db          *sql.DB
 }
 
 //Exec runs delete statements
@@ -39,8 +39,8 @@ func (s *Service) Exec(ctx context.Context, any interface{}, options ...option.O
 		return 0, err
 	}
 
-	rowsAffected, err := s.delete(ctx, record, recordsFn, batchSize)
-	err = s.end(err)
+	rowsAffected, err := sess.delete(ctx, record, recordsFn, batchSize)
+	err = sess.end(err)
 	return rowsAffected, err
 
 }
@@ -49,11 +49,15 @@ func (s *Service) ensureSession(record interface{}, batchSize int) (*session, er
 	s.mux.Lock()
 	defer s.mux.Unlock()
 	rType := reflect.TypeOf(record)
-	if sess := s.session; sess != nil && sess.rType == rType && sess.batchSize == batchSize {
+	if sess := s.initSession; sess != nil && sess.rType == rType && sess.batchSize == batchSize {
 		return &session{
-			rType:     rType,
-			batchSize: batchSize,
-			Config:    s.Config,
+			rType:         rType,
+			batchSize:     batchSize,
+			Config:        s.Config,
+			binder:        sess.binder,
+			columns:       sess.columns,
+			transactional: false,
+			db:            sess.db,
 		}, nil
 	}
 	result := &session{
@@ -63,7 +67,7 @@ func (s *Service) ensureSession(record interface{}, batchSize int) (*session, er
 	}
 	err := result.init(record)
 	if err == nil {
-		s.session = result
+		s.initSession = result
 	}
 	return result, err
 }
