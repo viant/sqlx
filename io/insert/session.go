@@ -8,6 +8,7 @@ import (
 	"github.com/viant/sqlx/io/config"
 	"github.com/viant/sqlx/option"
 	"reflect"
+	"strings"
 )
 
 type session struct {
@@ -50,7 +51,9 @@ func (s *session) begin(ctx context.Context, db *sql.DB, options []option.Option
 func (s *session) end(err error) error {
 	if s.stmt != nil {
 		if sErr := s.stmt.Close(); sErr != nil {
-			err = fmt.Errorf("%w, %v", sErr, err)
+			if !isClosedError(err) {
+				err = fmt.Errorf("%w, %v", sErr, err)
+			}
 		}
 	}
 
@@ -71,7 +74,9 @@ func (s *session) prepare(ctx context.Context, batchSize int) error {
 	var err error
 	if s.stmt != nil {
 		if err = s.stmt.Close(); err != nil {
-			return fmt.Errorf("failed to close stetement: %w", err)
+			if !isClosedError(err) {
+				return err
+			}
 		}
 	}
 	if s.Transaction != nil {
@@ -80,6 +85,10 @@ func (s *session) prepare(ctx context.Context, batchSize int) error {
 	}
 	s.stmt, err = s.db.PrepareContext(ctx, SQL)
 	return err
+}
+
+func isClosedError(err error) bool {
+	return strings.Contains(err.Error(), "closed")
 }
 
 func (s *session) insert(ctx context.Context, batchSize int, record interface{}, recordsFn func() interface{}) (int64, int64, error) {
