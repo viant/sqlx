@@ -157,6 +157,11 @@ func (r *Reader) ensureRowMapper(rows *sql.Rows, mapperPtr *RowMapper, columnsPt
 	return mapper, nil
 }
 
+//Stmt returns *sql.Stmt associated with Reader
+func (r *Reader) Stmt() *sql.Stmt {
+	return r.stmt
+}
+
 //New creates a records to a structs reader
 func New(ctx context.Context, db *sql.DB, query string, newRow func() interface{}, options ...option.Option) (*Reader, error) {
 	dialect := ensureDialect(options, db)
