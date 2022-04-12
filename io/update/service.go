@@ -49,8 +49,11 @@ func (s *Service) ensureSession(record interface{}) (*session, error) {
 	if sess := s.initSession; sess != nil && sess.rType == rType {
 		return &session{
 			rType:         rType,
-			identityIndex: sess.identityIndex,
 			Config:        s.Config,
+			binder:        sess.binder,
+			columns:       sess.columns,
+			identityIndex: sess.identityIndex,
+			db:            sess.db,
 		}, nil
 	}
 	result := &session{

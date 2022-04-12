@@ -67,10 +67,12 @@ func (s *Service) ensureSession(record interface{}, batchSize int) (*session, er
 	if sess := s.initSession; sess != nil && sess.rType == rType && sess.batchSize == batchSize {
 		return &session{
 			rType:               rType,
-			autoIncrement:       sess.autoIncrement,
-			autoIncrementColumn: sess.autoIncrementColumn,
-			columns:             sess.Columns,
 			Config:              s.Config,
+			binder:              sess.binder,
+			columns:             sess.Columns,
+			autoIncrementColumn: sess.autoIncrementColumn,
+			autoIncrement:       sess.autoIncrement,
+			db:                  sess.db,
 		}, nil
 	}
 	result := &session{
