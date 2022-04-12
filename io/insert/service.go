@@ -81,9 +81,12 @@ func (s *Service) ensureSession(record interface{}, batchSize int) (*session, er
 		Config:    s.Config,
 	}
 	err := result.init(record)
+
 	if err == nil {
 		s.initSession = result
-		s.Identity = s.initSession.autoIncrementColumn.Name()
+		if s.Identity == "" && result.autoIncrementColumn != nil {
+			s.Identity = s.initSession.autoIncrementColumn.Name()
+		}
 	}
 	return result, err
 }
