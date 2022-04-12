@@ -57,11 +57,12 @@ func (s *session) end(err error) error {
 	if s.Transaction == nil {
 		return err
 	}
-
 	if err != nil {
 		return s.RollbackWithErr(err)
 	}
-
+	if s.Transaction.Global {
+		return nil
+	}
 	return s.Transaction.Commit()
 }
 

@@ -51,8 +51,8 @@ func (s *Service) Exec(ctx context.Context, any interface{}, options ...option.O
 	if err = sess.begin(ctx, s.db, options); err != nil {
 		return 0, 0, err
 	}
-
 	if err = sess.prepare(ctx, batchSize); err != nil {
+		err = s.end(err)
 		return 0, 0, err
 	}
 	rowsAffected, lastInsertedID, err := s.insert(ctx, s.batchSize, record, recordsFn)
