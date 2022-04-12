@@ -14,9 +14,9 @@ import (
 //Service represents generic db writer
 type Service struct {
 	*config.Config
-	*session
-	mux sync.Mutex
-	db  *sql.DB
+	initSession *session
+	mux         sync.Mutex
+	db          *sql.DB
 }
 
 //New creates an inserter service
@@ -52,11 +52,11 @@ func (s *Service) Exec(ctx context.Context, any interface{}, options ...option.O
 		return 0, 0, err
 	}
 	if err = sess.prepare(ctx, batchSize); err != nil {
-		err = s.end(err)
+		err = sess.end(err)
 		return 0, 0, err
 	}
-	rowsAffected, lastInsertedID, err := s.insert(ctx, s.batchSize, record, recordsFn)
-	err = s.end(err)
+	rowsAffected, lastInsertedID, err := sess.insert(ctx, sess.batchSize, record, recordsFn)
+	err = sess.end(err)
 	return rowsAffected, lastInsertedID, err
 }
 
@@ -64,11 +64,12 @@ func (s *Service) ensureSession(record interface{}, batchSize int) (*session, er
 	s.mux.Lock()
 	defer s.mux.Unlock()
 	rType := reflect.TypeOf(record)
-	if sess := s.session; sess != nil && sess.rType == rType && sess.batchSize == batchSize {
+	if sess := s.initSession; sess != nil && sess.rType == rType && sess.batchSize == batchSize {
 		return &session{
 			rType:               rType,
 			autoIncrement:       sess.autoIncrement,
 			autoIncrementColumn: sess.autoIncrementColumn,
+			columns:             sess.Columns,
 			Config:              s.Config,
 		}, nil
 	}
@@ -79,7 +80,8 @@ func (s *Service) ensureSession(record interface{}, batchSize int) (*session, er
 	}
 	err := result.init(record)
 	if err == nil {
-		s.session = result
+		s.initSession = result
+		s.Identity = s.initSession.autoIncrementColumn.Name()
 	}
 	return result, err
 }
