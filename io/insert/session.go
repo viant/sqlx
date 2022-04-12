@@ -55,6 +55,7 @@ func (s *session) end(err error) error {
 				err = fmt.Errorf("%w, %v", sErr, err)
 			}
 		}
+		s.stmt = nil
 	}
 
 	if s.Transaction == nil {
@@ -78,6 +79,7 @@ func (s *session) prepare(ctx context.Context, batchSize int) error {
 				return err
 			}
 		}
+		s.stmt = nil
 	}
 	if s.Transaction != nil {
 		s.stmt, err = s.Transaction.Prepare(SQL)
