@@ -8,7 +8,6 @@ import (
 	"github.com/viant/sqlx/io/config"
 	"github.com/viant/sqlx/option"
 	"reflect"
-	"runtime/debug"
 	"strings"
 )
 
@@ -51,10 +50,6 @@ func (s *session) begin(ctx context.Context, db *sql.DB, options []option.Option
 
 func (s *session) end(err error) error {
 	if s.stmt != nil {
-
-		fmt.Printf("closing stmt while end\n")
-		debug.PrintStack()
-
 		if sErr := s.stmt.Close(); sErr != nil {
 			if !isClosedError(err) {
 				err = fmt.Errorf("%w, %v", sErr, err)
@@ -78,15 +73,12 @@ func (s *session) prepare(ctx context.Context, batchSize int) error {
 	SQL := s.Dialect.EnsurePlaceholders(s.Builder.Build(option.BatchSize(batchSize)))
 	var err error
 	if s.stmt != nil {
-		fmt.Printf("closing stmt while prepare\n")
-		debug.PrintStack()
 		if err = s.stmt.Close(); err != nil {
 			if !isClosedError(err) {
 				return err
 			}
 		}
 	}
-	fmt.Printf("new stmt\n")
 	if s.Transaction != nil {
 		s.stmt, err = s.Transaction.Prepare(SQL)
 		return err
