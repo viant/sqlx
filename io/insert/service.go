@@ -69,10 +69,11 @@ func (s *Service) ensureSession(record interface{}, batchSize int) (*session, er
 			rType:               rType,
 			Config:              s.Config,
 			binder:              sess.binder,
-			columns:             sess.Columns,
+			columns:             sess.columns,
 			autoIncrementColumn: sess.autoIncrementColumn,
 			autoIncrement:       sess.autoIncrement,
 			db:                  sess.db,
+			batchSize:           sess.batchSize,
 		}, nil
 	}
 	result := &session{

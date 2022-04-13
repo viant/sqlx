@@ -167,6 +167,7 @@ func (s *session) flush(ctx context.Context, values []interface{}, prevInsertedI
 			return 0, 0, err
 		}
 	}
+
 	lastInsertedID := prevInsertedID
 	if lastInsertedID == 0 {
 		lastInsertedID = newLastInsertedID - int64(len(identities))
