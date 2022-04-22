@@ -3,6 +3,7 @@ package insert
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"github.com/viant/sqlx/io"
 	"github.com/viant/sqlx/io/config"
 	"github.com/viant/sqlx/io/insert/generator"
@@ -40,6 +41,9 @@ func (s *Service) Exec(ctx context.Context, any interface{}, options ...option.O
 		return 0, 0, err
 	}
 	record := recordsFn()
+	if record == nil {
+		return 0, 0, fmt.Errorf("invalid record/s %T %v\n", any, any)
+	}
 	batchSize := option.Options(options).BatchSize()
 	if err = generator.NewDefault(s.Dialect, s.db, nil).Apply(ctx, any, s.TableName, batchSize); err != nil {
 		return 0, 0, err
