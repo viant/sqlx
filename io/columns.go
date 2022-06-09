@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+	"time"
 )
 
 //Columns represents columns
@@ -45,11 +46,57 @@ func (c Columns) Names() []string {
 	return result
 }
 
+var sqlNullStringType = reflect.TypeOf(sql.NullString{})
+var goNullStringType = reflect.PtrTo(reflect.TypeOf(""))
+
+var sqlNullTimeType = reflect.TypeOf(sql.NullTime{})
+var goNullTimeType = reflect.PtrTo(reflect.TypeOf(time.Time{}))
+
+var sqlNullByteType = reflect.TypeOf(sql.NullByte{})
+var goNullByteType = reflect.PtrTo(reflect.TypeOf(byte(0)))
+
+var sqlNullBoolType = reflect.TypeOf(sql.NullBool{})
+var goNullBoolType = reflect.PtrTo(reflect.TypeOf(true))
+
+var sqlNullInt16Type = reflect.TypeOf(sql.NullInt16{})
+var goNullInt16Type = reflect.PtrTo(reflect.TypeOf(int16(0)))
+
+var sqlNullInt32Type = reflect.TypeOf(sql.NullInt32{})
+var goNullInt32Type = reflect.PtrTo(reflect.TypeOf(int32(0)))
+
+var sqlNullInt64Type = reflect.TypeOf(sql.NullInt64{})
+var goNullInt64Type = reflect.PtrTo(reflect.TypeOf(int64(0)))
+
+var sqlNullFloat64Type = reflect.TypeOf(sql.NullFloat64{})
+var goNullFloat64Type = reflect.PtrTo(reflect.TypeOf(float64(0)))
+
+func normalizeScanType(scanType reflect.Type) reflect.Type {
+	switch scanType {
+	case sqlNullStringType:
+		return goNullStringType
+	case sqlNullTimeType:
+		return goNullTimeType
+	case sqlNullBoolType:
+		return goNullBoolType
+	case sqlNullByteType:
+		return goNullByteType
+	case sqlNullInt16Type:
+		return goNullInt16Type
+	case sqlNullInt32Type:
+		return goNullInt32Type
+	case sqlNullInt64Type:
+		return goNullInt64Type
+	case sqlNullFloat64Type:
+		return goNullFloat64Type
+	}
+	return scanType
+}
+
 //TypesToColumns converts []*sql.ColumnType type to []sqlx.column
 func TypesToColumns(columns []*sql.ColumnType) []Column {
 	var result = make([]Column, len(columns))
 	for i := range columns {
-		result[i] = &columnType{ColumnType: columns[i]}
+		result[i] = &columnType{ColumnType: columns[i], scanType: normalizeScanType(columns[i].ScanType())}
 	}
 	return result
 }

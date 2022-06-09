@@ -57,6 +57,22 @@ func TestReader_ReadAll(t *testing.T) {
 		expectResolved interface{}
 	}{
 		{
+			description: "Reading slice input   ",
+			driver:      "sqlite3",
+			dsn:         "/tmp/sqllite.db",
+			initSQL: []string{
+				"CREATE TABLE IF NOT EXISTS t1 (id INTEGER PRIMARY KEY, name TEXT)",
+				"delete from t1",
+				"insert into t1 values(1, \"John\")",
+				"insert into t1 values(2, \"Bruce\")",
+			},
+			query: "select id , name  from t1 order by 1  ",
+			newRow: func() interface{} {
+				return make([]interface{}, 2)
+			},
+			expect: `[[1,"John"],[2,"Bruce"]]`,
+		},
+		{
 			description: "Reading vanilla struct",
 			driver:      "sqlite3",
 			dsn:         "/tmp/sqllite.db",
@@ -104,22 +120,7 @@ func TestReader_ReadAll(t *testing.T) {
 			},
 			expect: `[{"id":1,"name":"John"},{"id":2,"name":"Bruce"}]`,
 		},
-		{
-			description: "Reading slice input   ",
-			driver:      "sqlite3",
-			dsn:         "/tmp/sqllite.db",
-			initSQL: []string{
-				"CREATE TABLE IF NOT EXISTS t1 (id INTEGER PRIMARY KEY, name TEXT)",
-				"delete from t1",
-				"insert into t1 values(1, \"John\")",
-				"insert into t1 values(2, \"Bruce\")",
-			},
-			query: "select id , name  from t1 order by 1  ",
-			newRow: func() interface{} {
-				return make([]interface{}, 2)
-			},
-			expect: `[[1,"John"],[2,"Bruce"]]`,
-		},
+
 		{
 			description: "Complex struct mapper",
 			driver:      "sqlite3",

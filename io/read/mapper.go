@@ -67,7 +67,59 @@ func GenericRowMapper(columns []io.Column) (RowMapper, error) {
 }
 
 func newScanValue(scanType reflect.Type) func(index int, values []interface{}) {
+
 	switch scanType.Kind() {
+	case reflect.Ptr:
+		switch scanType.Elem().Kind() {
+		case reflect.Int:
+			return func(index int, values []interface{}) {
+				val := 0
+				valPtr := &val
+				values[index] = &valPtr
+			}
+		case reflect.Int64:
+			return func(index int, values []interface{}) {
+				val := int64(0)
+				valPtr := &val
+				values[index] = &valPtr
+			}
+		case reflect.Float64:
+			return func(index int, values []interface{}) {
+				val := float64(0)
+				valPtr := &val
+				values[index] = &valPtr
+			}
+		case reflect.Float32:
+			return func(index int, values []interface{}) {
+				val := float32(0)
+				valPtr := &val
+				values[index] = &valPtr
+			}
+		case reflect.Uint8:
+			return func(index int, values []interface{}) {
+				val := uint8(0)
+				valPtr := &val
+				values[index] = &valPtr
+			}
+
+		case reflect.String:
+			return func(index int, values []interface{}) {
+				val := ""
+				valPtr := &val
+				values[index] = &valPtr
+			}
+		case reflect.Bool:
+			return func(index int, values []interface{}) {
+				val := false
+				valPtr := &val
+				values[index] = &valPtr
+			}
+		default:
+			return func(index int, values []interface{}) {
+				val := reflect.New(scanType).Interface()
+				values[index] = val
+			}
+		}
 	case reflect.Int:
 		return func(index int, values []interface{}) {
 			val := 0
@@ -93,6 +145,7 @@ func newScanValue(scanType reflect.Type) func(index int, values []interface{}) {
 			val := uint8(0)
 			values[index] = &val
 		}
+
 	case reflect.String:
 		return func(index int, values []interface{}) {
 			val := ""
@@ -103,11 +156,12 @@ func newScanValue(scanType reflect.Type) func(index int, values []interface{}) {
 			val := false
 			values[index] = &val
 		}
+
 	default:
 		if scanType != nil {
 			return func(index int, values []interface{}) {
-				val := reflect.New(scanType)
-				values[index] = &val
+				val := reflect.New(scanType).Interface()
+				values[index] = val
 			}
 		}
 		return func(index int, values []interface{}) {
@@ -115,4 +169,5 @@ func newScanValue(scanType reflect.Type) func(index int, values []interface{}) {
 			values[index] = &val
 		}
 	}
+
 }
