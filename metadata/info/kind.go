@@ -12,7 +12,7 @@ const (
 	//Table defines table kind literal
 	Table = "Table"
 	//Index defines index kind literal
-	Index = "Index"
+	Index = "Restriction"
 	//View defines view kind literal
 	View = "View"
 	//Sequence defines sequence kind literal

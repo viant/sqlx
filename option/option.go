@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"github.com/viant/sqlx/metadata/database"
 	"github.com/viant/sqlx/metadata/info"
+	"strings"
 )
 
 const (
@@ -126,3 +127,35 @@ type Tag string
 
 //BatchSize represents a batch size options
 type BatchSize int
+
+//Columns option to control which column to operate on
+type Columns []string
+type ColumnRestriction map[string]bool
+
+func (r ColumnRestriction) CanUse(column string) bool {
+	if len(r) == 0 {
+		return true
+	}
+	return r[strings.ToLower(column)]
+}
+
+func (u Columns) Restriction() ColumnRestriction {
+	var result = make(map[string]bool)
+	for _, column := range u {
+		result[strings.ToLower(column)] = true
+	}
+	return result
+}
+
+//Columns returns map of updateable columns
+func (o Options) Columns() Columns {
+	if len(o) == 0 {
+		return nil
+	}
+	for _, candidate := range o {
+		if val, ok := candidate.(Columns); ok {
+			return val
+		}
+	}
+	return nil
+}

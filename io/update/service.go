@@ -25,7 +25,7 @@ func (s *Service) Exec(ctx context.Context, any interface{}, options ...option.O
 	}
 	record := recordsFn()
 	var sess *session
-	if sess, err = s.ensureSession(record); err != nil {
+	if sess, err = s.ensureSession(record, options...); err != nil {
 		return 0, err
 	}
 	if err = sess.begin(ctx, s.db, options); err != nil {
@@ -42,7 +42,7 @@ func (s *Service) Exec(ctx context.Context, any interface{}, options ...option.O
 
 }
 
-func (s *Service) ensureSession(record interface{}) (*session, error) {
+func (s *Service) ensureSession(record interface{}, options ...option.Option) (*session, error) {
 	s.mux.Lock()
 	defer s.mux.Unlock()
 	rType := reflect.TypeOf(record)
@@ -60,7 +60,7 @@ func (s *Service) ensureSession(record interface{}) (*session, error) {
 		rType:  rType,
 		Config: s.Config,
 	}
-	err := result.init(record)
+	err := result.init(record, options...)
 	if err == nil {
 		s.initSession = result
 	}
@@ -69,10 +69,6 @@ func (s *Service) ensureSession(record interface{}) (*session, error) {
 
 //New creates an updater
 func New(ctx context.Context, db *sql.DB, tableName string, options ...option.Option) (*Service, error) {
-	var columnMapper io.ColumnMapper
-	if !option.Assign(options, &columnMapper) {
-		columnMapper = io.StructColumnMapper
-	}
 	updater := &Service{
 		Config: config.New(tableName),
 		db:     db,
