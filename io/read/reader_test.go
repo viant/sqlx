@@ -9,10 +9,12 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/viant/sqlx/io"
 	"github.com/viant/sqlx/io/read"
+	"github.com/viant/sqlx/io/read/cache"
 	"github.com/viant/sqlx/option"
 	"log"
 	"os"
 	"testing"
+	"time"
 )
 
 func TestReader_ReadAll(t *testing.T) {
@@ -55,6 +57,9 @@ func TestReader_ReadAll(t *testing.T) {
 		hasMapperError bool
 		resolver       *io.Resolver
 		expectResolved interface{}
+		cache          *cache.Cache
+		cachedData     [][]interface{}
+		args           []interface{}
 	}{
 		{
 			description: "Reading slice input   ",
@@ -171,9 +176,56 @@ func TestReader_ReadAll(t *testing.T) {
 			expect:         `[{"Id":1,"Desc":"desc1","Name":"John"},{"Id":2,"Desc":"desc2","Name":"Bruce"}]`,
 			expectResolved: `["101","102"]`,
 		},
+		{
+			description: "Cache",
+			driver:      "sqlite3",
+			dsn:         "/tmp/sqllite.db",
+			initSQL: []string{
+				"CREATE TABLE IF NOT EXISTS t5 (foo_id INTEGER PRIMARY KEY, foo_name TEXT, desc TEXT, unk TEXT)",
+				"delete from t5",
+				"insert into t5 values(1, \"John\", \"desc1\", \"101\")",
+				"insert into t5 values(2, \"Bruce\", \"desc2\", \"102\")",
+			},
+			query: "SELECT foo_id , foo_name, desc,  unk  FROM t5 ORDER BY 1",
+			newRow: func() interface{} {
+				return &case3Wrapper{}
+			},
+			resolver:       io.NewResolver(),
+			expect:         `[{"Id":1,"Desc":"desc1","Name":"John"},{"Id":2,"Desc":"desc2","Name":"Bruce"}]`,
+			expectResolved: `["101","102"]`,
+			cache:          cache.NewCache("/tmp/t5/", time.Duration(10000)*time.Minute),
+			cachedData: [][]interface{}{
+				{float64(1), "John", "desc1", "101"},
+				{float64(2), "Bruce", "desc2", "102"},
+			},
+		},
+		{
+			description: "Cache with args",
+			driver:      "sqlite3",
+			dsn:         "/tmp/sqllite.db",
+			initSQL: []string{
+				"CREATE TABLE IF NOT EXISTS t5 (foo_id INTEGER PRIMARY KEY, foo_name TEXT, desc TEXT, unk TEXT)",
+				"delete from t5",
+				"insert into t5 values(1, \"John\", \"desc1\", \"101\")",
+				"insert into t5 values(2, \"Bruce\", \"desc2\", \"102\")",
+			},
+			query: "SELECT foo_id , foo_name, desc,  unk  FROM t5 WHERE foo_id = ? ORDER BY 1",
+			newRow: func() interface{} {
+				return &case3Wrapper{}
+			},
+			resolver:       io.NewResolver(),
+			expect:         `[{"Id":2,"Desc":"desc2","Name":"Bruce"}]`,
+			expectResolved: `["102"]`,
+			cache:          cache.NewCache("/tmp/t5/", time.Duration(10000)*time.Minute),
+			cachedData: [][]interface{}{
+				{float64(2), "Bruce", "desc2", "102"},
+			},
+			args: []interface{}{2},
+		},
 	}
 
 outer:
+	//for _, testCase := range useCases[len(useCases)-1:] {
 	for _, testCase := range useCases {
 		os.RemoveAll(testCase.dsn)
 		ctx := context.Background()
@@ -195,6 +247,11 @@ outer:
 		if testCase.resolver != nil {
 			options = append(options, testCase.resolver.Resolve)
 		}
+
+		if testCase.cache != nil {
+			options = append(options, testCase.cache)
+		}
+
 		reader, err := read.New(ctx, db, testCase.query, testCase.newRow, options...)
 		if !assert.Nil(t, err, testCase.description) {
 			continue
@@ -203,19 +260,23 @@ outer:
 		err = reader.QueryAll(ctx, func(row interface{}) error {
 			actual = append(actual, row)
 			return nil
-		})
+		}, testCase.args...)
+
 		if testCase.hasMapperError {
 			assert.NotNil(t, t, err, testCase.description)
 			continue
 		}
+
 		if !assert.Nil(t, err, testCase.description) {
 			continue
 		}
+
 		actualJSON, _ := json.Marshal(actual)
 		if !assert.EqualValues(t, testCase.expect, string(actualJSON), testCase.description) {
 			fmt.Println(actualJSON)
 			continue
 		}
+
 		if testCase.resolver != nil {
 			actualJSON, _ := json.Marshal(testCase.resolver.Data(0))
 			if !assert.EqualValues(t, testCase.expectResolved, string(actualJSON), testCase.description) {
@@ -223,6 +284,14 @@ outer:
 				continue
 			}
 		}
-	}
 
+		if testCase.cache != nil {
+			cacheEntry, err := testCase.cache.Get(context.TODO(), testCase.query, testCase.args)
+			assert.Nil(t, err, testCase.description)
+			assert.True(t, cacheEntry.Has(), testCase.description)
+			assert.Equal(t, testCase.args, cacheEntry.Args, testCase.description)
+			assert.Equal(t, testCase.query, cacheEntry.SQL, testCase.description)
+			assert.Equal(t, testCase.cachedData, cacheEntry.Data, testCase.description)
+		}
+	}
 }
