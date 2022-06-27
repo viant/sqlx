@@ -67,7 +67,6 @@ func GenericRowMapper(columns []io.Column) (RowMapper, error) {
 }
 
 func newScanValue(scanType reflect.Type) func(index int, values []interface{}) {
-
 	switch scanType.Kind() {
 	case reflect.Ptr:
 		switch scanType.Elem().Kind() {
@@ -114,6 +113,15 @@ func newScanValue(scanType reflect.Type) func(index int, values []interface{}) {
 				valPtr := &val
 				values[index] = &valPtr
 			}
+		case reflect.Slice:
+			switch scanType.Elem().Elem().Kind() {
+			case reflect.String:
+				return func(index int, values []interface{}) {
+					val := ""
+					values[index] = &val
+				}
+			}
+
 		default:
 			return func(index int, values []interface{}) {
 				val := reflect.New(scanType).Interface()
@@ -157,17 +165,25 @@ func newScanValue(scanType reflect.Type) func(index int, values []interface{}) {
 			values[index] = &val
 		}
 
-	default:
-		if scanType != nil {
+	case reflect.Slice:
+		switch scanType.Elem().Kind() {
+		case reflect.String:
 			return func(index int, values []interface{}) {
-				val := reflect.New(scanType).Interface()
-				values[index] = val
+				val := ""
+				values[index] = &val
 			}
 		}
+	}
+
+	if scanType != nil {
 		return func(index int, values []interface{}) {
-			val := new(interface{})
-			values[index] = &val
+			val := reflect.New(scanType).Interface()
+			values[index] = val
 		}
+	}
+	return func(index int, values []interface{}) {
+		val := new(interface{})
+		values[index] = &val
 	}
 
 }

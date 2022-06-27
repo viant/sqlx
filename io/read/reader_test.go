@@ -42,6 +42,9 @@ func TestReader_ReadAll(t *testing.T) {
 		*case3FooID
 		Case3FooName `sqlx:"ns=foo"`
 	}
+	type Case5SStrings struct {
+		T []string
+	}
 
 	var useCases = []struct {
 		description    string
@@ -56,6 +59,23 @@ func TestReader_ReadAll(t *testing.T) {
 		resolver       *io.Resolver
 		expectResolved interface{}
 	}{
+
+		{
+			description: "slices",
+			driver:      "sqlite3",
+			dsn:         "/tmp/sqllite.db",
+			initSQL: []string{
+				"CREATE TABLE IF NOT EXISTS t5 (t TEXT)",
+				"delete from t5",
+				"insert into t5 values(\"v1,v2\")",
+				"insert into t5 values(\"v4,v5\")",
+			},
+			query: "SELECT t  FROM t5 ORDER BY 1",
+			newRow: func() interface{} {
+				return &Case5SStrings{}
+			},
+			expect: `[{"t":["v1", "v2"]},{"t":["v4","v5"]}]`,
+		},
 		{
 			description: "Reading slice input   ",
 			driver:      "sqlite3",
@@ -174,7 +194,7 @@ func TestReader_ReadAll(t *testing.T) {
 	}
 
 outer:
-	for _, testCase := range useCases {
+	for _, testCase := range useCases[:1] {
 		os.RemoveAll(testCase.dsn)
 		ctx := context.Background()
 		var db *sql.DB
