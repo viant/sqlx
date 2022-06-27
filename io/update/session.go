@@ -21,8 +21,8 @@ type session struct {
 	stmt          *sql.Stmt
 }
 
-func (s *session) init(record interface{}) (err error) {
-	if s.columns, s.binder, err = s.Mapper(record, s.TagName); err != nil {
+func (s *session) init(record interface{}, options ...option.Option) (err error) {
+	if s.columns, s.binder, err = s.Mapper(record, s.TagName, options...); err != nil {
 		return err
 	}
 	if identityIndex := s.columns.PrimaryKeys(); identityIndex != -1 {

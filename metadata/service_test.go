@@ -235,8 +235,8 @@ func TestAbstractService_Info(t *testing.T) {
 				option.NewArgs("", "", "emp", "emp_active"),
 			},
 			expect: `[
-		   {"Table":"emp","Name":"active","Position":2,"Key":"1","Descending":"0","Index":"emp_active","IndexPosition":0,"Collation":"BINARY"},
-		   {"Table":"emp","Name":"last_access_time","Position":5,"Key":"1","Descending":"0","Index":"emp_active","IndexPosition":1,"Collation":"BINARY"}
+		   {"Table":"emp","Name":"active","Position":2,"Key":"1","Descending":"0","Restriction":"emp_active","IndexPosition":0,"Collation":"BINARY"},
+		   {"Table":"emp","Name":"last_access_time","Position":5,"Key":"1","Descending":"0","Restriction":"emp_active","IndexPosition":1,"Collation":"BINARY"}
 		   ]`,
 		},
 
@@ -466,7 +466,7 @@ func TestAbstractService_Info(t *testing.T) {
 				option.NewArgs("", "mydb", "emp", "PRIMARY"),
 			},
 			expect: `[
-{"Schema":"mydb","Table":"emp","Name":"id","Position":0,"Index":"PRIMARY","IndexPosition":1}
+{"Schema":"mydb","Table":"emp","Name":"id","Position":0,"Restriction":"PRIMARY","IndexPosition":1}
 ]`,
 		},
 
