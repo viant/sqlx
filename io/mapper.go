@@ -19,6 +19,11 @@ func StructColumnMapper(src interface{}, tagName string, options ...option.Optio
 	}
 
 	identityOnly := option.Options(options).IdentityOnly()
+	var columnRestriction option.ColumnRestriction
+	if val := option.Options(options).Columns(); len(val) > 0 {
+		columnRestriction = val.Restriction()
+	}
+
 	if recordType.Kind() != reflect.Struct {
 		return nil, nil, fmt.Errorf("invalid record type: %v", recordType.Kind())
 	}
@@ -50,9 +55,12 @@ func StructColumnMapper(src interface{}, tagName string, options ...option.Optio
 		if identityOnly {
 			continue
 		}
-		columns = append(columns, NewColumn(columnName, "", field.Type, tag))
-		getter := xunsafe.FieldByIndex(recordType, i).Addr
-		getters = append(getters, getter)
+
+		if columnRestriction.CanUse(columnName) {
+			columns = append(columns, NewColumn(columnName, "", field.Type, tag))
+			getter := xunsafe.FieldByIndex(recordType, i).Addr
+			getters = append(getters, getter)
+		}
 	}
 
 	//make sure identity columns are at the end

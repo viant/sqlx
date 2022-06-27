@@ -16,10 +16,14 @@ type Reader struct {
 	itemsSize   int
 	index       int
 	offset      int
+	isEOF       bool
 }
 
 //Read stringify and reads data into buffer, separates objects and fields values with given separators.
 func (r *Reader) Read(buffer []byte) (n int, err error) {
+	if r.isEOF {
+		return 0, goIo.EOF
+	}
 	if r.index > r.itemsSize {
 		return 0, goIo.EOF
 	}
@@ -66,8 +70,8 @@ func (r *Reader) Read(buffer []byte) (n int, err error) {
 
 		r.offset += offset
 	}
-
-	return r.offset, goIo.EOF
+	r.isEOF = true
+	return r.offset, nil
 }
 
 func (r *Reader) escapeSpecialChars(value string) string {
