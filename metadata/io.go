@@ -14,6 +14,7 @@ func fetchToString(rows *sql.Rows, dest *string) error {
 			return err
 		}
 	}
+
 	return nil
 }
 

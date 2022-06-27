@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"github.com/viant/sqlx/io"
+	"github.com/viant/sqlx/io/read/cache"
 	"github.com/viant/sqlx/metadata/info"
 	"github.com/viant/sqlx/metadata/registry"
 	"github.com/viant/sqlx/option"
@@ -23,6 +24,7 @@ type Reader struct {
 	getRowMapper NewRowMapper
 	unmappedFn   io.Resolve
 	shallDeref   bool
+	cache        *cache.Cache
 }
 
 //QuerySingle returns single row
@@ -35,11 +37,22 @@ func (r *Reader) QuerySingle(ctx context.Context, emit func(row interface{}) err
 	var mapper RowMapper
 	var columns []io.Column
 	var types []xunsafe.Type
+
+	cacheEntry, err := r.cacheEntry(ctx, r.query, args)
+	if err != nil {
+		return err
+	}
+
 	if rows.Next() {
-		if err = r.read(rows, &mapper, &columns, &types, emit); err != nil {
+		if err = r.read(rows, &mapper, &columns, &types, emit, cacheEntry); err != nil {
 			return err
 		}
 	}
+
+	if err = r.updateCacheIfNeeded(ctx, cacheEntry); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -49,21 +62,59 @@ func (r *Reader) QueryAll(ctx context.Context, emit func(row interface{}) error,
 	if err != nil {
 		return fmt.Errorf("failed to run query: %v, due to %s", r.query, err)
 	}
+
+	entry, err := r.cacheEntry(ctx, r.query, args)
+	if err != nil {
+		return err
+	}
+
 	defer rows.Close()
-	return r.ReadAll(rows, emit)
+	err = r.ReadAll(rows, emit, entry)
+	if err != nil {
+		return err
+	}
+
+	if err = r.updateCacheIfNeeded(ctx, entry); err != nil {
+		return err
+	}
+
+	return err
 }
 
 //ReadAll read all
-func (r *Reader) ReadAll(rows *sql.Rows, emit func(row interface{}) error) error {
+func (r *Reader) ReadAll(rows *sql.Rows, emit func(row interface{}) error, options ...option.Option) error {
+	cacheEntry := r.getCacheEntry(options)
+
 	var mapper RowMapper
 	var columns []io.Column
 	var types []xunsafe.Type
-	for rows.Next() {
-		if err := r.read(rows, &mapper, &columns, &types, emit); err != nil {
+
+	next := r.nexter(cacheEntry, rows)
+	for next() {
+		if err := r.read(rows, &mapper, &columns, &types, emit, cacheEntry); err != nil {
 			return err
 		}
 	}
 	return rows.Err()
+}
+
+func (r *Reader) getCacheEntry(options []option.Option) *cache.Entry {
+	var cacheEntry *cache.Entry
+	for _, o := range options {
+		switch actual := o.(type) {
+		case *cache.Entry:
+			cacheEntry = actual
+		}
+	}
+	return cacheEntry
+}
+
+func (r *Reader) nexter(entry *cache.Entry, rows *sql.Rows) func() bool {
+	if entry != nil && entry.Has() {
+		return entry.Next
+	}
+
+	return rows.Next
 }
 
 //QueryAllWithSlice query all with a slice
@@ -88,12 +139,13 @@ func (r *Reader) QueryAllWithMap(ctx context.Context, emit func(row map[string]i
 	}, args...)
 }
 
-func (r *Reader) read(rows *sql.Rows, mapperPtr *RowMapper, columnsPtr *[]io.Column, columnTypes *[]xunsafe.Type, emit func(row interface{}) error) error {
+func (r *Reader) read(rows *sql.Rows, mapperPtr *RowMapper, columnsPtr *[]io.Column, columnTypes *[]xunsafe.Type, emit func(row interface{}) error, cacheEntry *cache.Entry) error {
 	row := r.newRow()
 	if r.targetType == nil {
 		r.targetType = reflect.TypeOf(row)
 		r.shallDeref = r.targetType.Kind() == reflect.Map || r.targetType.Kind() == reflect.Slice
 	}
+
 	mapper, err := r.ensureRowMapper(rows, mapperPtr, columnsPtr)
 	if err != nil {
 		return err
@@ -102,14 +154,23 @@ func (r *Reader) read(rows *sql.Rows, mapperPtr *RowMapper, columnsPtr *[]io.Col
 	if err != nil {
 		return err
 	}
-	err = rows.Scan(rowValues...)
+
+	scanner := r.scanner(cacheEntry, rows)
+	err = scanner(rowValues...)
+
 	if err != nil {
 		return fmt.Errorf("failed to scan %v, due to %w", r.query, err)
 	}
+
 	if err = rows.Err(); err != nil {
 		return fmt.Errorf("failed to read records: %w", err)
 	}
+
 	r.ensureDereferences(row, rowValues, columnsPtr, columnTypes)
+	if cacheEntry != nil && !cacheEntry.Has() {
+		cacheEntry.AddRow(rowValues)
+	}
+
 	return emit(row)
 }
 
@@ -162,6 +223,40 @@ func (r *Reader) Stmt() *sql.Stmt {
 	return r.stmt
 }
 
+func (r *Reader) cacheEntry(ctx context.Context, sql string, args []interface{}) (*cache.Entry, error) {
+	if r.cache != nil {
+		return r.cache.Get(ctx, sql, args)
+	}
+
+	return nil, nil
+}
+
+func (r *Reader) scanner(entry *cache.Entry, rows *sql.Rows) func(args ...interface{}) error {
+	if entry != nil && entry.Has() {
+		return func(args ...interface{}) error {
+			r.cache.CreateXTypes(args)
+			return entry.Scan(args...)
+		}
+	}
+
+	if r.cache != nil {
+		return func(args ...interface{}) error {
+			r.cache.CreateXTypes(args)
+			return rows.Scan(args...)
+		}
+	}
+
+	return rows.Scan
+}
+
+func (r *Reader) updateCacheIfNeeded(ctx context.Context, entry *cache.Entry) error {
+	if entry == nil || entry.Has() {
+		return nil
+	}
+
+	return r.cache.Put(ctx, entry)
+}
+
 //New creates a records to a structs reader
 func New(ctx context.Context, db *sql.DB, query string, newRow func() interface{}, options ...option.Option) (*Reader, error) {
 	dialect := ensureDialect(options, db)
@@ -172,7 +267,9 @@ func New(ctx context.Context, db *sql.DB, query string, newRow func() interface{
 	if err != nil {
 		return nil, fmt.Errorf("failed to prepare query: %v, due to %w", query, err)
 	}
-	return NewStmt(stmt, newRow, options...), err
+	newStmt := NewStmt(stmt, newRow, options...)
+	newStmt.query = query
+	return newStmt, err
 }
 
 func ensureDialect(options []option.Option, db *sql.DB) *info.Dialect {
@@ -191,11 +288,20 @@ func ensureDialect(options []option.Option, db *sql.DB) *info.Dialect {
 func NewStmt(stmt *sql.Stmt, newRow func() interface{}, options ...option.Option) *Reader {
 	var getRowMapper NewRowMapper
 	var unmappedFn io.Resolve
+	var readerCache *cache.Cache
 	if !option.Assign(options, &getRowMapper) {
 		getRowMapper = newRowMapper
 	}
 	option.Assign(options, &unmappedFn)
-	return &Reader{newRow: newRow, stmt: stmt, tagName: option.Options(options).Tag(), getRowMapper: newRowMapper, unmappedFn: unmappedFn}
+
+	for _, anOption := range options {
+		switch actual := anOption.(type) {
+		case *cache.Cache:
+			readerCache = actual
+		}
+	}
+
+	return &Reader{newRow: newRow, stmt: stmt, tagName: option.Options(options).Tag(), getRowMapper: newRowMapper, unmappedFn: unmappedFn, cache: readerCache}
 }
 
 //NewMap creates records to map reader
