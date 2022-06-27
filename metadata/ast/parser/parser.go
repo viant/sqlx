@@ -1,4 +1,4 @@
-package criteria
+package parser
 
 import (
 	"fmt"

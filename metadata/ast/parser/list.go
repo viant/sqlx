@@ -1,4 +1,4 @@
-package criteria
+package parser
 
 import (
 	"github.com/viant/parsly"
