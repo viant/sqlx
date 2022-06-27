@@ -9,7 +9,7 @@ require (
 	github.com/mattn/go-sqlite3 v1.14.13
 	github.com/stretchr/testify v1.7.5
 	github.com/viant/afs v1.16.0
-	github.com/viant/parsly v0.0.0-20220627144016-c6fc3467f658
+	github.com/viant/parsly v0.0.0-20220627184754-7b29249ed1e8
 	github.com/viant/toolbox v0.34.5
 	github.com/viant/xunsafe v0.8.1-0.20220517184704-270ed1a5aec9
 )
@@ -28,5 +28,3 @@ require (
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
-
-replace github.com/viant/parsly v0.0.0-20220627144016-c6fc3467f658 => /Users/awitas/go/src/github.com/viant/parsly
