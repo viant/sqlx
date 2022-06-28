@@ -73,7 +73,7 @@ func stringify(n node.Node, builder *bytes.Buffer) {
 
 	case *expr.Raw:
 		builder.WriteString(" ")
-		stringify(actual.Raw, builder)
+		builder.WriteString(actual.Raw)
 		builder.WriteString(" ")
 	case *query.From:
 		stringify(actual.X, builder)
