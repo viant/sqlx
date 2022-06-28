@@ -46,6 +46,9 @@ func expectOperand(cursor *parsly.Cursor) (node.Node, error) {
 		case exceptKeyword:
 			return parseStarExpr(cursor, selRaw, selector)
 		}
+		if strings.HasSuffix(selRaw, "*") {
+			return expr.NewStar(selector), nil
+		}
 		return selector, nil
 	case exceptKeyword:
 		return nil, cursor.NewError(selectorToken)
