@@ -42,12 +42,6 @@ func (f *Matcher) matchedColumns(xStruct *xunsafe.Struct, matched []Field, colum
 			unmatched = append(unmatched, i)
 			continue
 		}
-		if column.ScanType() != nil {
-			if column.ScanType().Kind() == reflect.Ptr {
-
-			}
-			fmt.Printf("%v %v %v\n", column.Name(), column.ScanType(), fields[pos].Type)
-		}
 		fields[pos].Column = column
 		matched[i] = fields[pos]
 	}
