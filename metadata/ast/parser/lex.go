@@ -57,6 +57,7 @@ var selectionKindToken = parsly.NewToken(selectionKindCode, "ALL|DISTINCT|STRUCT
 }, &option.Case{}))
 var caseBlockToken = parsly.NewToken(caseBlock, "CASE", matcher.NewSeqBlock("CASE", "END"))
 var commentBlockToken = parsly.NewToken(commentBlock, "/* */", matcher.NewSeqBlock("/*", "*/"))
+var inlineCommentToken = parsly.NewToken(commentBlock, "--", matcher.NewSeqBlock("--", "\n"))
 
 var selectKeywordToken = parsly.NewToken(selectKeyword, "SELECT", matcher.NewFragment("select", &option.Case{}))
 var exceptKeywordToken = parsly.NewToken(exceptKeyword, "EXCEPT", matcher.NewFragment("except", &option.Case{}))

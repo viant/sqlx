@@ -22,7 +22,6 @@ func TestParseSelect(t *testing.T) {
 				SQL:         "SELECT c1 /* comment */, c2 FROM x t",
 				expect:      "SELECT c1 /* comment */, c2 FROM x t",
 			},
-
 			{
 				description: "except select",
 				SQL:         "SELECT * EXCEPT c1,c2 FROM x t",

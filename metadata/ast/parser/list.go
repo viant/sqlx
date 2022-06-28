@@ -14,7 +14,7 @@ func parseSelectListItem(cursor *parsly.Cursor, list *query.List) error {
 	item := query.NewItem(operand)
 	item.Alias = discoverAlias(cursor)
 	list.Append(item)
-	match := cursor.MatchAfterOptional(whitespaceToken, commentBlockToken, binaryOperatorToken, logicalOperatorToken, nextToken)
+	match := cursor.MatchAfterOptional(whitespaceToken, inlineCommentToken, commentBlockToken, binaryOperatorToken, logicalOperatorToken, nextToken)
 	switch match.Code {
 	case commentBlock:
 		item.Comments = match.Text(cursor)
