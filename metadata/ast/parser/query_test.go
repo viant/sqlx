@@ -36,8 +36,8 @@ func TestParseSelect(t *testing.T) {
 
 			{
 				description: "* select",
-				SQL:         "SELECT * FROM x t",
-				expect:      "SELECT * FROM x t",
+				SQL:         "SELECT * FROM x",
+				expect:      "SELECT * FROM x",
 			},
 
 			{
