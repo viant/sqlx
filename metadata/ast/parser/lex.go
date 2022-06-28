@@ -27,6 +27,7 @@ const (
 	singleQuotedStringLiteral
 	doubleQuotedStringLiteral
 	caseBlock
+	commentBlock
 	selectKeyword
 	selectorTokenCode
 	asKeyword
@@ -55,6 +56,7 @@ var selectionKindToken = parsly.NewToken(selectionKindCode, "ALL|DISTINCT|STRUCT
 	"ALL", "DISTINCT", "STRUCT",
 }, &option.Case{}))
 var caseBlockToken = parsly.NewToken(caseBlock, "CASE", matcher.NewSeqBlock("CASE", "END"))
+var commentBlockToken = parsly.NewToken(commentBlock, "/* */", matcher.NewSeqBlock("/*", "*/"))
 
 var selectKeywordToken = parsly.NewToken(selectKeyword, "SELECT", matcher.NewFragment("select", &option.Case{}))
 var exceptKeywordToken = parsly.NewToken(exceptKeyword, "EXCEPT", matcher.NewFragment("except", &option.Case{}))

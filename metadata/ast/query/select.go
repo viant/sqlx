@@ -6,7 +6,6 @@ import (
 
 type Select struct {
 	List    List
-	Except  []string
 	From    From
 	Joins   []*Join
 	Qualify *expr.Qualify

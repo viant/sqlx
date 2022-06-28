@@ -15,7 +15,7 @@ func TestSelector_Match(t *testing.T) {
 		{
 			description: "t.abc matches",
 			input:       []byte("t.abc test"),
-			matched:     true,
+			matched:     false,
 		},
 		{
 			description: "unicode doesn't match",
@@ -30,7 +30,7 @@ func TestSelector_Match(t *testing.T) {
 		{
 			description: "- doesnt match",
 			input:       []byte("ABc-test"),
-			matched:     true,
+			matched:     false,
 		},
 		{
 			description: "beginning number doesn't match",

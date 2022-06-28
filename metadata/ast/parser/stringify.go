@@ -19,17 +19,6 @@ func stringify(n node.Node, builder *bytes.Buffer) {
 	case *query.Select:
 		builder.WriteString("SELECT ")
 		stringify(actual.List, builder)
-
-		if len(actual.Except) > 0 {
-			builder.WriteString(" EXCEPT ")
-			for i, item := range actual.Except {
-				if i > 0 {
-					builder.WriteString(", ")
-				}
-				builder.WriteString(item)
-			}
-		}
-
 		builder.WriteString(" FROM ")
 		stringify(&actual.From, builder)
 
@@ -69,6 +58,19 @@ func stringify(n node.Node, builder *bytes.Buffer) {
 			builder.WriteString(", ")
 			stringify(actual[i], builder)
 		}
+
+	case *expr.Star:
+		stringify(actual.X, builder)
+		if len(actual.Except) > 0 {
+			builder.WriteString(" EXCEPT ")
+			for i, item := range actual.Except {
+				if i > 0 {
+					builder.WriteString(", ")
+				}
+				builder.WriteString(item)
+			}
+		}
+
 	case *expr.Raw:
 		builder.WriteString(" ")
 		stringify(actual.Raw, builder)
@@ -88,6 +90,9 @@ func stringify(n node.Node, builder *bytes.Buffer) {
 		stringify(actual.Expr, builder)
 		if actual.Alias != "" {
 			builder.WriteString(" AS " + actual.Alias)
+		}
+		if actual.Comments != "" {
+			builder.WriteString(" " + actual.Comments)
 		}
 	case *expr.Binary:
 		stringify(actual.X, builder)

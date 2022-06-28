@@ -12,11 +12,16 @@ func parseSelectListItem(cursor *parsly.Cursor, list *query.List) error {
 		return err
 	}
 	item := query.NewItem(operand)
-
 	item.Alias = discoverAlias(cursor)
 	list.Append(item)
-	match := cursor.MatchAfterOptional(whitespaceToken, binaryOperatorToken, logicalOperatorToken, nextToken)
+	match := cursor.MatchAfterOptional(whitespaceToken, commentBlockToken, binaryOperatorToken, logicalOperatorToken, nextToken)
 	switch match.Code {
+	case commentBlock:
+		item.Comments = match.Text(cursor)
+		match = cursor.MatchAfterOptional(whitespaceToken, nextToken)
+		if match.Code == nextCode {
+			return parseSelectListItem(cursor, list)
+		}
 	case logicalOperator, binaryOperator:
 		cursor.Pos -= match.Size
 		binaryExpr := expr.NewBinary(item.Expr)

@@ -16,6 +16,25 @@ func TestParseSelect(t *testing.T) {
 			SQL         string
 			expect      string
 		}{
+
+			{
+				description: "except select",
+				SQL:         "SELECT c1 /* comment */, c2 FROM x t",
+				expect:      "SELECT c1 /* comment */, c2 FROM x t",
+			},
+
+			{
+				description: "except select",
+				SQL:         "SELECT * EXCEPT c1,c2 FROM x t",
+				expect:      "SELECT * EXCEPT c1, c2 FROM x t",
+			},
+
+			{
+				description: "except select",
+				SQL:         "SELECT t1.* EXCEPT c1,c2, t2.* EXCEPT c3  FROM x t1 JOIN y AS t2 ON t1.ID=t2.ID",
+				expect:      "SELECT t1.* EXCEPT c1, c2, t2.* EXCEPT c3 FROM x t1 JOIN y t2 ON t1.ID = t2.ID",
+			},
+
 			{
 				description: "* select",
 				SQL:         "SELECT * FROM x t",
@@ -26,17 +45,6 @@ func TestParseSelect(t *testing.T) {
 				description: "basic select",
 				SQL:         "SELECT col1, t.col2, col3 AS col FROM x t",
 				expect:      "SELECT col1, t.col2, col3 AS col FROM x t",
-			},
-
-			{
-				description: "execpt select",
-				SQL:         "SELECT * EXCEPT c1,c2 FROM x t",
-				expect:      "SELECT * EXCEPT c1, c2 FROM x t",
-			},
-			{
-				description: "basic expr",
-				SQL:         "SELECT col1 + col2 AS z, t.col2, col3 AS col FROM x t",
-				expect:      "SELECT col1 + col2 AS z, t.col2, col3 AS col FROM x t",
 			},
 
 			{
@@ -72,14 +80,21 @@ func TestParseSelect(t *testing.T) {
 				SQL:         "SELECT NOT t.col FROM x t",
 				expect:      "SELECT  NOT t.col FROM x t",
 			},
+			{
+				description: "basic expr",
+				SQL:         "SELECT col1 + col2 AS z, t.col2, col3 AS col FROM x t",
+				expect:      "SELECT col1 + col2 AS z, t.col2, col3 AS col FROM x t",
+			},
 		}
 
 		for _, testCase := range testCases {
+
 			query, err := ParseQuery(testCase.SQL)
 			if !assert.Nil(t, err) {
 				fmt.Printf("%v\n", testCase.SQL)
 				continue
 			}
+
 			actual := Stringify(query)
 			if !assert.EqualValues(t, testCase.expect, actual) {
 				toolbox.DumpIndent(query, true)

@@ -25,17 +25,8 @@ func parseQuery(cursor *parsly.Cursor, dest *query.Select) error {
 		if err := parseSelectListItem(cursor, &dest.List); err != nil {
 			return err
 		}
-		match = cursor.MatchAfterOptional(whitespaceToken, exceptKeywordToken, fromKeywordToken)
+		match = cursor.MatchAfterOptional(whitespaceToken, fromKeywordToken)
 		switch match.Code {
-		case exceptKeyword:
-			if err := expectIdentifiers(cursor, &dest.Except); err != nil {
-				return err
-			}
-			if match = cursor.MatchAfterOptional(whitespaceToken, fromKeywordToken); match.Code != fromKeyword {
-				return cursor.NewError(fromKeywordToken)
-			}
-			fallthrough
-
 		case fromKeyword:
 			dest.From = query.From{}
 			match = cursor.MatchAfterOptional(whitespaceToken, selectorToken, parenthesesToken)
@@ -120,17 +111,46 @@ func matchPostFrom(cursor *parsly.Cursor, dest *query.Select, match *parsly.Toke
 	return true, nil
 }
 
-func expectIdentifiers(cursor *parsly.Cursor, expect *[]string) error {
+func expectExpectIdentifiers(cursor *parsly.Cursor, expect *[]string) (bool, error) {
 	match := cursor.MatchAfterOptional(whitespaceToken, identifierToken)
-	if match.Code == identifierCode {
+	switch match.Code {
+	case identifierCode:
 		item := match.Text(cursor)
 		*expect = append(*expect, item)
+	default:
+		return false, nil
 	}
+
+	snapshotPos := cursor.Pos
 	match = cursor.MatchAfterOptional(whitespaceToken, nextToken)
-	if match.Code == nextCode {
-		if err := expectIdentifiers(cursor, expect); err != nil {
-			return err
+	switch match.Code {
+	case nextCode:
+		has, err := expectExpectIdentifiers(cursor, expect)
+		if err != nil {
+			return false, err
 		}
+		if !has {
+			cursor.Pos = snapshotPos
+			return true, nil
+		}
+	}
+	return true, nil
+}
+
+func expectIdentifiers(cursor *parsly.Cursor, expect *[]string) error {
+	match := cursor.MatchAfterOptional(whitespaceToken, identifierToken)
+	switch match.Code {
+	case identifierCode:
+		item := match.Text(cursor)
+		*expect = append(*expect, item)
+	default:
+		return nil
+	}
+
+	match = cursor.MatchAfterOptional(whitespaceToken, nextToken)
+	switch match.Code {
+	case nextCode:
+		return expectIdentifiers(cursor, expect)
 	}
 	return nil
 }

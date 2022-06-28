@@ -28,7 +28,10 @@ func (n *identifier) Match(cursor *parsly.Cursor) (matched int) {
 				matched++
 				continue
 			}
-
+			isLast := i+1 == len(input)
+			if !isLast && !(isWhitespace(input[i]) || input[i] == '(' || input[i] == ',') {
+				return 0
+			}
 			return matched
 		}
 	}

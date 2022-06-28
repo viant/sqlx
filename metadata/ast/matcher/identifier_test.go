@@ -30,7 +30,7 @@ func TestIdentifier_Match(t *testing.T) {
 		{
 			description: "- doesnt match",
 			input:       []byte("ABc-test"),
-			matched:     true,
+			matched:     false,
 		},
 		{
 			description: "beginning number doesn't match",
