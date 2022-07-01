@@ -34,11 +34,17 @@ func expectOperand(cursor *parsly.Cursor) (node.Node, error) {
 		starTokenToken,
 		notOperatorToken,
 		nullToken,
+		placeholderToken,
 		selectorToken)
 	switch match.Code {
-	case selectorTokenCode:
+	case selectorTokenCode, placeholderTokenCode:
+
 		selRaw := match.Text(cursor)
-		selector := expr.NewSelector(selRaw)
+		var selector node.Node
+		selector = expr.NewSelector(selRaw)
+		if match.Code == placeholderTokenCode {
+			selector = expr.NewPlaceholder(selRaw)
+		}
 		match = cursor.MatchAfterOptional(whitespaceToken, parenthesesToken, exceptKeywordToken)
 		switch match.Code {
 		case parenthesesCode:

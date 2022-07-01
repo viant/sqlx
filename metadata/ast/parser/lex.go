@@ -29,6 +29,7 @@ const (
 	caseBlock
 	commentBlock
 	selectKeyword
+	placeholderTokenCode
 	selectorTokenCode
 	asKeyword
 	selectionKindCode
@@ -90,4 +91,5 @@ var numericLiteralToken = parsly.NewToken(numericLiteral, `NUMERIC`, matcher.New
 
 var identifierToken = parsly.NewToken(identifierCode, "IDENT", smatcher.NewIdentifier())
 var selectorToken = parsly.NewToken(selectorTokenCode, "SELECTOR", smatcher.NewSelector())
+var placeholderToken = parsly.NewToken(placeholderTokenCode, "SELECTOR", smatcher.NewPlaceholder())
 var literalToken = parsly.NewToken(literalCode, "LITERAL", matcher.NewNop())
