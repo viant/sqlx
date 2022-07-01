@@ -9,7 +9,7 @@ require (
 	github.com/mattn/go-sqlite3 v1.14.13
 	github.com/stretchr/testify v1.7.5
 	github.com/viant/afs v1.16.0
-	github.com/viant/parsly v0.0.0-20220627184754-7b29249ed1e8
+	github.com/viant/parsly v0.0.0-20220701205749-237fda4a6158
 	github.com/viant/toolbox v0.34.5
 	github.com/viant/xunsafe v0.8.1-0.20220517184704-270ed1a5aec9
 )
