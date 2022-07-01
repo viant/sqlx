@@ -7,15 +7,39 @@ import (
 	"fmt"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/assert"
+	option2 "github.com/viant/afs/option"
 	"github.com/viant/sqlx/io"
 	"github.com/viant/sqlx/io/read"
+	"github.com/viant/sqlx/io/read/cache"
 	"github.com/viant/sqlx/option"
+	"github.com/viant/toolbox"
 	"log"
 	"os"
+	"path"
 	"testing"
+	"time"
 )
 
+type recorder struct {
+	scannedValues [][]interface{}
+	addedValues   [][]interface{}
+}
+
+func (r *recorder) AddValues(values []interface{}) {
+	r.addedValues = append(r.addedValues, values)
+}
+
+func (r *recorder) ScanValues(values []interface{}) {
+	r.scannedValues = append(r.scannedValues, values)
+}
+
 func TestReader_ReadAll(t *testing.T) {
+	cache.Now = func() time.Time {
+		parse, _ := time.Parse("Jan 2, 2006 at 3:04pm (MST)", "Feb 4, 2014 at 6:05pm (PST)")
+		return parse
+	}
+	testLocation := toolbox.CallerDirectory(3)
+	cacheLocation := path.Join(testLocation, "testdata", "cache")
 
 	type fooCase1 struct {
 		Id   int
@@ -42,40 +66,32 @@ func TestReader_ReadAll(t *testing.T) {
 		*case3FooID
 		Case3FooName `sqlx:"ns=foo"`
 	}
-	type Case5SStrings struct {
-		T []string
-	}
 
-	var useCases = []struct {
-		description    string
-		query          string
-		driver         string
-		dsn            string
-		newRow         func() interface{}
-		params         []interface{}
-		expect         interface{}
-		initSQL        []string
-		hasMapperError bool
-		resolver       *io.Resolver
-		expectResolved interface{}
+	case3WrapperRecorder := &recorder{}
+	case3WrapperCache, _ := cache.NewCache(cacheLocation, time.Duration(10000)*time.Minute, "events", option2.NewStream(64*1024*1024, 0), case3WrapperRecorder)
+	case3PtrWrapperRecorder := &recorder{}
+	case3PtrWrapperCache, _ := cache.NewCache(cacheLocation, time.Duration(10000)*time.Minute, "", option2.NewStream(64*1024*1024, 0), case3PtrWrapperRecorder)
+
+	var useCases = []*struct {
+		description     string
+		query           string
+		driver          string
+		dsn             string
+		newRow          func() interface{}
+		params          []interface{}
+		expect          interface{}
+		initSQL         []string
+		hasMapperError  bool
+		resolver        *io.Resolver
+		expectResolved  interface{}
+		cache           *cache.Service
+		cachedData      [][]interface{}
+		args            []interface{}
+		expectedAdded   string
+		expectedScanned string
+		removeCache     bool
+		recorder        *recorder
 	}{
-
-		{
-			description: "slices",
-			driver:      "sqlite3",
-			dsn:         "/tmp/sqllite.db",
-			initSQL: []string{
-				"CREATE TABLE IF NOT EXISTS t5 (t TEXT)",
-				"delete from t5",
-				"insert into t5 values(\"v1,v2\")",
-				"insert into t5 values(\"v4,v5\")",
-			},
-			query: "SELECT t  FROM t5 ORDER BY 1",
-			newRow: func() interface{} {
-				return &Case5SStrings{}
-			},
-			expect: `[{"t":["v1", "v2"]},{"t":["v4","v5"]}]`,
-		},
 		{
 			description: "Reading slice input   ",
 			driver:      "sqlite3",
@@ -191,10 +207,62 @@ func TestReader_ReadAll(t *testing.T) {
 			expect:         `[{"Id":1,"Desc":"desc1","Name":"John"},{"Id":2,"Desc":"desc2","Name":"Bruce"}]`,
 			expectResolved: `["101","102"]`,
 		},
+		{
+			description: "Cache",
+			driver:      "sqlite3",
+			dsn:         "/tmp/sqllite.db",
+			initSQL: []string{
+				"CREATE TABLE IF NOT EXISTS t5 (foo_id INTEGER PRIMARY KEY, foo_name TEXT, desc TEXT, unk TEXT)",
+				"delete from t5",
+				"insert into t5 values(1, \"John\", \"desc1\", \"101\")",
+				"insert into t5 values(2, \"Bruce\", \"desc2\", \"102\")",
+			},
+			query: "SELECT foo_id , foo_name, desc,  unk  FROM t5 ORDER BY 1",
+			newRow: func() interface{} {
+				return &case3Wrapper{}
+			},
+			resolver:       io.NewResolver(),
+			expect:         `[{"Id":1,"Desc":"desc1","Name":"John"},{"Id":2,"Desc":"desc2","Name":"Bruce"}]`,
+			expectResolved: `["101","102"]`,
+			cache:          case3WrapperCache,
+			cachedData: [][]interface{}{
+				{float64(1), "John", "desc1", "101"},
+				{float64(2), "Bruce", "desc2", "102"},
+			},
+			recorder:        case3WrapperRecorder,
+			expectedScanned: `[[2,"Bruce","desc2","102"],[2,"Bruce","desc2","102"]]`,
+		},
+		{
+			description: "Cache with args",
+			driver:      "sqlite3",
+			dsn:         "/tmp/sqllite.db",
+			initSQL: []string{
+				"CREATE TABLE IF NOT EXISTS t5 (foo_id INTEGER PRIMARY KEY, foo_name TEXT, desc TEXT, unk TEXT)",
+				"delete from t5",
+				"insert into t5 values(1, \"John\", \"desc1\", \"101\")",
+				"insert into t5 values(2, \"Bruce\", \"desc2\", \"102\")",
+			},
+			query: "SELECT foo_id , foo_name, desc,  unk  FROM t5 WHERE foo_id = ? ORDER BY 1",
+			newRow: func() interface{} {
+				return &case3Wrapper{}
+			},
+			resolver:       io.NewResolver(),
+			expect:         `[{"Id":2,"Desc":"desc2","Name":"Bruce"}]`,
+			expectResolved: `["102"]`,
+			cache:          case3PtrWrapperCache,
+			cachedData: [][]interface{}{
+				{float64(2), "Bruce", "desc2", "102"},
+			},
+			args:          []interface{}{2},
+			expectedAdded: `[[2,"Bruce","desc2","102"]]`,
+			removeCache:   true,
+			recorder:      case3PtrWrapperRecorder,
+		},
 	}
 
 outer:
-	for _, testCase := range useCases[:1] {
+	//for _, testCase := range useCases[len(useCases)-1:] {
+	for _, testCase := range useCases {
 		os.RemoveAll(testCase.dsn)
 		ctx := context.Background()
 		var db *sql.DB
@@ -215,6 +283,11 @@ outer:
 		if testCase.resolver != nil {
 			options = append(options, testCase.resolver.Resolve)
 		}
+
+		if testCase.cache != nil {
+			options = append(options, testCase.cache)
+		}
+
 		reader, err := read.New(ctx, db, testCase.query, testCase.newRow, options...)
 		if !assert.Nil(t, err, testCase.description) {
 			continue
@@ -223,19 +296,23 @@ outer:
 		err = reader.QueryAll(ctx, func(row interface{}) error {
 			actual = append(actual, row)
 			return nil
-		})
+		}, testCase.args...)
+
 		if testCase.hasMapperError {
 			assert.NotNil(t, t, err, testCase.description)
 			continue
 		}
+
 		if !assert.Nil(t, err, testCase.description) {
 			continue
 		}
+
 		actualJSON, _ := json.Marshal(actual)
 		if !assert.EqualValues(t, testCase.expect, string(actualJSON), testCase.description) {
 			fmt.Println(actualJSON)
 			continue
 		}
+
 		if testCase.resolver != nil {
 			actualJSON, _ := json.Marshal(testCase.resolver.Data(0))
 			if !assert.EqualValues(t, testCase.expectResolved, string(actualJSON), testCase.description) {
@@ -243,6 +320,29 @@ outer:
 				continue
 			}
 		}
-	}
 
+		if testCase.recorder != nil {
+			if testCase.expectedScanned != "" {
+				marshal, _ := json.Marshal(testCase.recorder.scannedValues)
+				assert.Equal(t, string(marshal), testCase.expectedScanned, testCase.description)
+			}
+
+			if testCase.expectedAdded != "" {
+				marshal, _ := json.Marshal(testCase.recorder.addedValues)
+				assert.Equal(t, string(marshal), testCase.expectedAdded, testCase.description)
+			}
+		}
+
+		if testCase.cache != nil {
+			cacheEntry, err := testCase.cache.Get(context.TODO(), testCase.query, testCase.args)
+			assert.Nil(t, err, testCase.description)
+			assert.True(t, cacheEntry.Has(), testCase.description)
+			argsMarshal, _ := json.Marshal(testCase.args)
+			assert.Equal(t, argsMarshal, cacheEntry.Meta.Args, testCase.description)
+			assert.Equal(t, testCase.query, cacheEntry.Meta.SQL, testCase.description)
+			if testCase.removeCache {
+				assert.Nil(t, testCase.cache.Delete(context.TODO(), cacheEntry), testCase.description)
+			}
+		}
+	}
 }

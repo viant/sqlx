@@ -5,10 +5,11 @@ import (
 	"database/sql"
 	"fmt"
 	"github.com/viant/sqlx/io"
+	"github.com/viant/sqlx/io/read/cache"
+	source2 "github.com/viant/sqlx/io/read/source"
 	"github.com/viant/sqlx/metadata/info"
 	"github.com/viant/sqlx/metadata/registry"
 	"github.com/viant/sqlx/option"
-	"github.com/viant/xunsafe"
 	"reflect"
 )
 
@@ -23,6 +24,7 @@ type Reader struct {
 	getRowMapper NewRowMapper
 	unmappedFn   io.Resolve
 	shallDeref   bool
+	cache        cache.Cache
 }
 
 //QuerySingle returns single row
@@ -31,39 +33,112 @@ func (r *Reader) QuerySingle(ctx context.Context, emit func(row interface{}) err
 	if err != nil {
 		return fmt.Errorf("failed to run query: %v, due to %s", r.query, err)
 	}
+
 	defer rows.Close()
+	newRows, err := NewRows(rows, nil, nil)
+	if err != nil {
+		return err
+	}
+
 	var mapper RowMapper
-	var columns []io.Column
-	var types []xunsafe.Type
+	cacheEntry, err := r.cacheEntry(ctx, r.query, args)
+	if err != nil {
+		return err
+	}
+
 	if rows.Next() {
-		if err = r.read(rows, &mapper, &columns, &types, emit); err != nil {
+		if err = r.read(ctx, newRows, &mapper, emit, cacheEntry); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+//QueryAll query all
+func (r *Reader) QueryAll(ctx context.Context, emit func(row interface{}) error, args ...interface{}) error {
+	entry, err := r.cacheEntry(ctx, r.query, args)
+	if err != nil {
+		return err
+	}
+
+	rows, source, err := r.createSource(ctx, entry, args)
+	if err != nil {
+		return err
+	}
+
+	defer source.Close(ctx) //TODO: Should we log it?
+	if err = r.applyRowsIfNeeded(entry, rows); err != nil {
+		return err
+	}
+
+	err = r.readAll(ctx, emit, entry, source)
+	if err != nil {
+		return err
+	}
+
+	return err
+}
+
+func (r *Reader) createSource(ctx context.Context, entry *cache.Entry, args []interface{}) (*sql.Rows, source2.Source, error) {
+	if entry == nil || !entry.Has() {
+		rows, err := r.stmt.QueryContext(ctx, args...)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to run query: %v, due to %s", r.query, err)
+		}
+
+		source, err := NewRows(rows, r.cache, entry)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		return rows, source, nil
+	}
+
+	source, err := r.cache.AsSource(ctx, entry)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return nil, source, nil
+}
+
+//ReadAll read all
+func (r *Reader) ReadAll(ctx context.Context, rows *sql.Rows, emit func(row interface{}) error, options ...option.Option) error {
+	cacheEntry := r.getCacheEntry(options)
+	readerRows, err := NewRows(rows, r.cache, cacheEntry)
+	if err != nil {
+		return err
+	}
+
+	if err = r.readAll(ctx, emit, cacheEntry, readerRows); err != nil {
+		return err
+	}
+
+	return rows.Err()
+}
+
+func (r *Reader) readAll(ctx context.Context, emit func(row interface{}) error, cacheEntry *cache.Entry, source source2.Source) error {
+	var err error
+	var mapper RowMapper
+
+	for source.Next() {
+		if err = r.read(ctx, source, &mapper, emit, cacheEntry); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-//QueryAll query all
-func (r *Reader) QueryAll(ctx context.Context, emit func(row interface{}) error, args ...interface{}) error {
-	rows, err := r.stmt.QueryContext(ctx, args...)
-	if err != nil {
-		return fmt.Errorf("failed to run query: %v, due to %s", r.query, err)
-	}
-	defer rows.Close()
-	return r.ReadAll(rows, emit)
-}
-
-//ReadAll read all
-func (r *Reader) ReadAll(rows *sql.Rows, emit func(row interface{}) error) error {
-	var mapper RowMapper
-	var columns []io.Column
-	var types []xunsafe.Type
-	for rows.Next() {
-		if err := r.read(rows, &mapper, &columns, &types, emit); err != nil {
-			return err
+func (r *Reader) getCacheEntry(options []option.Option) *cache.Entry {
+	var cacheEntry *cache.Entry
+	for _, o := range options {
+		switch actual := o.(type) {
+		case *cache.Entry:
+			cacheEntry = actual
 		}
 	}
-	return rows.Err()
+	return cacheEntry
 }
 
 //QueryAllWithSlice query all with a slice
@@ -88,47 +163,66 @@ func (r *Reader) QueryAllWithMap(ctx context.Context, emit func(row map[string]i
 	}, args...)
 }
 
-func (r *Reader) read(rows *sql.Rows, mapperPtr *RowMapper, columnsPtr *[]io.Column, columnTypes *[]xunsafe.Type, emit func(row interface{}) error) error {
+func (r *Reader) read(ctx context.Context, source source2.Source, mapperPtr *RowMapper, emit func(row interface{}) error, cacheEntry *cache.Entry) error {
 	row := r.newRow()
 	if r.targetType == nil {
 		r.targetType = reflect.TypeOf(row)
 		r.shallDeref = r.targetType.Kind() == reflect.Map || r.targetType.Kind() == reflect.Slice
 	}
-	mapper, err := r.ensureRowMapper(rows, mapperPtr, columnsPtr)
+
+	mapper, err := r.ensureRowMapper(source, mapperPtr)
 	if err != nil {
 		return err
 	}
+
 	rowValues, err := mapper(row)
 	if err != nil {
 		return err
 	}
-	err = rows.Scan(rowValues...)
+
+	typeMatches, err := source.CheckType(ctx, rowValues)
+	if !typeMatches {
+		return fmt.Errorf("invalid cache type")
+	}
+	scanner := source.Scanner()
+	err = scanner(rowValues...)
+
 	if err != nil {
 		return fmt.Errorf("failed to scan %v, due to %w", r.query, err)
 	}
-	if err = rows.Err(); err != nil {
+
+	if err = source.Err(); err != nil {
 		return fmt.Errorf("failed to read records: %w", err)
 	}
-	r.ensureDereferences(row, rowValues, columnsPtr, columnTypes)
+
+	if _, err = r.updateCacheType(ctx, rowValues, cacheEntry); err != nil {
+		return err
+	}
+
+	r.ensureDereferences(row, source, rowValues)
+	if cacheEntry != nil && !cacheEntry.Has() {
+		if err = r.cache.AddValues(ctx, cacheEntry, rowValues); err != nil {
+			return err
+		}
+	}
+
 	return emit(row)
 }
 
-func (r *Reader) ensureDereferences(row interface{}, rowValues []interface{}, columnsPtr *[]io.Column, typesPtr *[]xunsafe.Type) {
+func (r *Reader) ensureDereferences(row interface{}, source source2.Source, rowValues []interface{}) {
 	if !r.shallDeref {
 		return
 	}
-	if len(*typesPtr) == 0 {
-		*typesPtr = make([]xunsafe.Type, len(*columnsPtr))
-		for i, column := range *columnsPtr {
-			(*typesPtr)[i] = *xunsafe.NewType(column.ScanType())
-		}
-	}
+
+	columns := source.ConvertColumns()
+	xTypes := source.XTypes()
 	for i, value := range rowValues {
-		rowValues[i] = (*typesPtr)[i].Deref(value)
+		rowValues[i] = (xTypes)[i].Deref(value)
 	}
+
 	switch actual := row.(type) {
 	case map[string]interface{}:
-		for i, column := range *columnsPtr {
+		for i, column := range columns {
 			actual[column.Name()] = rowValues[i]
 		}
 	case []interface{}:
@@ -136,20 +230,15 @@ func (r *Reader) ensureDereferences(row interface{}, rowValues []interface{}, co
 	}
 }
 
-func (r *Reader) ensureRowMapper(rows *sql.Rows, mapperPtr *RowMapper, columnsPtr *[]io.Column) (RowMapper, error) {
+func (r *Reader) ensureRowMapper(source source2.Source, mapperPtr *RowMapper) (RowMapper, error) {
 	if *mapperPtr != nil {
 		return *mapperPtr, nil
 	}
-	columnNames, err := rows.Columns()
-	if err != nil {
-		return nil, err
-	}
-	columns := io.NamesToColumns(columnNames)
-	if columnsTypes, _ := rows.ColumnTypes(); len(columnNames) > 0 {
-		columns = io.TypesToColumns(columnsTypes)
-	}
-	*columnsPtr = columns
+
+	columns := source.ConvertColumns()
+
 	var mapper RowMapper
+	var err error
 	if mapper, err = r.getRowMapper(columns, r.targetType, r.tagName, r.unmappedFn); err != nil {
 		return nil, fmt.Errorf("failed to get row mapper, due to %w", err)
 	}
@@ -162,6 +251,31 @@ func (r *Reader) Stmt() *sql.Stmt {
 	return r.stmt
 }
 
+func (r *Reader) cacheEntry(ctx context.Context, sql string, args []interface{}) (*cache.Entry, error) {
+	if r.cache != nil {
+		entry, err := r.cache.Get(ctx, sql, args)
+		return entry, err
+	}
+
+	return nil, nil
+}
+
+func (r *Reader) updateCacheType(ctx context.Context, values []interface{}, entry *cache.Entry) (bool, error) {
+	if entry == nil {
+		return false, nil
+	}
+
+	return r.cache.UpdateType(ctx, entry, values)
+}
+
+func (r *Reader) applyRowsIfNeeded(entry *cache.Entry, rows *sql.Rows) error {
+	if entry == nil {
+		return nil
+	}
+
+	return r.cache.CacheRows(entry, rows)
+}
+
 //New creates a records to a structs reader
 func New(ctx context.Context, db *sql.DB, query string, newRow func() interface{}, options ...option.Option) (*Reader, error) {
 	dialect := ensureDialect(options, db)
@@ -172,7 +286,9 @@ func New(ctx context.Context, db *sql.DB, query string, newRow func() interface{
 	if err != nil {
 		return nil, fmt.Errorf("failed to prepare query: %v, due to %w", query, err)
 	}
-	return NewStmt(stmt, newRow, options...), err
+	newStmt := NewStmt(stmt, newRow, options...)
+	newStmt.query = query
+	return newStmt, err
 }
 
 func ensureDialect(options []option.Option, db *sql.DB) *info.Dialect {
@@ -191,11 +307,20 @@ func ensureDialect(options []option.Option, db *sql.DB) *info.Dialect {
 func NewStmt(stmt *sql.Stmt, newRow func() interface{}, options ...option.Option) *Reader {
 	var getRowMapper NewRowMapper
 	var unmappedFn io.Resolve
+	var readerCache cache.Cache
 	if !option.Assign(options, &getRowMapper) {
 		getRowMapper = newRowMapper
 	}
 	option.Assign(options, &unmappedFn)
-	return &Reader{newRow: newRow, stmt: stmt, tagName: option.Options(options).Tag(), getRowMapper: newRowMapper, unmappedFn: unmappedFn}
+
+	for _, anOption := range options {
+		switch actual := anOption.(type) {
+		case cache.Cache:
+			readerCache = actual
+		}
+	}
+
+	return &Reader{newRow: newRow, stmt: stmt, tagName: option.Options(options).Tag(), getRowMapper: newRowMapper, unmappedFn: unmappedFn, cache: readerCache}
 }
 
 //NewMap creates records to map reader
