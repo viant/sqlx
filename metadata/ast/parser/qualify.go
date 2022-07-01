@@ -5,7 +5,8 @@ import (
 	"github.com/viant/sqlx/metadata/ast/expr"
 )
 
-func parseQualify(cursor *parsly.Cursor, qualify *expr.Qualify) error {
+//ParseQualify parses qualify expr
+func ParseQualify(cursor *parsly.Cursor, qualify *expr.Qualify) error {
 	binary := &expr.Binary{}
 	err := parseBinaryExpr(cursor, binary)
 	qualify.X = binary

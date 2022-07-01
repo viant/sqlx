@@ -63,7 +63,7 @@ func matchPostFrom(cursor *parsly.Cursor, dest *query.Select, match *parsly.Toke
 		}
 	case whereKeyword:
 		dest.Qualify = expr.NewQualify()
-		if err := parseQualify(cursor, dest.Qualify); err != nil {
+		if err := ParseQualify(cursor, dest.Qualify); err != nil {
 			return false, err
 		}
 		match = cursor.MatchAfterOptional(whitespaceToken, groupByToken, havingKeywordToken, orderByKeywordToken, windowToken)
@@ -78,7 +78,7 @@ func matchPostFrom(cursor *parsly.Cursor, dest *query.Select, match *parsly.Toke
 
 	case havingKeyword:
 		dest.Having = expr.NewQualify()
-		if err := parseQualify(cursor, dest.Having); err != nil {
+		if err := ParseQualify(cursor, dest.Having); err != nil {
 			return false, err
 		}
 		match = cursor.MatchAfterOptional(whitespaceToken, orderByKeywordToken, windowToken)
