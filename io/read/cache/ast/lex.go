@@ -14,6 +14,8 @@ const (
 	ptrToken
 	sliceToken
 
+	tagToken
+
 	intToken
 	int8Token
 	int16Token
@@ -39,6 +41,7 @@ const (
 var whitespaceMatcher = parsly.NewToken(whitespaceToken, "Whitespace", matcher.NewWhiteSpace())
 var whitespaceTerminatorMatcher = parsly.NewToken(whitespaceTerminatorToken, "Whitespace terminator", matcher2.NewWhitespaceTerminator())
 var semicolonMatcher = parsly.NewToken(semicolonToken, "Semicolon", matcher.NewByte(';'))
+var tagMatcher = parsly.NewToken(tagToken, "Tag", matcher2.NewBlock('"', '"', '\\'))
 
 var structMatcher = parsly.NewToken(structToken, "Struct", matcher.NewFragment("struct"))
 var ptrMatcher = parsly.NewToken(ptrToken, "Pointer", matcher.NewByte('*'))

@@ -24,7 +24,7 @@ type Reader struct {
 	getRowMapper NewRowMapper
 	unmappedFn   io.Resolve
 	shallDeref   bool
-	cache        cache.Cache
+	cache        *cache.Service
 }
 
 //QuerySingle returns single row
@@ -184,19 +184,10 @@ func (r *Reader) read(ctx context.Context, source source2.Source, mapperPtr *Row
 	if !typeMatches {
 		return fmt.Errorf("invalid cache type")
 	}
-	scanner := source.Scanner()
-	err = scanner(rowValues...)
 
-	if err != nil {
+	scanner := source.Scanner(ctx)
+	if err = scanner(rowValues...); err != nil {
 		return fmt.Errorf("failed to scan %v, due to %w", r.query, err)
-	}
-
-	if err = source.Err(); err != nil {
-		return fmt.Errorf("failed to read records: %w", err)
-	}
-
-	if _, err = r.updateCacheType(ctx, rowValues, cacheEntry); err != nil {
-		return err
 	}
 
 	r.ensureDereferences(row, source, rowValues)
@@ -260,20 +251,12 @@ func (r *Reader) cacheEntry(ctx context.Context, sql string, args []interface{})
 	return nil, nil
 }
 
-func (r *Reader) updateCacheType(ctx context.Context, values []interface{}, entry *cache.Entry) (bool, error) {
-	if entry == nil {
-		return false, nil
-	}
-
-	return r.cache.UpdateType(ctx, entry, values)
-}
-
 func (r *Reader) applyRowsIfNeeded(entry *cache.Entry, rows *sql.Rows) error {
 	if entry == nil {
 		return nil
 	}
 
-	return r.cache.CacheRows(entry, rows)
+	return r.cache.AssignRows(entry, rows)
 }
 
 //New creates a records to a structs reader
@@ -307,7 +290,7 @@ func ensureDialect(options []option.Option, db *sql.DB) *info.Dialect {
 func NewStmt(stmt *sql.Stmt, newRow func() interface{}, options ...option.Option) *Reader {
 	var getRowMapper NewRowMapper
 	var unmappedFn io.Resolve
-	var readerCache cache.Cache
+	var readerCache *cache.Service
 	if !option.Assign(options, &getRowMapper) {
 		getRowMapper = newRowMapper
 	}
@@ -315,7 +298,7 @@ func NewStmt(stmt *sql.Stmt, newRow func() interface{}, options ...option.Option
 
 	for _, anOption := range options {
 		switch actual := anOption.(type) {
-		case cache.Cache:
+		case *cache.Service:
 			readerCache = actual
 		}
 	}

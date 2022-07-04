@@ -27,12 +27,8 @@ func (s *Source) ConvertColumns() []io.Column {
 	return s.ioColumns
 }
 
-func (s *Source) Scanner() func(args ...interface{}) error {
-	return s.cache.Scanner(s.entry)
-}
-
-func (s *Source) Err() error {
-	return nil
+func (s *Source) Scanner(context.Context) func(args ...interface{}) error {
+	return s.cache.scanner(s.entry)
 }
 
 func (s *Source) XTypes() []*xunsafe.Type {

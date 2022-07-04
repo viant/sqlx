@@ -3,6 +3,7 @@ package ast
 import (
 	"github.com/viant/parsly"
 	"reflect"
+	"strconv"
 )
 
 type (
@@ -139,12 +140,35 @@ func buildStruct(newCursor *parsly.Cursor, index map[string]reflect.Type) (refle
 			return nil, err
 		}
 
+		aTag, ok, err := matchStructTag(newCursor)
+		if err != nil {
+			return nil, err
+		}
+
+		if ok {
+			field.Tag = aTag
+		}
+
 		field.Type = fieldType
 		i++
 		structFields = append(structFields, field)
 	}
 
 	return reflect.StructOf(structFields), nil
+}
+
+func matchStructTag(cursor *parsly.Cursor) (reflect.StructTag, bool, error) {
+	matched := cursor.MatchAfterOptional(whitespaceMatcher, tagMatcher)
+	if matched.Code != tagToken {
+		return "", true, nil
+	}
+
+	text, err := strconv.Unquote(matched.Text(cursor))
+	if err != nil {
+		return "", false, err
+	}
+
+	return reflect.StructTag(text), true, nil
 }
 
 func getModifiers(cursor *parsly.Cursor) []Modifier {

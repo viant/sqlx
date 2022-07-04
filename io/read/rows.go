@@ -13,7 +13,7 @@ type Rows struct {
 	rows    *sql.Rows
 	columns []io.Column
 	xTypes  []*xunsafe.Type
-	cache   cache.Cache
+	cache   *cache.Service
 	entry   *cache.Entry
 }
 
@@ -21,7 +21,7 @@ func (c *Rows) CheckType(ctx context.Context, values []interface{}) (bool, error
 	return true, nil
 }
 
-func NewRows(rows *sql.Rows, cache cache.Cache, entry *cache.Entry) (*Rows, error) {
+func NewRows(rows *sql.Rows, cache *cache.Service, entry *cache.Entry) (*Rows, error) {
 	readerRows := &Rows{
 		rows:  rows,
 		cache: cache,
@@ -39,12 +39,32 @@ func (c *Rows) ConvertColumns() []io.Column {
 	return c.columns
 }
 
-func (c *Rows) Scanner() func(args ...interface{}) error {
-	return c.rows.Scan
-}
+func (c *Rows) Scanner(ctx context.Context) func(args ...interface{}) error {
+	return func(args ...interface{}) error {
+		var err error
+		if err = c.rows.Scan(args...); err != nil {
+			return err
+		}
 
-func (c *Rows) Err() error {
-	return c.rows.Err()
+		if err = c.rows.Err(); err != nil {
+			return err
+		}
+
+		var ok bool
+		if c.entry != nil {
+			ok, err = c.cache.UpdateType(ctx, c.entry, args)
+			if !ok {
+				c.entry = nil
+				c.cache = nil
+			}
+
+			if err != nil {
+				return err
+			}
+		}
+
+		return nil
+	}
 }
 
 func (c *Rows) XTypes() []*xunsafe.Type {

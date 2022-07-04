@@ -9,7 +9,6 @@ import (
 	"github.com/viant/afs"
 	"github.com/viant/afs/option"
 	"github.com/viant/sqlx/io"
-	"github.com/viant/sqlx/io/read/source"
 	"github.com/viant/xunsafe"
 	"hash/fnv"
 	"reflect"
@@ -27,19 +26,7 @@ const (
 
 type (
 	ScannerFn func(args ...interface{}) error
-	Cache     interface {
-		Get(ctx context.Context, SQL string, args []interface{}) (*Entry, error)
-		WriteMeta(ctx context.Context, m *Entry) (*bufio.Writer, error)
-		Delete(ctx context.Context, entry *Entry) error
-		UpdateType(ctx context.Context, entry *Entry, values []interface{}) (has bool, err error)
-		Close(ctx context.Context, entry *Entry) error
-		Type() reflect.Type
-		AddValues(ctx context.Context, entry *Entry, values []interface{}) error
-		CacheRows(entry *Entry, rows *sql.Rows) error
-		AsSource(ctx context.Context, entry *Entry) (source.Source, error)
-	}
-
-	Service struct {
+	Service   struct {
 		storage   string
 		afs       afs.Service
 		ttl       time.Duration
@@ -120,7 +107,7 @@ func (c *Service) getEntry(ctx context.Context, SQL string, args []interface{}, 
 		},
 	}
 
-	status, err := c.get(ctx, err, URL, entry)
+	status, err := c.updateEntry(ctx, err, URL, entry)
 	if err != nil {
 		return nil, err
 	}
@@ -135,7 +122,7 @@ func (c *Service) getEntry(ctx context.Context, SQL string, args []interface{}, 
 	return entry, nil
 }
 
-func (c *Service) get(ctx context.Context, err error, URL string, entry *Entry) (int, error) {
+func (c *Service) updateEntry(ctx context.Context, err error, URL string, entry *Entry) (int, error) {
 	status, err := c.readData(ctx, entry)
 	if status == NotExistStatus || status == InUseStatus || err != nil {
 		if err == nil {
@@ -234,7 +221,7 @@ func (c *Service) expired(meta Meta) bool {
 	return int(Now().UnixNano()) > meta.TimeToLive
 }
 
-func (c *Service) WriteMeta(ctx context.Context, m *Entry) (*bufio.Writer, error) {
+func (c *Service) writeMeta(ctx context.Context, m *Entry) (*bufio.Writer, error) {
 	writer, err := c.afs.NewWriter(ctx, m.Meta.url, 0644, &option.SkipChecksum{Skip: true})
 	if err != nil {
 		return nil, err
@@ -285,7 +272,7 @@ func (c *Service) init() error {
 }
 
 func (c *Service) UpdateType(ctx context.Context, entry *Entry, values []interface{}) (bool, error) {
-	c.updateType(values)
+	c.initializeCacheType(values)
 
 	if entry.Meta.Type != "" && entry.Meta.Type != c.cacheType.String() {
 		return false, c.Delete(ctx, entry)
@@ -295,7 +282,7 @@ func (c *Service) UpdateType(ctx context.Context, entry *Entry, values []interfa
 	return true, nil
 }
 
-func (c *Service) updateType(values []interface{}) {
+func (c *Service) initializeCacheType(values []interface{}) {
 	if c.cacheType != nil {
 		return
 	}
@@ -336,13 +323,13 @@ func (c *Service) unmark(url string) {
 	c.mux.RUnlock()
 }
 
-func (c *Service) Scanner(e *Entry) ScannerFn {
+func (c *Service) scanner(e *Entry) ScannerFn {
 	return func(values ...interface{}) error {
 		if c.recorder != nil {
 			c.recorder.ScanValues(values)
 		}
 
-		cachedObj := reflect.New(c.Type())
+		cachedObj := reflect.New(c.cacheType)
 		var err error
 		if err = json.Unmarshal(e.Data, cachedObj.Interface()); err != nil {
 			return err
@@ -365,11 +352,17 @@ func (c *Service) Scanner(e *Entry) ScannerFn {
 	}
 }
 
-func (c *Service) Type() reflect.Type {
-	return c.cacheType
+func (c *Service) Close(ctx context.Context, e *Entry) error {
+	err := c.close(e)
+	if err != nil {
+		_ = c.Delete(ctx, e)
+		return err
+	}
+
+	return nil
 }
 
-func (c *Service) Close(ctx context.Context, e *Entry) error {
+func (c *Service) close(e *Entry) error {
 	if e.Has() {
 		return e.readCloser.Close()
 	}
@@ -399,7 +392,7 @@ func (c *Service) AddValues(ctx context.Context, e *Entry, values []interface{})
 	return err
 }
 
-func (c *Service) CacheRows(entry *Entry, rows *sql.Rows) error {
+func (c *Service) AssignRows(entry *Entry, rows *sql.Rows) error {
 	if len(entry.Meta.Fields) > 0 {
 		return nil
 	}

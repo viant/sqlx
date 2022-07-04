@@ -8,8 +8,7 @@ import (
 
 type Source interface {
 	ConvertColumns() []io.Column
-	Scanner() func(args ...interface{}) error
-	Err() error
+	Scanner(context.Context) func(args ...interface{}) error
 	XTypes() []*xunsafe.Type
 	CheckType(ctx context.Context, values []interface{}) (bool, error)
 	Close(ctx context.Context) error

@@ -35,6 +35,18 @@ func TestParseType(t *testing.T) {
 		},
 	})
 
+	typeWithTags := reflect.StructOf([]reflect.StructField{
+		{
+			Name: "Name",
+			Type: StringType,
+			Tag:  `json:"Name" sqlx:"autoincrement=true"`,
+		},
+		{
+			Name: "Price",
+			Type: Float64Type,
+		},
+	})
+
 	testCases := []struct {
 		description string
 		rType       reflect.Type
@@ -188,10 +200,15 @@ func TestParseType(t *testing.T) {
 			rType:       reflect.TypeOf(Boo{}),
 			extraTypes:  []reflect.Type{reflect.TypeOf(Boo{})},
 		},
+		{
+			description: "struct with tags",
+			rType:       typeWithTags,
+			extraTypes:  []reflect.Type{reflect.TypeOf(Boo{})},
+		},
 	}
 
-	//for i, testCase := range testCases[len(testCases)-1:] {
-	for i, testCase := range testCases {
+	for i, testCase := range testCases[len(testCases)-1:] {
+		//for i, testCase := range testCases {
 		fmt.Printf("Running testcase %v\n", i)
 
 		rType := testCase.rType
@@ -204,5 +221,31 @@ func TestParseType(t *testing.T) {
 			continue
 		}
 		assert.Equal(t, rType.String(), parse.String(), testCase.description)
+	}
+}
+
+func Benchmark_Parse_sqlx(b *testing.B) {
+	typeWithTags := reflect.StructOf([]reflect.StructField{
+		{
+			Name: "Name",
+			Type: StringType,
+			Tag:  `json:"Name" sqlx:"autoincrement=true"`,
+		},
+		{
+			Name: "Price",
+			Type: Float64Type,
+			Tag:  `json:"Price" sqlx:"autoincrement=true"`,
+		},
+		{
+			Name: "Date",
+			Type: TimeType,
+			Tag:  `json:"Date" sqlx:"autoincrement=true"`,
+		},
+	})
+
+	typeStr := typeWithTags.String()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		_, _ = Parse(typeStr)
 	}
 }

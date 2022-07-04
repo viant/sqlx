@@ -10,12 +10,13 @@ import (
 )
 
 type Entry struct {
-	Meta   Meta
-	Data   []byte // Entry is used as Iterator, Data is last streamed line.
-	reader *bufio.Reader
+	Meta Meta
+	Data []byte // Entry is used as Iterator, Data is last streamed line.
 
-	index       int
-	rowAdded    bool
+	index    int
+	rowAdded bool
+
+	reader      *bufio.Reader
 	writer      *bufio.Writer
 	writeCloser goIo.WriteCloser
 	readCloser  goIo.ReadCloser
@@ -60,7 +61,7 @@ func (c *Service) writeMetaIfNeeded(ctx context.Context, e *Entry) error {
 	}
 
 	var err error
-	e.writer, err = c.WriteMeta(ctx, e)
+	e.writer, err = c.writeMeta(ctx, e)
 	if err != nil {
 		return e.writeCloser.Close()
 	}
