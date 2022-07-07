@@ -3,7 +3,7 @@ package cache
 type Meta struct {
 	SQL        string
 	Args       []byte
-	Type       string
+	Type       []string
 	Signature  string
 	TimeToLive int
 	Fields     []*Field

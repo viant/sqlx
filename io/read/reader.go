@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"github.com/viant/sqlx/io"
 	"github.com/viant/sqlx/io/read/cache"
-	"github.com/viant/sqlx/io/read/mapper"
 	source2 "github.com/viant/sqlx/io/read/source"
 	"github.com/viant/sqlx/metadata/info"
 	"github.com/viant/sqlx/metadata/registry"
@@ -16,18 +15,19 @@ import (
 
 //Reader represents generic query reader
 type Reader struct {
-	query          string
-	newRow         func() interface{}
-	targetType     reflect.Type
-	tagName        string
-	stmt           *sql.Stmt
-	rows           *sql.Rows
-	getRowMapper   NewRowMapper
-	unmappedFn     io.Resolve
-	shallDeref     bool
-	cache          *cache.Service
-	mapperCache    *mapper.Cache
-	targetDatatype string
+	query              string
+	newRow             func() interface{}
+	targetType         reflect.Type
+	tagName            string
+	stmt               *sql.Stmt
+	rows               *sql.Rows
+	getRowMapper       NewRowMapper
+	unmappedFn         io.Resolve
+	shallDeref         bool
+	cache              *cache.Service
+	mapperCache        *MapperCache
+	targetDatatype     string
+	disableMapperCache DisableMapperCache
 }
 
 //QuerySingle returns single row
@@ -129,14 +129,14 @@ func (r *Reader) readAll(ctx context.Context, emit func(row interface{}) error, 
 }
 
 func (r *Reader) getCacheEntry(options []option.Option) *cache.Entry {
-	var cacheEntry *cache.Entry
+	var dataCacheEntry *cache.Entry
 	for _, o := range options {
 		switch actual := o.(type) {
 		case *cache.Entry:
-			cacheEntry = actual
+			dataCacheEntry = actual
 		}
 	}
-	return cacheEntry
+	return dataCacheEntry
 }
 
 //QueryAllWithSlice query all with a slice
@@ -235,6 +235,10 @@ func (r *Reader) ensureRowMapper(source source2.Source, mapperPtr *RowMapper) (R
 		options = append(options, r.mapperCache)
 	}
 
+	if r.disableMapperCache {
+		options = append(options, r.disableMapperCache)
+	}
+
 	if mapper, err = r.getRowMapper(columns, r.targetType, r.tagName, r.unmappedFn, options); err != nil {
 		return nil, fmt.Errorf("failed to get row mapper, due to %w", err)
 	}
@@ -295,23 +299,35 @@ func ensureDialect(options []option.Option, db *sql.DB) *info.Dialect {
 func NewStmt(stmt *sql.Stmt, newRow func() interface{}, options ...option.Option) *Reader {
 	var getRowMapper NewRowMapper
 	var unmappedFn io.Resolve
-	var readerCache *cache.Service
 	if !option.Assign(options, &getRowMapper) {
 		getRowMapper = newRowMapper
 	}
 	option.Assign(options, &unmappedFn)
 
-	var mapperCache *mapper.Cache
+	var readerCache *cache.Service
+	var mapperCache *MapperCache
+	var disableMapperCache DisableMapperCache
 	for _, anOption := range options {
 		switch actual := anOption.(type) {
 		case *cache.Service:
 			readerCache = actual
-		case *mapper.Cache:
+		case *MapperCache:
 			mapperCache = actual
+		case DisableMapperCache:
+			disableMapperCache = actual
 		}
 	}
 
-	return &Reader{newRow: newRow, stmt: stmt, tagName: option.Options(options).Tag(), getRowMapper: newRowMapper, unmappedFn: unmappedFn, cache: readerCache, mapperCache: mapperCache}
+	return &Reader{
+		newRow:             newRow,
+		stmt:               stmt,
+		tagName:            option.Options(options).Tag(),
+		getRowMapper:       newRowMapper,
+		unmappedFn:         unmappedFn,
+		cache:              readerCache,
+		mapperCache:        mapperCache,
+		disableMapperCache: disableMapperCache,
+	}
 }
 
 //NewMap creates records to map reader

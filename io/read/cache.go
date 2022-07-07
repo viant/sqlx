@@ -1,4 +1,4 @@
-package mapper
+package read
 
 import (
 	"github.com/viant/sqlx/io"
@@ -7,8 +7,11 @@ import (
 	"sync"
 )
 
+var DefaultMapperCache = NewMapperCache(8192)
+
 type (
-	Cache struct {
+	DisableMapperCache bool
+	MapperCache        struct {
 		first  *Segment
 		second *Segment
 		mutex  sync.Mutex
@@ -16,11 +19,11 @@ type (
 
 	Segment struct {
 		index   map[uint64]int
-		cache   []*Entry
+		cache   []*MapperCacheEntry
 		maxSize int
 	}
 
-	Entry struct {
+	MapperCacheEntry struct {
 		rawKey      string
 		key         uint64
 		matchesType bool
@@ -29,11 +32,11 @@ type (
 	}
 )
 
-func (e *Entry) HasFields() bool {
+func (e *MapperCacheEntry) HasFields() bool {
 	return len(e.fields) > 0
 }
 
-func (s *Segment) match(key uint64) (*Entry, bool) {
+func (s *Segment) match(key uint64) (*MapperCacheEntry, bool) {
 	index, ok := s.index[key]
 	if !ok {
 		return nil, false
@@ -42,7 +45,7 @@ func (s *Segment) match(key uint64) (*Entry, bool) {
 	return s.cache[index], true
 }
 
-func (s *Segment) add(entry *Entry) {
+func (s *Segment) add(entry *MapperCacheEntry) {
 	s.index[entry.key] = len(s.cache)
 	s.cache = append(s.cache, entry)
 }
@@ -52,23 +55,23 @@ func (s *Segment) reset() {
 	s.cache = s.cache[:0]
 }
 
-func (s *Segment) delete(entry *Entry) {
+func (s *Segment) delete(entry *MapperCacheEntry) {
 	delete(s.index, entry.key)
 }
 
-func New(size int) *Cache {
+func NewMapperCache(size int) *MapperCache {
 	actualSize := size / 2
-	return &Cache{
+	return &MapperCache{
 		first:  newSegment(actualSize),
 		second: newSegment(actualSize),
 	}
 }
 
-func (e *Entry) Fields() []io.Field {
+func (e *MapperCacheEntry) Fields() []io.Field {
 	return e.fields
 }
 
-func (c *Cache) Get(structType reflect.Type, columns []io.Column, resolver io.Resolve) (*Entry, error) {
+func (c *MapperCache) Get(structType reflect.Type, columns []io.Column, resolver io.Resolve) (*MapperCacheEntry, error) {
 	signature, err := c.generateKey(structType, columns)
 	if err != nil {
 		return nil, err
@@ -81,7 +84,7 @@ func (c *Cache) Get(structType reflect.Type, columns []io.Column, resolver io.Re
 
 	cachedEntry, ok := c.match(hashed, signature)
 	if !ok {
-		entry := &Entry{
+		entry := &MapperCacheEntry{
 			rawKey: signature,
 			key:    hashed,
 		}
@@ -97,7 +100,7 @@ func (c *Cache) Get(structType reflect.Type, columns []io.Column, resolver io.Re
 	return cachedEntry, nil
 }
 
-func (c *Cache) match(key uint64, signature string) (*Entry, bool) {
+func (c *MapperCache) match(key uint64, signature string) (*MapperCacheEntry, bool) {
 	c.mutex.Lock()
 	entry, ok := c.matchKey(key)
 	c.mutex.Unlock()
@@ -109,7 +112,7 @@ func (c *Cache) match(key uint64, signature string) (*Entry, bool) {
 	return entry, true
 }
 
-func (c *Cache) matchKey(key uint64) (*Entry, bool) {
+func (c *MapperCache) matchKey(key uint64) (*MapperCacheEntry, bool) {
 	fields, ok := c.first.match(key)
 	if ok {
 		return fields, true
@@ -122,7 +125,7 @@ func (c *Cache) matchKey(key uint64) (*Entry, bool) {
 	return nil, false
 }
 
-func (c *Cache) updateUnresolvedFields(entry *Entry, resolver io.Resolve) (*Entry, error) {
+func (c *MapperCache) updateUnresolvedFields(entry *MapperCacheEntry, resolver io.Resolve) (*MapperCacheEntry, error) {
 	if entry.matchesType {
 		return entry, nil
 	}
@@ -171,12 +174,12 @@ func matchesType(fields []io.Field) bool {
 func newSegment(size int) *Segment {
 	return &Segment{
 		index:   map[uint64]int{},
-		cache:   make([]*Entry, 0, size),
+		cache:   make([]*MapperCacheEntry, 0, size),
 		maxSize: size,
 	}
 }
 
-func (c *Cache) Put(entry *Entry, fields []io.Field) {
+func (c *MapperCache) Put(entry *MapperCacheEntry, fields []io.Field) {
 	if entry.rawKey == "" || entry.wasCached {
 		return
 	}
@@ -205,7 +208,7 @@ func (c *Cache) Put(entry *Entry, fields []io.Field) {
 	c.mutex.Unlock()
 }
 
-func (c *Cache) generateKey(structType reflect.Type, columns []io.Column) (string, error) {
+func (c *MapperCache) generateKey(structType reflect.Type, columns []io.Column) (string, error) {
 	dataType := structType.String()
 	size := len(dataType) + len(columns)
 	for _, column := range columns {
@@ -223,7 +226,7 @@ func (c *Cache) generateKey(structType reflect.Type, columns []io.Column) (strin
 	return string(keyBytes), nil
 }
 
-func (c *Cache) Delete(entry *Entry) error {
+func (c *MapperCache) Delete(entry *MapperCacheEntry) error {
 	c.mutex.Lock()
 	c.first.delete(entry)
 	c.second.delete(entry)
@@ -232,7 +235,7 @@ func (c *Cache) Delete(entry *Entry) error {
 	return nil
 }
 
-func (c *Cache) hashKey(key string) (uint64, error) {
+func (c *MapperCache) hashKey(key string) (uint64, error) {
 	h := fnv.New64a()
 	if _, err := h.Write([]byte(key)); err != nil {
 		return 0, err

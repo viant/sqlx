@@ -4,9 +4,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
-	"github.com/viant/xunsafe"
 	goIo "io"
-	"reflect"
 )
 
 type Entry struct {
@@ -31,18 +29,7 @@ func (c *Service) addRow(ctx context.Context, e *Entry, values []interface{}) er
 		return err
 	}
 
-	rValue := reflect.New(c.cacheType)
-	asInterface := rValue.Interface()
-
-	for i := range values {
-		if values[i] == nil {
-			continue
-		}
-
-		c.xFields[i].SetValue(xunsafe.AsPointer(asInterface), values[i])
-	}
-
-	marshal, err := json.Marshal(rValue.Elem().Interface())
+	marshal, err := json.Marshal(values)
 	if err != nil {
 		return err
 	}

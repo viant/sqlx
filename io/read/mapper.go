@@ -2,7 +2,6 @@ package read
 
 import (
 	"github.com/viant/sqlx/io"
-	"github.com/viant/sqlx/io/read/mapper"
 	"github.com/viant/sqlx/option"
 	"github.com/viant/xunsafe"
 	"reflect"
@@ -54,7 +53,7 @@ func newRowMapper(columns []io.Column, targetType reflect.Type, tagName string, 
 
 //NewStructMapper creates a new record mapper for supplied struct type
 func NewStructMapper(columns []io.Column, recordType reflect.Type, tagName string, resolver io.Resolve, options ...option.Option) (RowMapper, error) {
-	cache, entry, err := cacheEntry(columns, recordType, options, resolver)
+	cache, entry, err := mapperCacheEntry(columns, recordType, options, resolver)
 	if err != nil {
 		return nil, err
 	}
@@ -71,13 +70,20 @@ func NewStructMapper(columns []io.Column, recordType reflect.Type, tagName strin
 	return NewMapper(matched).MapToRow, nil
 }
 
-func cacheEntry(columns []io.Column, recordType reflect.Type, options []option.Option, resolver io.Resolve) (*mapper.Cache, *mapper.Entry, error) {
-	var mapperCache *mapper.Cache
+func mapperCacheEntry(columns []io.Column, recordType reflect.Type, options []option.Option, resolver io.Resolve) (*MapperCache, *MapperCacheEntry, error) {
+	var mapperCache *MapperCache
+	var disableMapperCache DisableMapperCache
 	for _, anOption := range options {
 		switch actual := anOption.(type) {
-		case *mapper.Cache:
+		case *MapperCache:
 			mapperCache = actual
+		case DisableMapperCache:
+			disableMapperCache = actual
 		}
+	}
+
+	if mapperCache == nil && !disableMapperCache {
+		mapperCache = DefaultMapperCache
 	}
 
 	if mapperCache == nil {
@@ -93,7 +99,7 @@ func cacheEntry(columns []io.Column, recordType reflect.Type, options []option.O
 	return mapperCache, entry, nil
 }
 
-func fields(entry *mapper.Entry, columns []io.Column, recordType reflect.Type, tagName string, resolver io.Resolve) ([]io.Field, error) {
+func fields(entry *MapperCacheEntry, columns []io.Column, recordType reflect.Type, tagName string, resolver io.Resolve) ([]io.Field, error) {
 	if entry != nil && entry.HasFields() {
 		return entry.Fields(), nil
 	}

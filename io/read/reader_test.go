@@ -11,7 +11,6 @@ import (
 	"github.com/viant/sqlx/io"
 	"github.com/viant/sqlx/io/read"
 	"github.com/viant/sqlx/io/read/cache"
-	"github.com/viant/sqlx/io/read/mapper"
 	"github.com/viant/sqlx/option"
 	"github.com/viant/toolbox"
 	"log"
@@ -54,8 +53,9 @@ type usecase struct {
 	expectedAdded   string
 	expectedScanned string
 	removeCache     bool
+	disableCache    *bool
 	recorder        *recorder
-	rowMapperCache  *mapper.Cache
+	rowMapperCache  *read.MapperCache
 }
 
 func TestReader_ReadAll(t *testing.T) {
@@ -281,7 +281,26 @@ func TestReader_ReadAll(t *testing.T) {
 			resolver:       io.NewResolver(),
 			expect:         `[{"Id":1,"Desc":"desc1","Name":"John"},{"Id":2,"Desc":"desc2","Name":"Bruce"}]`,
 			expectResolved: `["101","102"]`,
-			rowMapperCache: mapper.New(1024),
+			rowMapperCache: read.NewMapperCache(1024),
+		},
+		{
+			description: "Disabled cache",
+			driver:      "sqlite3",
+			dsn:         "/tmp/sqllite.db",
+			initSQL: []string{
+				"CREATE TABLE IF NOT EXISTS t6 (foo_id INTEGER PRIMARY KEY, foo_name TEXT, desc TEXT, unk TEXT)",
+				"delete from t6",
+				"insert into t6 values(1, \"John\", \"desc1\", \"101\")",
+				"insert into t6 values(2, \"Bruce\", \"desc2\", \"102\")",
+			},
+			query: "SELECT foo_id , foo_name, desc,  unk  FROM t6 ORDER BY 1",
+			newRow: func() interface{} {
+				return &case3Wrapper{}
+			},
+			resolver:       io.NewResolver(),
+			expect:         `[{"Id":1,"Desc":"desc1","Name":"John"},{"Id":2,"Desc":"desc2","Name":"Bruce"}]`,
+			disableCache:   boolPtr(true),
+			expectResolved: `["101","102"]`,
 		},
 	}
 
@@ -317,6 +336,10 @@ outer:
 			options = append(options, testCase.rowMapperCache)
 		}
 
+		if testCase.disableCache != nil {
+			options = append(options, read.DisableMapperCache(*testCase.disableCache))
+		}
+
 		reader, err := read.New(ctx, db, testCase.query, testCase.newRow, options...)
 		dbRequests := 1
 		if testCase.rowMapperCache != nil {
@@ -329,6 +352,10 @@ outer:
 			}
 		}
 	}
+}
+
+func boolPtr(b bool) *bool {
+	return &b
 }
 
 func testQueryAll(t *testing.T, reader *read.Reader, testCase *usecase, index int) bool {
@@ -421,7 +448,7 @@ func BenchmarkStructMapper(b *testing.B) {
 		return
 	}
 
-	dataSize := 10
+	dataSize := 1000
 	for i := 0; i < dataSize; i++ {
 		_, err = tx.Exec(`INSERT INTO foos (ID, Name, Price, InsertedAt, UpdatedAt, ModifiedBy) VALUES (
 			?, ?, ?, ?, ?, ?
@@ -476,14 +503,14 @@ func BenchmarkStructMapper(b *testing.B) {
 			var err error
 			b.ReportAllocs()
 			for i := 0; i < b.N; i++ {
-				_, err = read.NewStructMapper(columns, fooPtrType, "", io.NewResolver().Resolve)
+				_, err = read.NewStructMapper(columns, fooPtrType, "", io.NewResolver().Resolve, read.DisableMapperCache(true))
 			}
 			assert.Nil(b, err)
 		})
 
 		b.Run("With cache", func(b *testing.B) {
 			var err error
-			mapperCache := mapper.New(1024)
+			mapperCache := read.NewMapperCache(1024)
 			b.ReportAllocs()
 			for i := 0; i < b.N; i++ {
 				_, err = read.NewStructMapper(columns, fooPtrType, "", io.NewResolver().Resolve, mapperCache)
@@ -513,7 +540,7 @@ func BenchmarkStructMapper(b *testing.B) {
 	})
 
 	b.Run("With mapper cache", func(b *testing.B) {
-		mapperCache := mapper.New(1024)
+		mapperCache := read.NewMapperCache(1024)
 		reader, err := read.New(context.TODO(), db, "SELECT * FROM foos", func() interface{} {
 			return &Foo{}
 		}, mapperCache)
@@ -534,9 +561,37 @@ func BenchmarkStructMapper(b *testing.B) {
 		}
 	})
 
-	b.Run("With mapper cache and data cache", func(b *testing.B) {
-		mapperCache := mapper.New(1024)
+	b.Run("With mapper cache and file data cache", func(b *testing.B) {
+		mapperCache := read.NewMapperCache(1024)
 		dataCache, err := cache.NewCache("/tmp/cache", time.Duration(1)*time.Minute, "", option2.NewStream(64*1024*1024, 64*1024))
+		if !assert.Nil(b, err) {
+			return
+		}
+
+		cacheReader, err := read.New(context.TODO(), db, "SELECT * FROM foos", func() interface{} {
+			return &Foo{}
+		}, mapperCache, dataCache)
+
+		if !assert.Nil(b, err) {
+			return
+		}
+
+		b.ResetTimer()
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			counter := 0
+			err = cacheReader.QueryAll(context.TODO(), func(row interface{}) error {
+				counter++
+				return nil
+			})
+			assert.Nil(b, err)
+			assert.Equal(b, dataSize, counter)
+		}
+	})
+
+	b.Run("With mapper cache and memory data cache", func(b *testing.B) {
+		mapperCache := read.NewMapperCache(1024)
+		dataCache, err := cache.NewCache("mem:///tmp/cache", time.Duration(1)*time.Minute, "", option2.NewStream(64*1024*1024, 64*1024))
 		if !assert.Nil(b, err) {
 			return
 		}

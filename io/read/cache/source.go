@@ -12,6 +12,7 @@ type Source struct {
 	cache     *Service
 	ioColumns []io.Column
 	xTypes    []*xunsafe.Type
+	scanner   ScannerFn
 }
 
 func (s *Source) ConvertColumns() []io.Column {
@@ -28,7 +29,14 @@ func (s *Source) ConvertColumns() []io.Column {
 }
 
 func (s *Source) Scanner(context.Context) func(args ...interface{}) error {
-	return s.cache.scanner(s.entry)
+	if s.scanner != nil {
+		return s.scanner
+	}
+
+	scanner := s.cache.scanner(s.entry)
+	s.scanner = scanner
+
+	return scanner
 }
 
 func (s *Source) XTypes() []*xunsafe.Type {

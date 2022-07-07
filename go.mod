@@ -3,6 +3,7 @@ module github.com/viant/sqlx
 go 1.17
 
 require (
+	github.com/francoispqt/gojay v1.2.13
 	github.com/go-sql-driver/mysql v1.6.0
 	github.com/google/uuid v1.3.0
 	github.com/lib/pq v1.10.6
@@ -18,7 +19,6 @@ require (
 	cloud.google.com/go/compute v1.7.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/go-errors/errors v1.4.2 // indirect
-	github.com/kr/pretty v0.1.0 // indirect
 	github.com/kr/text v0.2.0 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
