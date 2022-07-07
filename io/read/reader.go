@@ -78,7 +78,7 @@ func (r *Reader) QueryAll(ctx context.Context, emit func(row interface{}) error,
 }
 
 func (r *Reader) createSource(ctx context.Context, entry *cache.Entry, args []interface{}) (*sql.Rows, source2.Source, error) {
-	if entry == nil || !entry.Has() {
+	if entry == nil || !entry.Has() || len(entry.Meta.Fields) == 0 {
 		rows, err := r.stmt.QueryContext(ctx, args...)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to run query: %v, due to %s", r.query, err)

@@ -93,9 +93,9 @@ func TestReader_ReadAll(t *testing.T) {
 	}
 
 	case3WrapperRecorder := &recorder{}
-	case3WrapperCache, _ := cache.NewCache(cacheLocation, time.Duration(10000)*time.Minute, "events", option2.NewStream(64*1024*1024, 0), case3WrapperRecorder)
+	case3WrapperCache, _ := cache.NewCache(cacheLocation, time.Duration(10000)*time.Minute, "events", option2.NewStream(64*1024*1024, 64*1024), case3WrapperRecorder)
 	case3PtrWrapperRecorder := &recorder{}
-	case3PtrWrapperCache, _ := cache.NewCache(cacheLocation, time.Duration(10000)*time.Minute, "", option2.NewStream(64*1024*1024, 0), case3PtrWrapperRecorder)
+	case3PtrWrapperCache, _ := cache.NewCache(cacheLocation, time.Duration(10000)*time.Minute, "", option2.NewStream(64*1024*1024, 64*1024), case3PtrWrapperRecorder)
 
 	var useCases = []*usecase{
 		{
@@ -286,8 +286,8 @@ func TestReader_ReadAll(t *testing.T) {
 	}
 
 outer:
-	for _, testCase := range useCases[len(useCases)-1:] {
-		//for _, testCase := range useCases {
+	//for _, testCase := range useCases[len(useCases)-1:] {
+	for _, testCase := range useCases {
 		os.RemoveAll(testCase.dsn)
 		ctx := context.Background()
 		var db *sql.DB
@@ -536,7 +536,7 @@ func BenchmarkStructMapper(b *testing.B) {
 
 	b.Run("With mapper cache and data cache", func(b *testing.B) {
 		mapperCache := mapper.New(1024)
-		dataCache, err := cache.NewCache("mem:///tmp/cache", time.Duration(1)*time.Minute, "", option2.NewStream(64*1024*1024, 0))
+		dataCache, err := cache.NewCache("/tmp/cache", time.Duration(1)*time.Minute, "", option2.NewStream(64*1024*1024, 64*1024))
 		if !assert.Nil(b, err) {
 			return
 		}

@@ -32,7 +32,7 @@ type (
 		ttl       time.Duration
 		extension string
 
-		scanTypes []*xunsafe.Type
+		scanTypes []reflect.Type
 		mux       sync.RWMutex
 		cacheType reflect.Type
 		xFields   []*xunsafe.Field
@@ -261,11 +261,11 @@ func (c *Service) write(bufioWriter *bufio.Writer, data []byte, addNewLine bool)
 func (c *Service) init() error {
 	numField := c.cacheType.NumField()
 	c.xFields = make([]*xunsafe.Field, numField)
-	c.scanTypes = make([]*xunsafe.Type, numField)
+	c.scanTypes = make([]reflect.Type, numField)
 
 	for i := 0; i < numField; i++ {
 		c.xFields[i] = xunsafe.FieldByIndex(c.cacheType, i)
-		c.scanTypes[i] = xunsafe.NewType(c.cacheType.Field(i).Type)
+		c.scanTypes[i] = c.cacheType.Field(i).Type
 	}
 
 	return nil
@@ -290,12 +290,12 @@ func (c *Service) initializeCacheType(values []interface{}) {
 	defer c.mux.Unlock()
 
 	fields := make([]reflect.StructField, len(values))
-	c.scanTypes = make([]*xunsafe.Type, len(values))
+	c.scanTypes = make([]reflect.Type, len(values))
 	for i, value := range values {
 		rValue := reflect.ValueOf(value)
 		valueType := rValue.Type()
 		fields[i] = reflect.StructField{Name: "Args" + strconv.Itoa(i), Type: valueType}
-		c.scanTypes[i] = xunsafe.NewType(valueType.Elem())
+		c.scanTypes[i] = valueType.Elem()
 	}
 
 	c.cacheType = reflect.StructOf(fields)
@@ -346,7 +346,7 @@ func (c *Service) scanner(e *Entry) ScannerFn {
 				continue
 			}
 
-			xunsafe.Copy(destPtr, srcPtr, int(c.scanTypes[i].Type().Size()))
+			xunsafe.Copy(destPtr, srcPtr, int(c.scanTypes[i].Size()))
 		}
 
 		e.index++
