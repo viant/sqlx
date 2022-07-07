@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/viant/sqlx/io"
 	"github.com/viant/sqlx/io/read/cache"
+	"github.com/viant/sqlx/io/read/mapper"
 	source2 "github.com/viant/sqlx/io/read/source"
 	"github.com/viant/sqlx/metadata/info"
 	"github.com/viant/sqlx/metadata/registry"
@@ -15,16 +16,18 @@ import (
 
 //Reader represents generic query reader
 type Reader struct {
-	query        string
-	newRow       func() interface{}
-	targetType   reflect.Type
-	tagName      string
-	stmt         *sql.Stmt
-	rows         *sql.Rows
-	getRowMapper NewRowMapper
-	unmappedFn   io.Resolve
-	shallDeref   bool
-	cache        *cache.Service
+	query          string
+	newRow         func() interface{}
+	targetType     reflect.Type
+	tagName        string
+	stmt           *sql.Stmt
+	rows           *sql.Rows
+	getRowMapper   NewRowMapper
+	unmappedFn     io.Resolve
+	shallDeref     bool
+	cache          *cache.Service
+	mapperCache    *mapper.Cache
+	targetDatatype string
 }
 
 //QuerySingle returns single row
@@ -41,13 +44,8 @@ func (r *Reader) QuerySingle(ctx context.Context, emit func(row interface{}) err
 	}
 
 	var mapper RowMapper
-	cacheEntry, err := r.cacheEntry(ctx, r.query, args)
-	if err != nil {
-		return err
-	}
-
 	if rows.Next() {
-		if err = r.read(ctx, newRows, &mapper, emit, cacheEntry); err != nil {
+		if err = r.read(ctx, newRows, &mapper, emit, nil); err != nil {
 			return err
 		}
 	}
@@ -67,7 +65,6 @@ func (r *Reader) QueryAll(ctx context.Context, emit func(row interface{}) error,
 		return err
 	}
 
-	defer source.Close(ctx) //TODO: Should we log it?
 	if err = r.applyRowsIfNeeded(entry, rows); err != nil {
 		return err
 	}
@@ -122,6 +119,7 @@ func (r *Reader) readAll(ctx context.Context, emit func(row interface{}) error, 
 	var err error
 	var mapper RowMapper
 
+	defer source.Close(ctx) //TODO: Should we log it?
 	for source.Next() {
 		if err = r.read(ctx, source, &mapper, emit, cacheEntry); err != nil {
 			return err
@@ -167,6 +165,7 @@ func (r *Reader) read(ctx context.Context, source source2.Source, mapperPtr *Row
 	row := r.newRow()
 	if r.targetType == nil {
 		r.targetType = reflect.TypeOf(row)
+		r.targetDatatype = r.targetType.String()
 		r.shallDeref = r.targetType.Kind() == reflect.Map || r.targetType.Kind() == reflect.Slice
 	}
 
@@ -230,7 +229,13 @@ func (r *Reader) ensureRowMapper(source source2.Source, mapperPtr *RowMapper) (R
 
 	var mapper RowMapper
 	var err error
-	if mapper, err = r.getRowMapper(columns, r.targetType, r.tagName, r.unmappedFn); err != nil {
+
+	options := make(option.Options, 0)
+	if r.mapperCache != nil {
+		options = append(options, r.mapperCache)
+	}
+
+	if mapper, err = r.getRowMapper(columns, r.targetType, r.tagName, r.unmappedFn, options); err != nil {
 		return nil, fmt.Errorf("failed to get row mapper, due to %w", err)
 	}
 	*mapperPtr = mapper
@@ -296,14 +301,17 @@ func NewStmt(stmt *sql.Stmt, newRow func() interface{}, options ...option.Option
 	}
 	option.Assign(options, &unmappedFn)
 
+	var mapperCache *mapper.Cache
 	for _, anOption := range options {
 		switch actual := anOption.(type) {
 		case *cache.Service:
 			readerCache = actual
+		case *mapper.Cache:
+			mapperCache = actual
 		}
 	}
 
-	return &Reader{newRow: newRow, stmt: stmt, tagName: option.Options(options).Tag(), getRowMapper: newRowMapper, unmappedFn: unmappedFn, cache: readerCache}
+	return &Reader{newRow: newRow, stmt: stmt, tagName: option.Options(options).Tag(), getRowMapper: newRowMapper, unmappedFn: unmappedFn, cache: readerCache, mapperCache: mapperCache}
 }
 
 //NewMap creates records to map reader

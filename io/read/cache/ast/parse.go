@@ -132,7 +132,7 @@ func buildStruct(newCursor *parsly.Cursor, index map[string]reflect.Type) (refle
 
 		field.Name = matched.Text(newCursor)
 		if field.Name[0] < 'A' || field.Name[0] > 'Z' {
-			field.PkgPath = "github.com/viant/sqlx/io/read/cache/ast"
+			field.PkgPath = "github.com/viant/sqlx/io/read/data/ast"
 		}
 
 		fieldType, err := matchType(newCursor, index)

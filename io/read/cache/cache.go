@@ -340,11 +340,13 @@ func (c *Service) scanner(e *Entry) ScannerFn {
 
 		for i, xField := range c.xFields {
 			value := xField.Value(asPtr)
-			if value == nil {
+			destPtr := xunsafe.AsPointer(values[i])
+			srcPtr := xunsafe.AsPointer(value)
+			if destPtr == nil || srcPtr == nil {
 				continue
 			}
 
-			xunsafe.Copy(xunsafe.AsPointer(values[i]), xunsafe.AsPointer(value), int(c.scanTypes[i].Type().Size()))
+			xunsafe.Copy(destPtr, srcPtr, int(c.scanTypes[i].Type().Size()))
 		}
 
 		e.index++
