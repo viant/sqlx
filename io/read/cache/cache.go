@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/francoispqt/gojay"
+	"github.com/google/uuid"
 	"github.com/viant/afs"
 	"github.com/viant/afs/option"
 	"github.com/viant/sqlx/io"
@@ -15,6 +16,7 @@ import (
 	"hash/fnv"
 	"reflect"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -100,6 +102,7 @@ func (c *Service) getEntry(ctx context.Context, SQL string, args []interface{}, 
 	if err != nil {
 		return nil, err
 	}
+
 	entry := &Entry{
 		Meta: Meta{
 			SQL:       SQL,
@@ -127,6 +130,12 @@ func (c *Service) getEntry(ctx context.Context, SQL string, args []interface{}, 
 func (c *Service) updateEntry(ctx context.Context, err error, URL string, entry *Entry) (int, error) {
 	status, err := c.readData(ctx, entry)
 	if status == NotExistStatus || status == InUseStatus || err != nil {
+		if status == NotExistStatus {
+			id := strings.ReplaceAll(uuid.New().String(), "-", "")
+			entry.Meta.url += id
+			entry.Id = id
+		}
+
 		if err == nil {
 			c.mux.RLock()
 			c.canWrite[URL] = false
@@ -184,13 +193,17 @@ func (c *Service) generateURL(SQL string, args []interface{}) (string, error) {
 }
 
 func (c *Service) readData(ctx context.Context, entry *Entry) (int, error) {
+	if ok, err := c.afs.Exists(ctx, entry.Meta.url); !ok || err != nil {
+		return NotExistStatus, nil
+	}
+
 	afsReader, err := c.afs.OpenURL(ctx, entry.Meta.url, c.stream)
 	if isRateError(err) || isPreConditionError(err) {
 		return InUseStatus, nil
 	}
 
 	if err != nil {
-		return NotExistStatus, nil
+		return ErrorStatus, nil
 	}
 
 	reader := bufio.NewReader(afsReader)
@@ -341,7 +354,7 @@ func (c *Service) scanner(e *Entry) ScannerFn {
 }
 
 func (c *Service) Close(ctx context.Context, e *Entry) error {
-	err := c.close(e)
+	err := c.close(ctx, e)
 	if err != nil {
 		_ = c.Delete(ctx, e)
 		return err
@@ -350,17 +363,22 @@ func (c *Service) Close(ctx context.Context, e *Entry) error {
 	return nil
 }
 
-func (c *Service) close(e *Entry) error {
+func (c *Service) close(ctx context.Context, e *Entry) error {
 	if e.Has() {
 		return e.readCloser.Close()
 	}
 
-	c.unmark(e.Meta.url)
+	actualURL := strings.ReplaceAll(e.Meta.url, ".json"+e.Id, ".json")
+	c.unmark(actualURL)
 	if err := e.writer.Flush(); err != nil {
 		return err
 	}
 
 	if err := e.writeCloser.Close(); err != nil {
+		return err
+	}
+
+	if err := c.afs.Move(ctx, e.Meta.url, actualURL); err != nil {
 		return err
 	}
 
