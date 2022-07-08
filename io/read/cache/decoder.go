@@ -134,28 +134,24 @@ func newDecoderFn(dataType reflect.Type) DecoderFn {
 
 	case reflect.Bool:
 		return boolDecoder(wasPtr)
-	default:
-		if timeType == dataType && !wasPtr {
-			return timeDecoder(wasPtr)
-		}
 	}
 
 	return interfaceDecoder(actualDataType)
 }
 
-func timeDecoder(ptr bool) DecoderFn {
-	return func(decoder *gojay.Decoder) (interface{}, error) {
-		aTime := time.Time{}
-
-		return &aTime, decoder.Time(&aTime, time.RFC3339Nano)
-	}
-}
+//func timeDecoder(ptr bool) DecoderFn {
+//	return func(decoder *gojay.Decoder) (interface{}, error) {
+//		aTime := time.Time{}
+//
+//		return &aTime, decoder.Time(&aTime, time.RFC3339Nano)
+//	}
+//}
 
 func interfaceDecoder(actualDataType reflect.Type) DecoderFn {
-	rValue := reflect.New(actualDataType)
-	asInterface := rValue.Interface()
-
 	return func(decoder *gojay.Decoder) (interface{}, error) {
+		rValue := reflect.New(actualDataType)
+		asInterface := rValue.Interface()
+
 		return asInterface, decoder.Interface(&asInterface)
 	}
 }
