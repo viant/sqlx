@@ -189,7 +189,10 @@ func (r *Reader) read(ctx context.Context, source source2.Source, mapperPtr *Row
 		return fmt.Errorf("failed to scan %v, due to %w", r.query, err)
 	}
 
-	r.ensureDereferences(row, source, rowValues)
+	if err = r.ensureDereferences(row, source, rowValues); err != nil {
+		return err
+	}
+
 	if cacheEntry != nil && !cacheEntry.Has() {
 		if err = r.cache.AddValues(ctx, cacheEntry, rowValues); err != nil {
 			return err
@@ -199,12 +202,15 @@ func (r *Reader) read(ctx context.Context, source source2.Source, mapperPtr *Row
 	return emit(row)
 }
 
-func (r *Reader) ensureDereferences(row interface{}, source source2.Source, rowValues []interface{}) {
+func (r *Reader) ensureDereferences(row interface{}, source source2.Source, rowValues []interface{}) error {
 	if !r.shallDeref {
-		return
+		return nil
 	}
 
-	columns := source.ConvertColumns()
+	columns, err := source.ConvertColumns() //TODO: Handle error
+	if err != nil {
+		return err
+	}
 	xTypes := source.XTypes()
 	for i, value := range rowValues {
 		rowValues[i] = (xTypes)[i].Deref(value)
@@ -218,6 +224,8 @@ func (r *Reader) ensureDereferences(row interface{}, source source2.Source, rowV
 	case []interface{}:
 		copy(actual, rowValues)
 	}
+
+	return nil
 }
 
 func (r *Reader) ensureRowMapper(source source2.Source, mapperPtr *RowMapper) (RowMapper, error) {
@@ -225,10 +233,12 @@ func (r *Reader) ensureRowMapper(source source2.Source, mapperPtr *RowMapper) (R
 		return *mapperPtr, nil
 	}
 
-	columns := source.ConvertColumns()
+	columns, err := source.ConvertColumns()
+	if err != nil {
+		return nil, err
+	}
 
 	var mapper RowMapper
-	var err error
 
 	options := make(option.Options, 0)
 	if r.mapperCache != nil {

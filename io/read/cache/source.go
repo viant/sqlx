@@ -15,9 +15,9 @@ type Source struct {
 	scanner   ScannerFn
 }
 
-func (s *Source) ConvertColumns() []io.Column {
+func (s *Source) ConvertColumns() ([]io.Column, error) {
 	if s.ioColumns != nil {
-		return s.ioColumns
+		return s.ioColumns, nil
 	}
 
 	s.ioColumns = make([]io.Column, len(s.entry.Meta.Fields))
@@ -25,7 +25,7 @@ func (s *Source) ConvertColumns() []io.Column {
 		s.ioColumns[i] = s.entry.Meta.Fields[i]
 	}
 
-	return s.ioColumns
+	return s.ioColumns, nil
 }
 
 func (s *Source) Scanner(context.Context) func(args ...interface{}) error {
