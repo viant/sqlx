@@ -10,6 +10,7 @@ import (
 type Entry struct {
 	Meta Meta
 	Data []byte // Entry is used as Iterator, Data is last streamed line.
+	Id   string
 
 	index    int
 	rowAdded bool
