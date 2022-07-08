@@ -28,15 +28,17 @@ func NewRows(rows *sql.Rows, cache *cache.Service, entry *cache.Entry) (*Rows, e
 		entry: entry,
 	}
 
-	if err := readerRows.init(); err != nil {
-		return nil, err
-	}
-
 	return readerRows, nil
 }
 
-func (c *Rows) ConvertColumns() []io.Column {
-	return c.columns
+func (c *Rows) ConvertColumns() ([]io.Column, error) {
+	if len(c.columns) == 0 {
+		if err := c.initColumns(); err != nil {
+			return nil, err
+		}
+	}
+
+	return c.columns, nil
 }
 
 func (c *Rows) Scanner(ctx context.Context) func(args ...interface{}) error {

@@ -6,6 +6,8 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
+	"github.com/francoispqt/gojay"
 	"github.com/viant/afs"
 	"github.com/viant/afs/option"
 	"github.com/viant/sqlx/io"
@@ -32,10 +34,10 @@ type (
 		ttl       time.Duration
 		extension string
 
-		scanTypes []*xunsafe.Type
+		scanTypes []reflect.Type
+		dataTypes []string
+
 		mux       sync.RWMutex
-		cacheType reflect.Type
-		xFields   []*xunsafe.Field
 		signature string
 		canWrite  map[string]bool
 		stream    *option.Stream
@@ -182,17 +184,13 @@ func (c *Service) generateURL(SQL string, args []interface{}) (string, error) {
 }
 
 func (c *Service) readData(ctx context.Context, entry *Entry) (int, error) {
-	if ok, _ := c.afs.Exists(ctx, entry.Meta.url); !ok {
-		return NotExistStatus, nil
-	}
-
 	afsReader, err := c.afs.OpenURL(ctx, entry.Meta.url, c.stream)
 	if isRateError(err) || isPreConditionError(err) {
 		return InUseStatus, nil
 	}
 
 	if err != nil {
-		return ErrorStatus, err
+		return NotExistStatus, nil
 	}
 
 	reader := bufio.NewReader(afsReader)
@@ -258,50 +256,32 @@ func (c *Service) write(bufioWriter *bufio.Writer, data []byte, addNewLine bool)
 	return nil
 }
 
-func (c *Service) init() error {
-	numField := c.cacheType.NumField()
-	c.xFields = make([]*xunsafe.Field, numField)
-	c.scanTypes = make([]*xunsafe.Type, numField)
-
-	for i := 0; i < numField; i++ {
-		c.xFields[i] = xunsafe.FieldByIndex(c.cacheType, i)
-		c.scanTypes[i] = xunsafe.NewType(c.cacheType.Field(i).Type)
-	}
-
-	return nil
-}
-
 func (c *Service) UpdateType(ctx context.Context, entry *Entry, values []interface{}) (bool, error) {
 	c.initializeCacheType(values)
 
-	if entry.Meta.Type != "" && entry.Meta.Type != c.cacheType.String() {
+	if len(entry.Meta.Type) > 0 && !c.matchesType(entry.Meta.Type) {
 		return false, c.Delete(ctx, entry)
 	}
 
-	entry.Meta.Type = c.cacheType.String()
+	entry.Meta.Type = c.dataTypes
 	return true, nil
 }
 
 func (c *Service) initializeCacheType(values []interface{}) {
-	if c.cacheType != nil {
+	c.mux.Lock()
+	if len(c.scanTypes) > 0 {
+		c.mux.Unlock()
 		return
 	}
-	c.mux.Lock()
-	defer c.mux.Unlock()
 
-	fields := make([]reflect.StructField, len(values))
-	c.scanTypes = make([]*xunsafe.Type, len(values))
+	defer c.mux.Unlock()
+	c.scanTypes = make([]reflect.Type, len(values))
+	c.dataTypes = make([]string, len(values))
 	for i, value := range values {
 		rValue := reflect.ValueOf(value)
 		valueType := rValue.Type()
-		fields[i] = reflect.StructField{Name: "Args" + strconv.Itoa(i), Type: valueType}
-		c.scanTypes[i] = xunsafe.NewType(valueType.Elem())
-	}
-
-	c.cacheType = reflect.StructOf(fields)
-	c.xFields = make([]*xunsafe.Field, len(values))
-	for i := 0; i < c.cacheType.NumField(); i++ {
-		c.xFields[i] = xunsafe.FieldByIndex(c.cacheType, i)
+		c.scanTypes[i] = valueType.Elem()
+		c.dataTypes[i] = c.scanTypes[i].String()
 	}
 }
 
@@ -324,30 +304,38 @@ func (c *Service) unmark(url string) {
 }
 
 func (c *Service) scanner(e *Entry) ScannerFn {
+	var decoder *Decoder
+
+	var err error
 	return func(values ...interface{}) error {
 		if c.recorder != nil {
 			c.recorder.ScanValues(values)
 		}
 
-		cachedObj := reflect.New(c.cacheType)
-		var err error
-		if err = json.Unmarshal(e.Data, cachedObj.Interface()); err != nil {
+		if len(values) != len(c.scanTypes) {
+			return fmt.Errorf("invalid cache format, expected to have %v values but got %v", len(values), len(c.scanTypes))
+		}
+
+		if decoder == nil {
+			decoder = NewDecoder(c.scanTypes)
+		}
+
+		if err = gojay.UnmarshalJSONArray(e.Data, decoder); err != nil {
 			return err
 		}
 
-		asInterface := cachedObj.Interface()
-		asPtr := xunsafe.AsPointer(asInterface)
-
-		for i, xField := range c.xFields {
-			value := xField.Value(asPtr)
-			if value == nil {
+		for i, cachedValue := range decoder.values {
+			destPtr := xunsafe.AsPointer(values[i])
+			srcPtr := xunsafe.AsPointer(cachedValue)
+			if destPtr == nil || srcPtr == nil {
 				continue
 			}
 
-			xunsafe.Copy(xunsafe.AsPointer(values[i]), xunsafe.AsPointer(value), int(c.scanTypes[i].Type().Size()))
+			xunsafe.Copy(destPtr, srcPtr, int(c.scanTypes[i].Size()))
 		}
 
 		e.index++
+		decoder.reset()
 		return err
 	}
 }
@@ -423,4 +411,17 @@ func (c *Service) AssignRows(entry *Entry, rows *sql.Rows) error {
 	}
 
 	return nil
+}
+
+func (c *Service) matchesType(actualTypes []string) bool {
+	if len(actualTypes) != len(c.dataTypes) {
+		return false
+	}
+
+	for i, dataType := range c.dataTypes {
+		if dataType != actualTypes[i] {
+			return false
+		}
+	}
+	return true
 }

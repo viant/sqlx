@@ -12,11 +12,12 @@ type Source struct {
 	cache     *Service
 	ioColumns []io.Column
 	xTypes    []*xunsafe.Type
+	scanner   ScannerFn
 }
 
-func (s *Source) ConvertColumns() []io.Column {
+func (s *Source) ConvertColumns() ([]io.Column, error) {
 	if s.ioColumns != nil {
-		return s.ioColumns
+		return s.ioColumns, nil
 	}
 
 	s.ioColumns = make([]io.Column, len(s.entry.Meta.Fields))
@@ -24,11 +25,18 @@ func (s *Source) ConvertColumns() []io.Column {
 		s.ioColumns[i] = s.entry.Meta.Fields[i]
 	}
 
-	return s.ioColumns
+	return s.ioColumns, nil
 }
 
 func (s *Source) Scanner(context.Context) func(args ...interface{}) error {
-	return s.cache.scanner(s.entry)
+	if s.scanner != nil {
+		return s.scanner
+	}
+
+	scanner := s.cache.scanner(s.entry)
+	s.scanner = scanner
+
+	return scanner
 }
 
 func (s *Source) XTypes() []*xunsafe.Type {

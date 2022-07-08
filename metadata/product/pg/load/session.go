@@ -33,7 +33,7 @@ func (s *Session) Exec(ctx context.Context, data interface{}, db *sql.DB, tableN
 		return nil, err
 	}
 
-	mapper, err := read.NewStructMapper(columns, actualStructType, option.TagSqlx, columnResolver)
+	mapper, err := read.NewStructMapper(columns, actualStructType, option.TagSqlx, columnResolver, options...)
 	if err != nil {
 		return nil, err
 	}

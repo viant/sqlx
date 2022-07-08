@@ -15,16 +15,19 @@ import (
 
 //Reader represents generic query reader
 type Reader struct {
-	query        string
-	newRow       func() interface{}
-	targetType   reflect.Type
-	tagName      string
-	stmt         *sql.Stmt
-	rows         *sql.Rows
-	getRowMapper NewRowMapper
-	unmappedFn   io.Resolve
-	shallDeref   bool
-	cache        *cache.Service
+	query              string
+	newRow             func() interface{}
+	targetType         reflect.Type
+	tagName            string
+	stmt               *sql.Stmt
+	rows               *sql.Rows
+	getRowMapper       NewRowMapper
+	unmappedFn         io.Resolve
+	shallDeref         bool
+	cache              *cache.Service
+	mapperCache        *MapperCache
+	targetDatatype     string
+	disableMapperCache DisableMapperCache
 }
 
 //QuerySingle returns single row
@@ -41,13 +44,8 @@ func (r *Reader) QuerySingle(ctx context.Context, emit func(row interface{}) err
 	}
 
 	var mapper RowMapper
-	cacheEntry, err := r.cacheEntry(ctx, r.query, args)
-	if err != nil {
-		return err
-	}
-
 	if rows.Next() {
-		if err = r.read(ctx, newRows, &mapper, emit, cacheEntry); err != nil {
+		if err = r.read(ctx, newRows, &mapper, emit, nil); err != nil {
 			return err
 		}
 	}
@@ -67,7 +65,6 @@ func (r *Reader) QueryAll(ctx context.Context, emit func(row interface{}) error,
 		return err
 	}
 
-	defer source.Close(ctx) //TODO: Should we log it?
 	if err = r.applyRowsIfNeeded(entry, rows); err != nil {
 		return err
 	}
@@ -81,7 +78,7 @@ func (r *Reader) QueryAll(ctx context.Context, emit func(row interface{}) error,
 }
 
 func (r *Reader) createSource(ctx context.Context, entry *cache.Entry, args []interface{}) (*sql.Rows, source2.Source, error) {
-	if entry == nil || !entry.Has() {
+	if entry == nil || !entry.Has() || len(entry.Meta.Fields) == 0 {
 		rows, err := r.stmt.QueryContext(ctx, args...)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to run query: %v, due to %s", r.query, err)
@@ -122,6 +119,7 @@ func (r *Reader) readAll(ctx context.Context, emit func(row interface{}) error, 
 	var err error
 	var mapper RowMapper
 
+	defer source.Close(ctx) //TODO: Should we log it?
 	for source.Next() {
 		if err = r.read(ctx, source, &mapper, emit, cacheEntry); err != nil {
 			return err
@@ -131,14 +129,14 @@ func (r *Reader) readAll(ctx context.Context, emit func(row interface{}) error, 
 }
 
 func (r *Reader) getCacheEntry(options []option.Option) *cache.Entry {
-	var cacheEntry *cache.Entry
+	var dataCacheEntry *cache.Entry
 	for _, o := range options {
 		switch actual := o.(type) {
 		case *cache.Entry:
-			cacheEntry = actual
+			dataCacheEntry = actual
 		}
 	}
-	return cacheEntry
+	return dataCacheEntry
 }
 
 //QueryAllWithSlice query all with a slice
@@ -167,6 +165,7 @@ func (r *Reader) read(ctx context.Context, source source2.Source, mapperPtr *Row
 	row := r.newRow()
 	if r.targetType == nil {
 		r.targetType = reflect.TypeOf(row)
+		r.targetDatatype = r.targetType.String()
 		r.shallDeref = r.targetType.Kind() == reflect.Map || r.targetType.Kind() == reflect.Slice
 	}
 
@@ -190,7 +189,10 @@ func (r *Reader) read(ctx context.Context, source source2.Source, mapperPtr *Row
 		return fmt.Errorf("failed to scan %v, due to %w", r.query, err)
 	}
 
-	r.ensureDereferences(row, source, rowValues)
+	if err = r.ensureDereferences(row, source, rowValues); err != nil {
+		return err
+	}
+
 	if cacheEntry != nil && !cacheEntry.Has() {
 		if err = r.cache.AddValues(ctx, cacheEntry, rowValues); err != nil {
 			return err
@@ -200,12 +202,15 @@ func (r *Reader) read(ctx context.Context, source source2.Source, mapperPtr *Row
 	return emit(row)
 }
 
-func (r *Reader) ensureDereferences(row interface{}, source source2.Source, rowValues []interface{}) {
+func (r *Reader) ensureDereferences(row interface{}, source source2.Source, rowValues []interface{}) error {
 	if !r.shallDeref {
-		return
+		return nil
 	}
 
-	columns := source.ConvertColumns()
+	columns, err := source.ConvertColumns() //TODO: Handle error
+	if err != nil {
+		return err
+	}
 	xTypes := source.XTypes()
 	for i, value := range rowValues {
 		rowValues[i] = (xTypes)[i].Deref(value)
@@ -219,6 +224,8 @@ func (r *Reader) ensureDereferences(row interface{}, source source2.Source, rowV
 	case []interface{}:
 		copy(actual, rowValues)
 	}
+
+	return nil
 }
 
 func (r *Reader) ensureRowMapper(source source2.Source, mapperPtr *RowMapper) (RowMapper, error) {
@@ -226,11 +233,23 @@ func (r *Reader) ensureRowMapper(source source2.Source, mapperPtr *RowMapper) (R
 		return *mapperPtr, nil
 	}
 
-	columns := source.ConvertColumns()
+	columns, err := source.ConvertColumns()
+	if err != nil {
+		return nil, err
+	}
 
 	var mapper RowMapper
-	var err error
-	if mapper, err = r.getRowMapper(columns, r.targetType, r.tagName, r.unmappedFn); err != nil {
+
+	options := make(option.Options, 0)
+	if r.mapperCache != nil {
+		options = append(options, r.mapperCache)
+	}
+
+	if r.disableMapperCache {
+		options = append(options, r.disableMapperCache)
+	}
+
+	if mapper, err = r.getRowMapper(columns, r.targetType, r.tagName, r.unmappedFn, options); err != nil {
 		return nil, fmt.Errorf("failed to get row mapper, due to %w", err)
 	}
 	*mapperPtr = mapper
@@ -290,20 +309,35 @@ func ensureDialect(options []option.Option, db *sql.DB) *info.Dialect {
 func NewStmt(stmt *sql.Stmt, newRow func() interface{}, options ...option.Option) *Reader {
 	var getRowMapper NewRowMapper
 	var unmappedFn io.Resolve
-	var readerCache *cache.Service
 	if !option.Assign(options, &getRowMapper) {
 		getRowMapper = newRowMapper
 	}
 	option.Assign(options, &unmappedFn)
 
+	var readerCache *cache.Service
+	var mapperCache *MapperCache
+	var disableMapperCache DisableMapperCache
 	for _, anOption := range options {
 		switch actual := anOption.(type) {
 		case *cache.Service:
 			readerCache = actual
+		case *MapperCache:
+			mapperCache = actual
+		case DisableMapperCache:
+			disableMapperCache = actual
 		}
 	}
 
-	return &Reader{newRow: newRow, stmt: stmt, tagName: option.Options(options).Tag(), getRowMapper: newRowMapper, unmappedFn: unmappedFn, cache: readerCache}
+	return &Reader{
+		newRow:             newRow,
+		stmt:               stmt,
+		tagName:            option.Options(options).Tag(),
+		getRowMapper:       newRowMapper,
+		unmappedFn:         unmappedFn,
+		cache:              readerCache,
+		mapperCache:        mapperCache,
+		disableMapperCache: disableMapperCache,
+	}
 }
 
 //NewMap creates records to map reader
