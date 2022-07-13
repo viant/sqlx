@@ -19,6 +19,17 @@ func TestParseType(t *testing.T) {
 		},
 	})
 
+	ifaceStruct := reflect.StructOf([]reflect.StructField{
+		{
+			Name: "Boolean",
+			Type: reflect.TypeOf(false),
+		},
+		{
+			Name: "Iface",
+			Type: InterfaceType,
+		},
+	})
+
 	type Boo struct {
 		BooName  string
 		BooPrice float32
@@ -205,10 +216,14 @@ func TestParseType(t *testing.T) {
 			rType:       typeWithTags,
 			extraTypes:  []reflect.Type{reflect.TypeOf(Boo{})},
 		},
+		{
+			description: "interface",
+			rType:       ifaceStruct,
+		},
 	}
 
-	for i, testCase := range testCases[len(testCases)-1:] {
-		//for i, testCase := range testCases {
+	//for i, testCase := range testCases[len(testCases)-1:] {
+	for i, testCase := range testCases {
 		fmt.Printf("Running testcase %v\n", i)
 
 		rType := testCase.rType

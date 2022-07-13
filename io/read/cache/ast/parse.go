@@ -33,6 +33,7 @@ func Parse(dataType string, extraTypes ...reflect.Type) (reflect.Type, error) {
 
 func matchType(cursor *parsly.Cursor, typesIndex map[string]reflect.Type) (reflect.Type, error) {
 	candidates := []*parsly.Token{
+		interfaceMatcher, boolMatcher,
 		uint64Matcher, uint32Matcher, uint16Matcher, uint8Matcher, uintMatcher,
 		int64Matcher, int32Matcher, int16Matcher, int8Matcher, intMatcher, stringMatcher, float32Matcher, float64Matcher,
 		structMatcher, timeMatcher, whitespaceTerminatorMatcher,
@@ -42,6 +43,10 @@ func matchType(cursor *parsly.Cursor, typesIndex map[string]reflect.Type) (refle
 	var rType reflect.Type
 	matched := cursor.MatchAfterOptional(whitespaceMatcher, candidates...)
 	switch matched.Code {
+	case interfaceToken:
+		rType = InterfaceType
+	case boolToken:
+		rType = BoolType
 	case intToken:
 		rType = IntType
 	case stringToken:

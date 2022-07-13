@@ -92,6 +92,21 @@ func TestReader_ReadAll(t *testing.T) {
 		Case3FooName `sqlx:"ns=foo"`
 	}
 
+	type Boo struct {
+		Val int `sqlx:"name=id"`
+	}
+
+	type Foo struct {
+		Id    int
+		Name  string
+		Price float64
+	}
+
+	type fooWrapper struct {
+		Boo
+		*Foo
+	}
+
 	case3WrapperRecorder := &recorder{}
 	case3WrapperCache, _ := cache.NewCache(cacheLocation, time.Duration(10000)*time.Minute, "events", option2.NewStream(64*1024*1024, 64*1024), case3WrapperRecorder)
 	case3PtrWrapperRecorder := &recorder{}
@@ -302,6 +317,22 @@ func TestReader_ReadAll(t *testing.T) {
 			disableCache:   boolPtr(true),
 			expectResolved: `["101","102"]`,
 		},
+		{
+			description: "Embedded structs with same fields",
+			driver:      "sqlite3",
+			dsn:         "/tmp/sqllite.db",
+			initSQL: []string{
+				"CREATE TABLE IF NOT EXISTS t7 (id INTEGER PRIMARY KEY, name TEXT, price NUMERIC)",
+				"delete from t7",
+				"insert into t7 values(1, \"John\", 101)",
+				"insert into t7 values(2, \"Bruce\", 102)",
+			},
+			query: "SELECT id , name, price  FROM t7 ORDER BY 1",
+			newRow: func() interface{} {
+				return &fooWrapper{}
+			},
+			expect: `[{"Val":1,"Id":0,"Name":"John","Price":101},{"Val":2,"Id":0,"Name":"Bruce","Price":102}]`,
+		},
 	}
 
 outer:
@@ -341,6 +372,9 @@ outer:
 		}
 
 		reader, err := read.New(ctx, db, testCase.query, testCase.newRow, options...)
+		if !assert.Nil(t, err, testCase.description) {
+			continue
+		}
 		dbRequests := 1
 		if testCase.rowMapperCache != nil {
 			dbRequests = 2

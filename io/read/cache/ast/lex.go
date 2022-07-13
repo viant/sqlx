@@ -16,6 +16,8 @@ const (
 
 	tagToken
 
+	interfaceToken
+
 	intToken
 	int8Token
 	int16Token
@@ -29,6 +31,7 @@ const (
 	uint64Token
 
 	timeToken
+	boolToken
 
 	stringToken
 	float32Token
@@ -46,6 +49,7 @@ var tagMatcher = parsly.NewToken(tagToken, "Tag", matcher2.NewBlock('"', '"', '\
 var structMatcher = parsly.NewToken(structToken, "Struct", matcher.NewFragment("struct"))
 var ptrMatcher = parsly.NewToken(ptrToken, "Pointer", matcher.NewByte('*'))
 var sliceMatcher = parsly.NewToken(sliceToken, "Slice", matcher.NewFragment("[]"))
+var interfaceMatcher = parsly.NewToken(interfaceToken, "Interface", matcher.NewFragment("interface {}"))
 
 var intMatcher = parsly.NewToken(intToken, "Int", matcher.NewFragment("int"))
 var int8Matcher = parsly.NewToken(int8Token, "Int8", matcher.NewFragment("int8"))
@@ -64,6 +68,7 @@ var float64Matcher = parsly.NewToken(float64Token, "Float64", matcher.NewFragmen
 
 var stringMatcher = parsly.NewToken(stringToken, "String", matcher.NewFragment("string"))
 var timeMatcher = parsly.NewToken(timeToken, "Time", matcher.NewFragment("time.Time"))
+var boolMatcher = parsly.NewToken(boolToken, "Bool", matcher.NewFragment("bool"))
 
 var typeDefMatcher = parsly.NewToken(typeDefToken, "Actual type", matcher.NewBlock('{', '}', '\\'))
 var identityMatcher = parsly.NewToken(identityToken, "Identity", matcher2.NewIdentity())
