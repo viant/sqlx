@@ -24,3 +24,8 @@ var StringType = reflect.TypeOf("")
 var BoolType = reflect.TypeOf(false)
 
 var TimeType = reflect.TypeOf(time.Time{})
+var InterfaceType = reflect.TypeOf(aStruct{}).Field(0).Type
+
+type aStruct struct {
+	ifaceField interface{}
+}
