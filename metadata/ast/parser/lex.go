@@ -67,6 +67,7 @@ var fromKeywordToken = parsly.NewToken(fromKeyword, "FROM", matcher.NewFragment(
 var joinToken = parsly.NewToken(joinTokenCode, "LEFT OUTER JOIN|LEFT JOIN|JOIN", matcher.NewSpacedSet([]string{
 	"left outer join",
 	"left join",
+	"inner join",
 	"join",
 }, &option.Case{}))
 
