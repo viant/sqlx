@@ -100,6 +100,11 @@ func TestParseSelect(t *testing.T) {
 				SQL:         "SELECT c1 FROM table t WHERE a BETWEEN 1 AND 2",
 				expect:      "SELECT c1 FROM table t WHERE a BETWEEN 1 AND 2",
 			},
+			{
+				description: "between criteria select 2",
+				SQL:         "SELECT c1 FROM table t WHERE a BETWEEN 1 AND 2 AND 1=1",
+				expect:      "SELECT c1 FROM table t WHERE a BETWEEN 1 AND 2 AND 1 = 1",
+			},
 		}
 
 		for _, testCase := range testCases {
