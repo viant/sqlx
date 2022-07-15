@@ -8,10 +8,10 @@ import (
 )
 
 func discoverAlias(cursor *parsly.Cursor) string {
-	match := cursor.MatchAfterOptional(whitespaceToken, exceptKeywordToken, asKeywordToken, onKeywordToken, fromKeywordToken, joinToken, whereKeywordToken, groupByToken, havingKeywordToken, windowToken, identifierToken)
+	match := cursor.MatchAfterOptional(whitespaceMatcher, exceptKeywordMatcher, asKeywordMatcher, onKeywordMatcher, fromKeywordMatcher, joinToken, whereKeywordMatcher, groupByMatcher, havingKeywordMatcher, windowMatcher, identifierMatcher)
 	switch match.Code {
 	case asKeyword:
-		match := cursor.MatchAfterOptional(whitespaceToken, identifierToken)
+		match := cursor.MatchAfterOptional(whitespaceMatcher, identifierMatcher)
 		return match.Text(cursor)
 	case identifierCode:
 		return match.Text(cursor)
@@ -27,15 +27,15 @@ func expectOperand(cursor *parsly.Cursor) (node.Node, error) {
 		return literal, err
 	}
 
-	match := cursor.MatchAfterOptional(whitespaceToken,
-		asKeywordToken, exceptKeywordToken, onKeywordToken, fromKeywordToken, whereKeywordToken, joinToken, groupByToken, havingKeywordToken, windowToken, nextToken,
-		parenthesesToken,
-		caseBlockToken,
-		starTokenToken,
-		notOperatorToken,
-		nullToken,
-		placeholderToken,
-		selectorToken)
+	match := cursor.MatchAfterOptional(whitespaceMatcher,
+		asKeywordMatcher, exceptKeywordMatcher, onKeywordMatcher, fromKeywordMatcher, whereKeywordMatcher, joinToken, groupByMatcher, havingKeywordMatcher, windowMatcher, nextMatcher,
+		parenthesesMatcher,
+		caseBlockMatcher,
+		starTokenMatcher,
+		notOperatorMatcher,
+		nullMatcher,
+		placeholderMatcher,
+		selectorMatcher)
 	switch match.Code {
 	case selectorTokenCode, placeholderTokenCode:
 
@@ -45,7 +45,7 @@ func expectOperand(cursor *parsly.Cursor) (node.Node, error) {
 		if match.Code == placeholderTokenCode {
 			selector = expr.NewPlaceholder(selRaw)
 		}
-		match = cursor.MatchAfterOptional(whitespaceToken, parenthesesToken, exceptKeywordToken)
+		match = cursor.MatchAfterOptional(whitespaceMatcher, parenthesesMatcher, exceptKeywordMatcher)
 		switch match.Code {
 		case parenthesesCode:
 			return &expr.Call{X: selector, Raw: match.Text(cursor)}, nil
@@ -57,7 +57,7 @@ func expectOperand(cursor *parsly.Cursor) (node.Node, error) {
 		}
 		return selector, nil
 	case exceptKeyword:
-		return nil, cursor.NewError(selectorToken)
+		return nil, cursor.NewError(selectorMatcher)
 	case nullTokenCode:
 		return expr.NewNullLiteral(match.Text(cursor)), nil
 	case caseBlock:
@@ -65,7 +65,7 @@ func expectOperand(cursor *parsly.Cursor) (node.Node, error) {
 	case starTokenCode:
 		selRaw := match.Text(cursor)
 		selector := expr.NewSelector(selRaw)
-		match = cursor.MatchAfterOptional(whitespaceToken, exceptKeywordToken)
+		match = cursor.MatchAfterOptional(whitespaceMatcher, exceptKeywordMatcher)
 		switch match.Code {
 		case exceptKeyword:
 			return parseStarExpr(cursor, selRaw, selector)
@@ -76,7 +76,7 @@ func expectOperand(cursor *parsly.Cursor) (node.Node, error) {
 	case notOperator:
 		unary := expr.NewUnary(match.Text(cursor))
 		if unary.X, err = expectOperand(cursor); unary.X == nil || err != nil {
-			return nil, cursor.NewError(selectorToken)
+			return nil, cursor.NewError(selectorMatcher)
 		}
 		return unary, nil
 

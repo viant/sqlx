@@ -14,11 +14,11 @@ func parseSelectListItem(cursor *parsly.Cursor, list *query.List) error {
 	item := query.NewItem(operand)
 	item.Alias = discoverAlias(cursor)
 	list.Append(item)
-	match := cursor.MatchAfterOptional(whitespaceToken, inlineCommentToken, commentBlockToken, binaryOperatorToken, logicalOperatorToken, nextToken)
+	match := cursor.MatchAfterOptional(whitespaceMatcher, inlineCommentMatcher, commentBlockMatcher, binaryOperatorMatcher, logicalOperatorMatcher, nextMatcher)
 	switch match.Code {
 	case commentBlock:
 		item.Comments = match.Text(cursor)
-		match = cursor.MatchAfterOptional(whitespaceToken, nextToken)
+		match = cursor.MatchAfterOptional(whitespaceMatcher, nextMatcher)
 		if match.Code == nextCode {
 			return parseSelectListItem(cursor, list)
 		}
@@ -30,7 +30,7 @@ func parseSelectListItem(cursor *parsly.Cursor, list *query.List) error {
 			return err
 		}
 		item.Alias = discoverAlias(cursor)
-		match = cursor.MatchAfterOptional(whitespaceToken, nextToken)
+		match = cursor.MatchAfterOptional(whitespaceMatcher, nextMatcher)
 		if match.Code != nextCode {
 			return nil
 		}

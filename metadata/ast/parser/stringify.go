@@ -108,7 +108,10 @@ func stringify(n node.Node, builder *bytes.Buffer) {
 	case *expr.Call:
 		stringify(actual.X, builder)
 		builder.WriteString(actual.Raw)
-
+	case *expr.Range:
+		stringify(actual.Min, builder)
+		builder.WriteString(" AND ")
+		stringify(actual.Max, builder)
 	case *expr.Selector:
 		builder.WriteString(actual.Name)
 		if actual.X != nil {

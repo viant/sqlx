@@ -18,10 +18,11 @@ func TestParseSelect(t *testing.T) {
 		}{
 
 			{
-				description: "except select",
+				description: "bq table select",
 				SQL:         "SELECT c1 /* comment */, c2 FROM `proj.dataset.table` t",
 				expect:      "SELECT c1 /* comment */, c2 FROM `proj.dataset.table` t",
 			},
+
 			{
 				description: "except select",
 				SQL:         "SELECT c1 /* comment */, c2 FROM x t",
@@ -93,6 +94,11 @@ func TestParseSelect(t *testing.T) {
 				description: "basic expr",
 				SQL:         "SELECT col1 + col2 AS z, t.col2, col3 AS col FROM x t",
 				expect:      "SELECT col1 + col2 AS z, t.col2, col3 AS col FROM x t",
+			},
+			{
+				description: "between criteria select",
+				SQL:         "SELECT c1 FROM table t WHERE a BETWEEN 1 AND 2",
+				expect:      "SELECT c1 FROM table t WHERE a BETWEEN 1 AND 2",
 			},
 		}
 
