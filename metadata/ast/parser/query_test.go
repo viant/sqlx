@@ -19,6 +19,11 @@ func TestParseSelect(t *testing.T) {
 
 			{
 				description: "except select",
+				SQL:         "SELECT c1 /* comment */, c2 FROM `proj.dataset.table` t",
+				expect:      "SELECT c1 /* comment */, c2 FROM `proj.dataset.table` t",
+			},
+			{
+				description: "except select",
 				SQL:         "SELECT c1 /* comment */, c2 FROM x t",
 				expect:      "SELECT c1 /* comment */, c2 FROM x t",
 			},
