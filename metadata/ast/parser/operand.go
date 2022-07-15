@@ -28,6 +28,7 @@ func expectOperand(cursor *parsly.Cursor) (node.Node, error) {
 	}
 
 	match := cursor.MatchAfterOptional(whitespaceMatcher,
+		commentBlockMatcher,
 		asKeywordMatcher, exceptKeywordMatcher, onKeywordMatcher, fromKeywordMatcher, whereKeywordMatcher, joinToken, groupByMatcher, havingKeywordMatcher, windowMatcher, nextMatcher,
 		parenthesesMatcher,
 		caseBlockMatcher,
@@ -80,7 +81,7 @@ func expectOperand(cursor *parsly.Cursor) (node.Node, error) {
 		}
 		return unary, nil
 
-	case asKeyword, onKeyword, fromKeyword, whereKeyword, joinTokenCode, groupByKeyword, havingKeyword, windowTokenCode, nextCode:
+	case asKeyword, onKeyword, fromKeyword, whereKeyword, joinTokenCode, groupByKeyword, havingKeyword, windowTokenCode, nextCode, commentBlock:
 		cursor.Pos -= match.Size
 	}
 	return nil, nil

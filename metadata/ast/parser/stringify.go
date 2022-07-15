@@ -23,7 +23,6 @@ func stringify(n node.Node, builder *bytes.Buffer) {
 		stringify(&actual.From, builder)
 
 		if len(actual.Joins) > 0 {
-
 			for _, join := range actual.Joins {
 				stringify(join, builder)
 			}
@@ -40,6 +39,9 @@ func stringify(n node.Node, builder *bytes.Buffer) {
 		if actual.Alias != "" {
 			builder.WriteByte(' ')
 			builder.WriteString(actual.Alias)
+		}
+		if actual.Comments != "" {
+			builder.WriteString(" " + actual.Comments)
 		}
 		builder.WriteString(" ON ")
 		stringify(actual.On, builder)

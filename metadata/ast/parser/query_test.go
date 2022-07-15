@@ -105,10 +105,14 @@ func TestParseSelect(t *testing.T) {
 				SQL:         "SELECT c1 FROM table t WHERE a BETWEEN 1 AND 2 AND 1=1",
 				expect:      "SELECT c1 FROM table t WHERE a BETWEEN 1 AND 2 AND 1 = 1",
 			},
+			{
+				description: "join comments",
+				SQL:         "SELECT * FROM tab1 t1 JOIN tab2 t2  /* my comment */  ON t1.ID = t2.ID ",
+				expect:      "SELECT * FROM tab1 t1 JOIN tab2 t2 /* my comment */ ON t1.ID = t2.ID",
+			},
 		}
 
 		for _, testCase := range testCases {
-
 			query, err := ParseQuery(testCase.SQL)
 			if !assert.Nil(t, err) {
 				fmt.Printf("%v\n", testCase.SQL)

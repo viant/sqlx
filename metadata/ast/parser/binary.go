@@ -20,7 +20,6 @@ func parseBinaryExpr(cursor *parsly.Cursor, binary *expr.Binary) error {
 			binary.Op = match.Text(cursor)
 		case betweenToken:
 			binary.Op = match.Text(cursor)
-
 			rng := &expr.Range{}
 			if rng.Min, err = expectOperand(cursor); err != nil {
 				return err

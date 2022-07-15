@@ -17,7 +17,11 @@ func parseJoin(cursor *parsly.Cursor, join *query.Join, dest *query.Select) erro
 
 	join.Alias = discoverAlias(cursor)
 
-	match = cursor.MatchAfterOptional(whitespaceMatcher, onKeywordMatcher)
+	match = cursor.MatchAfterOptional(whitespaceMatcher, commentBlockMatcher, onKeywordMatcher)
+	if match.Code == commentBlock {
+		join.Comments = match.Text(cursor)
+		match = cursor.MatchAfterOptional(whitespaceMatcher, onKeywordMatcher)
+	}
 	switch match.Code {
 	case onKeyword:
 	default:
@@ -33,10 +37,19 @@ func parseJoin(cursor *parsly.Cursor, join *query.Join, dest *query.Select) erro
 	if match.Code == parsly.EOF {
 		return nil
 	}
+	if match.Code == commentBlock {
+		join.Comments = match.Text(cursor)
+		match = cursor.MatchAfterOptional(whitespaceMatcher, joinToken, groupByMatcher, havingKeywordMatcher, whereKeywordMatcher, windowMatcher)
+		if match.Code == parsly.EOF {
+			return nil
+		}
+	}
+
 	hasMatch, err := matchPostFrom(cursor, dest, match)
 	if !hasMatch && err == nil {
 		err = cursor.NewError(joinToken, joinToken, groupByMatcher, havingKeywordMatcher, whereKeywordMatcher, windowMatcher)
 	}
+
 	return err
 }
 
