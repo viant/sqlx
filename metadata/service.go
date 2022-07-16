@@ -97,8 +97,14 @@ func (s *Service) matchVersion(ctx context.Context, db *sql.DB, product *databas
 	for _, query := range versionQueries {
 		var version string
 		if err = s.runQuery(ctx, db, query, &version); err == nil {
-			product, _ = database.Parse([]byte(version))
-			if product != nil {
+			productTmp, err := database.Parse([]byte(version))
+			if err == nil && productTmp != nil {
+				if productTmp.Name != "" {
+					product.Name = productTmp.Name
+				}
+				product.Major = productTmp.Major
+				product.Minor = productTmp.Minor
+				product.Release = productTmp.Release
 				return product, nil
 			}
 			break

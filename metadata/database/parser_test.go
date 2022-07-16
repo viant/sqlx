@@ -14,7 +14,7 @@ func TestParse(t *testing.T) {
 		{
 			description: "MySQL version",
 			input:       "5.6.14-log",
-			expect:      &Product{Major: 5, Minor: 6, Release: 14},
+			expect:      &Product{Name: "", Major: 5, Minor: 6, Release: 14},
 		},
 		{
 			description: "PgSQL version",
@@ -30,6 +30,11 @@ func TestParse(t *testing.T) {
 			description: "Vertica Version",
 			input:       "Vertica Analytic Database v9.1.0-2",
 			expect:      &Product{Name: "Vertica Analytic Database", Major: 9, Minor: 1, Release: 0},
+		},
+		{
+			description: "Vertica Version",
+			input:       "Vertica Analytic Database v11.1.1-0",
+			expect:      &Product{Name: "Vertica Analytic Database", Major: 11, Minor: 1, Release: 1},
 		},
 		{
 			description: "SQL Server Version",

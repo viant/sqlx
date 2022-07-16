@@ -13,7 +13,7 @@ type Reader struct {
 	valueAt     func(index int) interface{}
 	stringifier io.ObjectStringifier
 	buffer      *Buffer
-	itemsSize   int
+	itemCount   int
 	index       int
 	offset      int
 	isEOF       bool
@@ -24,7 +24,7 @@ func (r *Reader) Read(buffer []byte) (n int, err error) {
 	if r.isEOF {
 		return 0, goIo.EOF
 	}
-	if r.index > r.itemsSize {
+	if r.index > r.itemCount {
 		return 0, goIo.EOF
 	}
 
@@ -42,7 +42,7 @@ func (r *Reader) Read(buffer []byte) (n int, err error) {
 
 	var stringifiedFieldValues []string
 	var wasString []bool
-	for ; i < r.itemsSize; i++ {
+	for ; i < r.itemCount; i++ {
 		record := r.valueAt(i)
 		stringifiedFieldValues, wasString = r.stringifier(record)
 
@@ -100,9 +100,13 @@ func NewReader(any interface{}, config *Config) (*Reader, reflect.Type, error) {
 	return &Reader{
 		config:      config,
 		valueAt:     valueAt,
-		itemsSize:   size,
+		itemCount:   size,
 		stringifier: stringifier,
 		buffer:      NewBuffer(1024),
 		offset:      0,
 	}, structType, nil
+}
+
+func (r *Reader) ItemCount() int {
+	return r.itemCount
 }

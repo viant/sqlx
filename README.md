@@ -78,19 +78,22 @@ The following info kind and sink are available:
 
 - info.KindVersion: database version
 - info.KindCatalogs: catalogs
+- info.KindCatalog: catalog for provided catalog name
 - info.KindCurrentSchema: current schema
 - info.KindSchemas ([]sink.Schema): list of schema for provided catalog
-- info.KindTables ([]sink.Table): list of tables  for provided catalog, schema
-- info.KindTable (sink.Table): table info for provided catalog, schema, table name
-- info.KindViews ([]sink.Table): list of views  for provided catalog, schema
-- info.KindViews(sink.Table): list of views  for provided catalog, schema, view name
-- info.KindPrimaryKeys ([]sink.Key) ist of primary keys  for provided catalog, schema, table name
-- info.KindForeignKeys ([]sink.Key) ist of primary keys  for provided catalog, schema, table name
-- info.KindForeignKeys ([]sink.Key) ist of foreign keys  for provided catalog, schema, table name
-- info.KindIndexes: ([]sink.Index) ist of indexes for provided catalog, schema, table name
-- info.KindIndex: (sink.Index) list of indexes for provided catalog, schema, table name, index name
-- info.KindSequences:(sink.Sequence) list of sequences values for catalog, schema
+- info.KindSchema ([]sink.Schema): list of schema for provided catalog, schema name
+- info.KindTables ([]sink.Table): list of tables for provided catalog, schema
+- info.KindTable ([]sink.Column): table columns info for provided catalog, schema, table name
+- info.KindViews ([]sink.Table): list of views for provided catalog, schema
+- info.KindView ([]sink.Column): view columns info for provided catalog, schema, view name
+- info.KindPrimaryKeys ([]sink.Key) list of primary keys for provided catalog, schema, table name
+- info.KindForeignKeys ([]sink.Key) list of foreign keys for provided catalog, schema, table name
+- info.KindConstraints ([]sink.Key) list of constraints keys for provided catalog, schema, table name
+- info.KindIndexes: ([]sink.Index) list of indexes for provided catalog, schema, table name
+- info.KindIndex: ([]sink.Index) list of indexes for provided catalog, schema, table name, index name
+- info.KindSequences:([]sink.Sequence) list of sequences values for catalog, schema
 - info.KindFunctions: ([]sink.Function) list of functions for catalog, schema
+- info.KindSession:  ([]sink.Session) list of session
 
 ### I/O Services
 
