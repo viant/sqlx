@@ -368,6 +368,10 @@ func (c *Service) close(ctx context.Context, e *Entry) error {
 		return e.readCloser.Close()
 	}
 
+	if e.writer == nil {
+		return nil
+	}
+
 	actualURL := strings.ReplaceAll(e.Meta.url, ".json"+e.Id, ".json")
 	c.unmark(actualURL)
 	if err := e.writer.Flush(); err != nil {
