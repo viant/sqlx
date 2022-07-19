@@ -14,10 +14,10 @@ func ParseQuery(SQL string) (*query.Select, error) {
 }
 
 func parseQuery(cursor *parsly.Cursor, dest *query.Select) error {
-	match := cursor.MatchAfterOptional(whitespaceToken, selectKeywordToken)
+	match := cursor.MatchAfterOptional(whitespaceMatcher, selectKeywordMatcher)
 	switch match.Code {
 	case selectKeyword:
-		match = cursor.MatchAfterOptional(whitespaceToken, selectionKindToken)
+		match = cursor.MatchAfterOptional(whitespaceMatcher, selectionKindMatcher)
 		if match.Code == selectionKind {
 			dest.Kind = match.Text(cursor)
 		}
@@ -25,11 +25,11 @@ func parseQuery(cursor *parsly.Cursor, dest *query.Select) error {
 		if err := parseSelectListItem(cursor, &dest.List); err != nil {
 			return err
 		}
-		match = cursor.MatchAfterOptional(whitespaceToken, fromKeywordToken)
+		match = cursor.MatchAfterOptional(whitespaceMatcher, fromKeywordMatcher)
 		switch match.Code {
 		case fromKeyword:
 			dest.From = query.From{}
-			match = cursor.MatchAfterOptional(whitespaceToken, selectorToken, parenthesesToken)
+			match = cursor.MatchAfterOptional(whitespaceMatcher, selectorMatcher, parenthesesMatcher)
 			switch match.Code {
 			case selectorTokenCode:
 				dest.From.X = expr.NewSelector(match.Text(cursor))
@@ -39,13 +39,13 @@ func parseQuery(cursor *parsly.Cursor, dest *query.Select) error {
 			dest.From.Alias = discoverAlias(cursor)
 			dest.Joins = make([]*query.Join, 0)
 
-			match = cursor.MatchAfterOptional(whitespaceToken, joinToken, whereKeywordToken, groupByToken, havingKeywordToken, orderByKeywordToken, windowToken)
+			match = cursor.MatchAfterOptional(whitespaceMatcher, joinToken, whereKeywordMatcher, groupByMatcher, havingKeywordMatcher, orderByKeywordMatcher, windowMatcher)
 			if match.Code == parsly.EOF {
 				return nil
 			}
 			hasMatch, err := matchPostFrom(cursor, dest, match)
 			if !hasMatch && err == nil {
-				err = cursor.NewError(joinToken, whereKeywordToken, groupByToken, havingKeywordToken, orderByKeywordToken, windowToken)
+				err = cursor.NewError(joinToken, whereKeywordMatcher, groupByMatcher, havingKeywordMatcher, orderByKeywordMatcher, windowMatcher)
 			}
 			if err != nil {
 				return err
@@ -66,14 +66,14 @@ func matchPostFrom(cursor *parsly.Cursor, dest *query.Select, match *parsly.Toke
 		if err := ParseQualify(cursor, dest.Qualify); err != nil {
 			return false, err
 		}
-		match = cursor.MatchAfterOptional(whitespaceToken, groupByToken, havingKeywordToken, orderByKeywordToken, windowToken)
+		match = cursor.MatchAfterOptional(whitespaceMatcher, groupByMatcher, havingKeywordMatcher, orderByKeywordMatcher, windowMatcher)
 		return matchPostFrom(cursor, dest, match)
 
 	case groupByKeyword:
 		if err := expectIdentifiers(cursor, &dest.GroupBy); err != nil {
 			return false, err
 		}
-		match = cursor.MatchAfterOptional(whitespaceToken, havingKeywordToken, orderByKeywordToken, windowToken)
+		match = cursor.MatchAfterOptional(whitespaceMatcher, havingKeywordMatcher, orderByKeywordMatcher, windowMatcher)
 		return matchPostFrom(cursor, dest, match)
 
 	case havingKeyword:
@@ -81,19 +81,19 @@ func matchPostFrom(cursor *parsly.Cursor, dest *query.Select, match *parsly.Toke
 		if err := ParseQualify(cursor, dest.Having); err != nil {
 			return false, err
 		}
-		match = cursor.MatchAfterOptional(whitespaceToken, orderByKeywordToken, windowToken)
+		match = cursor.MatchAfterOptional(whitespaceMatcher, orderByKeywordMatcher, windowMatcher)
 		return matchPostFrom(cursor, dest, match)
 
 	case orderByKeyword:
 		if err := parseSelectListItem(cursor, &dest.OrderBy); err != nil {
 			return false, err
 		}
-		match = cursor.MatchAfterOptional(whitespaceToken, windowToken)
+		match = cursor.MatchAfterOptional(whitespaceMatcher, windowMatcher)
 		return matchPostFrom(cursor, dest, match)
 	case windowTokenCode:
 		matchedText := match.Text(cursor)
 		dest.Window = expr.NewRaw(matchedText)
-		match = cursor.MatchAfterOptional(whitespaceToken, intLiteralToken)
+		match = cursor.MatchAfterOptional(whitespaceMatcher, intLiteralMatcher)
 		if match.Code == intLiteral {
 			literal := expr.NewNumericLiteral(match.Text(cursor))
 			switch strings.ToLower(matchedText) {
@@ -112,7 +112,7 @@ func matchPostFrom(cursor *parsly.Cursor, dest *query.Select, match *parsly.Toke
 }
 
 func expectExpectIdentifiers(cursor *parsly.Cursor, expect *[]string) (bool, error) {
-	match := cursor.MatchAfterOptional(whitespaceToken, identifierToken)
+	match := cursor.MatchAfterOptional(whitespaceMatcher, identifierMatcher)
 	switch match.Code {
 	case identifierCode:
 		item := match.Text(cursor)
@@ -122,7 +122,7 @@ func expectExpectIdentifiers(cursor *parsly.Cursor, expect *[]string) (bool, err
 	}
 
 	snapshotPos := cursor.Pos
-	match = cursor.MatchAfterOptional(whitespaceToken, nextToken)
+	match = cursor.MatchAfterOptional(whitespaceMatcher, nextMatcher)
 	switch match.Code {
 	case nextCode:
 		has, err := expectExpectIdentifiers(cursor, expect)
@@ -138,7 +138,7 @@ func expectExpectIdentifiers(cursor *parsly.Cursor, expect *[]string) (bool, err
 }
 
 func expectIdentifiers(cursor *parsly.Cursor, expect *[]string) error {
-	match := cursor.MatchAfterOptional(whitespaceToken, identifierToken)
+	match := cursor.MatchAfterOptional(whitespaceMatcher, identifierMatcher)
 	switch match.Code {
 	case identifierCode:
 		item := match.Text(cursor)
@@ -147,7 +147,7 @@ func expectIdentifiers(cursor *parsly.Cursor, expect *[]string) error {
 		return nil
 	}
 
-	match = cursor.MatchAfterOptional(whitespaceToken, nextToken)
+	match = cursor.MatchAfterOptional(whitespaceMatcher, nextMatcher)
 	switch match.Code {
 	case nextCode:
 		return expectIdentifiers(cursor, expect)

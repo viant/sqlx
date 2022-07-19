@@ -14,18 +14,18 @@ func TryParseLiteral(cursor *parsly.Cursor) (*expr.Literal, error) {
 }
 
 var literalTokens = []*parsly.Token{
-	asKeywordToken,
-	nextToken,
-	nullKeywordToken,
-	boolLiteralToken,
-	doubleQuotedStringLiteralToken,
-	singleQuotedStringLiteralToken,
-	intLiteralToken,
-	numericLiteralToken,
+	asKeywordMatcher,
+	nextMatcher,
+	nullKeywordMatcher,
+	boolLiteralMatcher,
+	doubleQuotedStringLiteralMatcher,
+	singleQuotedStringLiteralMatcher,
+	intLiteralMatcher,
+	numericLiteralMatcher,
 }
 
 func parseLiteral(cursor *parsly.Cursor, shallRaiseInvalidToken bool) (*expr.Literal, error) {
-	match := cursor.MatchAfterOptional(whitespaceToken, literalTokens...)
+	match := cursor.MatchAfterOptional(whitespaceMatcher, literalTokens...)
 	switch match.Code {
 	case asKeyword, nextCode:
 		cursor.Pos -= match.Size

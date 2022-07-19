@@ -7,7 +7,7 @@ import (
 )
 
 func parseJoin(cursor *parsly.Cursor, join *query.Join, dest *query.Select) error {
-	match := cursor.MatchAfterOptional(whitespaceToken, parenthesesToken, selectorToken)
+	match := cursor.MatchAfterOptional(whitespaceMatcher, parenthesesMatcher, selectorMatcher)
 	switch match.Code {
 	case parenthesesCode:
 		join.With = expr.NewRaw(match.Text(cursor))
@@ -17,11 +17,15 @@ func parseJoin(cursor *parsly.Cursor, join *query.Join, dest *query.Select) erro
 
 	join.Alias = discoverAlias(cursor)
 
-	match = cursor.MatchAfterOptional(whitespaceToken, onKeywordToken)
+	match = cursor.MatchAfterOptional(whitespaceMatcher, commentBlockMatcher, onKeywordMatcher)
+	if match.Code == commentBlock {
+		join.Comments = match.Text(cursor)
+		match = cursor.MatchAfterOptional(whitespaceMatcher, onKeywordMatcher)
+	}
 	switch match.Code {
 	case onKeyword:
 	default:
-		return cursor.NewError(onKeywordToken)
+		return cursor.NewError(onKeywordMatcher)
 	}
 	binary := &expr.Binary{}
 	join.On = &expr.Qualify{}
@@ -29,14 +33,23 @@ func parseJoin(cursor *parsly.Cursor, join *query.Join, dest *query.Select) erro
 	if err := parseBinaryExpr(cursor, binary); err != nil {
 		return err
 	}
-	match = cursor.MatchAfterOptional(whitespaceToken, joinToken, groupByToken, havingKeywordToken, whereKeywordToken, windowToken)
+	match = cursor.MatchAfterOptional(whitespaceMatcher, joinToken, groupByMatcher, havingKeywordMatcher, whereKeywordMatcher, windowMatcher)
 	if match.Code == parsly.EOF {
 		return nil
 	}
+	if match.Code == commentBlock {
+		join.Comments = match.Text(cursor)
+		match = cursor.MatchAfterOptional(whitespaceMatcher, joinToken, groupByMatcher, havingKeywordMatcher, whereKeywordMatcher, windowMatcher)
+		if match.Code == parsly.EOF {
+			return nil
+		}
+	}
+
 	hasMatch, err := matchPostFrom(cursor, dest, match)
 	if !hasMatch && err == nil {
-		err = cursor.NewError(joinToken, joinToken, groupByToken, havingKeywordToken, whereKeywordToken, windowToken)
+		err = cursor.NewError(joinToken, joinToken, groupByMatcher, havingKeywordMatcher, whereKeywordMatcher, windowMatcher)
 	}
+
 	return err
 }
 

@@ -6,11 +6,12 @@ import (
 )
 
 type Join struct {
-	Kind  string
-	Alias string
-	Raw   string
-	With  node.Node
-	On    *expr.Qualify
+	Kind     string
+	Alias    string
+	Raw      string
+	With     node.Node
+	On       *expr.Qualify
+	Comments string
 }
 
 func NewJoin(raw string) *Join {

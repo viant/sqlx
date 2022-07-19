@@ -14,10 +14,33 @@ func parseBinaryExpr(cursor *parsly.Cursor, binary *expr.Binary) error {
 		}
 	}
 	if binary.Op == "" {
-		match := cursor.MatchAfterOptional(whitespaceToken, binaryOperatorToken, logicalOperatorToken)
+		match := cursor.MatchAfterOptional(whitespaceMatcher, betweenKeywordMatcher, binaryOperatorMatcher, logicalOperatorMatcher)
 		switch match.Code {
 		case binaryOperator, logicalOperator:
 			binary.Op = match.Text(cursor)
+		case betweenToken:
+			binary.Op = match.Text(cursor)
+			rng := &expr.Range{}
+			if rng.Min, err = expectOperand(cursor); err != nil {
+				return err
+			}
+			match := cursor.MatchAfterOptional(whitespaceMatcher, rangeOperatorMatcher)
+			if match.Code != rangeOperator {
+				return cursor.NewError(rangeOperatorMatcher)
+			}
+			if rng.Max, err = expectOperand(cursor); err != nil {
+				return err
+			}
+			yExpr := &expr.Binary{X: rng}
+			if err := parseBinaryExpr(cursor, yExpr); err != nil {
+				return err
+			}
+			if yExpr.Y == nil {
+				binary.Y = rng
+			} else {
+				binary.Y = yExpr
+			}
+			return nil
 		default:
 			return nil
 		}

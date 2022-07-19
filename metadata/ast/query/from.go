@@ -5,6 +5,7 @@ import (
 )
 
 type From struct {
-	Alias string
-	X     node.Node
+	Alias    string
+	X        node.Node
+	Comments string
 }
