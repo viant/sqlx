@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"github.com/viant/sqlx/io"
 	"github.com/viant/sqlx/io/read/cache"
-	source2 "github.com/viant/sqlx/io/read/source"
 	"github.com/viant/sqlx/metadata/info"
 	"github.com/viant/sqlx/metadata/registry"
 	"github.com/viant/sqlx/option"
@@ -24,7 +23,7 @@ type Reader struct {
 	getRowMapper       NewRowMapper
 	unmappedFn         io.Resolve
 	shallDeref         bool
-	cache              *cache.Service
+	cache              cache.Cache
 	mapperCache        *MapperCache
 	targetDatatype     string
 	disableMapperCache DisableMapperCache
@@ -77,7 +76,7 @@ func (r *Reader) QueryAll(ctx context.Context, emit func(row interface{}) error,
 	return err
 }
 
-func (r *Reader) createSource(ctx context.Context, entry *cache.Entry, args []interface{}) (*sql.Rows, source2.Source, error) {
+func (r *Reader) createSource(ctx context.Context, entry *cache.Entry, args []interface{}) (*sql.Rows, cache.Source, error) {
 	if entry == nil || !entry.Has() || len(entry.Meta.Fields) == 0 {
 		rows, err := r.stmt.QueryContext(ctx, args...)
 		if err != nil {
@@ -115,17 +114,20 @@ func (r *Reader) ReadAll(ctx context.Context, rows *sql.Rows, emit func(row inte
 	return rows.Err()
 }
 
-func (r *Reader) readAll(ctx context.Context, emit func(row interface{}) error, cacheEntry *cache.Entry, source source2.Source) error {
+func (r *Reader) readAll(ctx context.Context, emit func(row interface{}) error, cacheEntry *cache.Entry, source cache.Source) error {
 	var err error
 	var mapper RowMapper
 
-	defer source.Close(ctx) //TODO: Should we log it?
-	for source.Next() {
-		if err = r.read(ctx, source, &mapper, emit, cacheEntry); err != nil {
-			return err
-		}
+	for source.Next() && err == nil {
+		err = r.read(ctx, source, &mapper, emit, cacheEntry)
 	}
-	return nil
+
+	if err == nil {
+		return source.Close(ctx)
+	} else {
+		_ = source.Rollback(ctx)
+		return err
+	}
 }
 
 func (r *Reader) getCacheEntry(options []option.Option) *cache.Entry {
@@ -161,7 +163,7 @@ func (r *Reader) QueryAllWithMap(ctx context.Context, emit func(row map[string]i
 	}, args...)
 }
 
-func (r *Reader) read(ctx context.Context, source source2.Source, mapperPtr *RowMapper, emit func(row interface{}) error, cacheEntry *cache.Entry) error {
+func (r *Reader) read(ctx context.Context, source cache.Source, mapperPtr *RowMapper, emit func(row interface{}) error, cacheEntry *cache.Entry) error {
 	row := r.newRow()
 	if r.targetType == nil {
 		r.targetType = reflect.TypeOf(row)
@@ -202,7 +204,7 @@ func (r *Reader) read(ctx context.Context, source source2.Source, mapperPtr *Row
 	return emit(row)
 }
 
-func (r *Reader) ensureDereferences(row interface{}, source source2.Source, rowValues []interface{}) error {
+func (r *Reader) ensureDereferences(row interface{}, source cache.Source, rowValues []interface{}) error {
 	if !r.shallDeref {
 		return nil
 	}
@@ -228,7 +230,7 @@ func (r *Reader) ensureDereferences(row interface{}, source source2.Source, rowV
 	return nil
 }
 
-func (r *Reader) ensureRowMapper(source source2.Source, mapperPtr *RowMapper) (RowMapper, error) {
+func (r *Reader) ensureRowMapper(source cache.Source, mapperPtr *RowMapper) (RowMapper, error) {
 	if *mapperPtr != nil {
 		return *mapperPtr, nil
 	}
@@ -314,12 +316,12 @@ func NewStmt(stmt *sql.Stmt, newRow func() interface{}, options ...option.Option
 	}
 	option.Assign(options, &unmappedFn)
 
-	var readerCache *cache.Service
+	var readerCache cache.Cache
 	var mapperCache *MapperCache
 	var disableMapperCache DisableMapperCache
 	for _, anOption := range options {
 		switch actual := anOption.(type) {
-		case *cache.Service:
+		case cache.Cache:
 			readerCache = actual
 		case *MapperCache:
 			mapperCache = actual

@@ -5,12 +5,15 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	as "github.com/aerospike/aerospike-client-go"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/assert"
 	option2 "github.com/viant/afs/option"
 	"github.com/viant/sqlx/io"
 	"github.com/viant/sqlx/io/read"
 	"github.com/viant/sqlx/io/read/cache"
+	"github.com/viant/sqlx/io/read/cache/aerospike"
+	"github.com/viant/sqlx/io/read/cache/afs"
 	"github.com/viant/sqlx/option"
 	"github.com/viant/toolbox"
 	"log"
@@ -21,6 +24,8 @@ import (
 	"testing"
 	"time"
 )
+
+const uint32Max uint32 = 4294967295
 
 type recorder struct {
 	scannedValues [][]interface{}
@@ -47,17 +52,26 @@ type usecase struct {
 	hasMapperError  bool
 	resolver        *io.Resolver
 	expectResolved  interface{}
-	cache           *cache.Service
 	cachedData      [][]interface{}
 	args            []interface{}
 	expectedAdded   string
 	expectedScanned string
 	removeCache     bool
 	disableCache    *bool
-	recorder        *recorder
 	rowMapperCache  *read.MapperCache
+	cacheConfig     *cacheConfig
 }
 
+type cacheConfig struct {
+	location  string
+	duration  time.Duration
+	signature string
+	cacheType string
+}
+
+//TODO: Fix policies, specially when it comes to expiration time
+//TODO: Create child node if parent exceeds 1MB
+//TODO: Fix test cases to make them less vulnerable against the time.
 func TestReader_ReadAll(t *testing.T) {
 	cache.Now = func() time.Time {
 		parse, _ := time.Parse("Jan 2, 2006 at 3:04pm (MST)", "Feb 4, 2014 at 6:05pm (PST)")
@@ -106,11 +120,6 @@ func TestReader_ReadAll(t *testing.T) {
 		Boo
 		*Foo
 	}
-
-	case3WrapperRecorder := &recorder{}
-	case3WrapperCache, _ := cache.NewCache(cacheLocation, time.Duration(10000)*time.Minute, "events", option2.NewStream(64*1024*1024, 64*1024), case3WrapperRecorder)
-	case3PtrWrapperRecorder := &recorder{}
-	case3PtrWrapperCache, _ := cache.NewCache(cacheLocation, time.Duration(10000)*time.Minute, "", option2.NewStream(64*1024*1024, 64*1024), case3PtrWrapperRecorder)
 
 	var useCases = []*usecase{
 		{
@@ -245,12 +254,15 @@ func TestReader_ReadAll(t *testing.T) {
 			resolver:       io.NewResolver(),
 			expect:         `[{"Id":1,"Desc":"desc1","Name":"John"},{"Id":2,"Desc":"desc2","Name":"Bruce"}]`,
 			expectResolved: `["101","102"]`,
-			cache:          case3WrapperCache,
+			cacheConfig: &cacheConfig{
+				location:  cacheLocation,
+				duration:  time.Duration(10000) * time.Minute,
+				signature: "events",
+			},
 			cachedData: [][]interface{}{
 				{float64(1), "John", "desc1", "101"},
 				{float64(2), "Bruce", "desc2", "102"},
 			},
-			recorder:        case3WrapperRecorder,
 			expectedScanned: `[[2,"Bruce","desc2","102"],[2,"Bruce","desc2","102"]]`,
 		},
 		{
@@ -270,14 +282,15 @@ func TestReader_ReadAll(t *testing.T) {
 			resolver:       io.NewResolver(),
 			expect:         `[{"Id":2,"Desc":"desc2","Name":"Bruce"}]`,
 			expectResolved: `["102"]`,
-			cache:          case3PtrWrapperCache,
+			cacheConfig: &cacheConfig{
+				location: cacheLocation, duration: time.Duration(10000) * time.Minute,
+			},
 			cachedData: [][]interface{}{
 				{float64(2), "Bruce", "desc2", "102"},
 			},
 			args:          []interface{}{2},
 			expectedAdded: `[[2,"Bruce","desc2","102"]]`,
 			removeCache:   true,
-			recorder:      case3PtrWrapperRecorder,
 		},
 		{
 			description: "RowMapper cache",
@@ -333,14 +346,72 @@ func TestReader_ReadAll(t *testing.T) {
 			},
 			expect: `[{"Val":1,"Id":0,"Name":"John","Price":101},{"Val":2,"Id":0,"Name":"Bruce","Price":102}]`,
 		},
+		{
+			description: "Aerospike cache write",
+			driver:      "sqlite3",
+			dsn:         "/tmp/sqllite.db",
+			initSQL: []string{
+				"CREATE TABLE IF NOT EXISTS t8 (foo_id INTEGER PRIMARY KEY, foo_name TEXT, desc TEXT, unk TEXT)",
+				"delete from t8",
+				"insert into t8 values(1, \"John\", \"desc1\", \"101\")",
+				"insert into t8 values(2, \"Bruce\", \"desc2\", \"102\")",
+			},
+			query: "SELECT foo_id , foo_name, desc,  unk  FROM t8 WHERE foo_id = ? ORDER BY 1",
+			newRow: func() interface{} {
+				return &case3Wrapper{}
+			},
+			resolver:       io.NewResolver(),
+			expect:         `[{"Id":2,"Desc":"desc2","Name":"Bruce"}]`,
+			expectResolved: `["102"]`,
+			cachedData: [][]interface{}{
+				{float64(2), "Bruce", "desc2", "102"},
+			},
+			args:          []interface{}{2},
+			expectedAdded: `[[2,"Bruce","desc2","102"]]`,
+			removeCache:   true,
+			cacheConfig: &cacheConfig{
+				cacheType: "aerospike",
+			},
+		},
+		{
+			description: "Aerospike cache read",
+			driver:      "sqlite3",
+			dsn:         "/tmp/sqllite.db",
+			initSQL: []string{
+				"CREATE TABLE IF NOT EXISTS t9 (foo_id INTEGER PRIMARY KEY, foo_name TEXT, desc TEXT, unk TEXT)",
+				"delete from t9",
+				"insert into t9 values(1, \"John\", \"desc1\", \"101\")",
+				"insert into t9 values(2, \"Bruce\", \"desc2\", \"102\")",
+			},
+			query: "SELECT foo_id , foo_name, desc,  unk  FROM t9 WHERE foo_id = ? ORDER BY 1",
+			newRow: func() interface{} {
+				return &case3Wrapper{}
+			},
+			resolver:       io.NewResolver(),
+			expect:         `[{"Id":2,"Desc":"desc2","Name":"Bruce"}]`,
+			expectResolved: `["102"]`,
+			cachedData: [][]interface{}{
+				{float64(2), "Bruce", "desc2", "102"},
+			},
+			args:            []interface{}{2},
+			expectedScanned: `[[2,"Bruce","desc2","102"]]`,
+			cacheConfig: &cacheConfig{
+				cacheType: "aerospike",
+			},
+		},
 	}
 
 outer:
-	//for _, testCase := range useCases[len(useCases)-1:] {
-	for _, testCase := range useCases {
+	//for i, testCase := range useCases[len(useCases)-1 :] {
+	for i, testCase := range useCases {
+		fmt.Printf("Running testcase: %v | %v\n", i, testCase.description)
+		aCache, aRecorder, err := getCacheWithRecorder(testCase)
+		if !assert.Nil(t, err, testCase.description) {
+			continue
+		}
+
 		os.RemoveAll(testCase.dsn)
 		ctx := context.Background()
-		var db *sql.DB
 
 		db, err := sql.Open(testCase.driver, testCase.dsn)
 		if !assert.Nil(t, err, testCase.description) {
@@ -359,8 +430,8 @@ outer:
 			options = append(options, testCase.resolver.Resolve)
 		}
 
-		if testCase.cache != nil {
-			options = append(options, testCase.cache)
+		if aCache != nil {
+			options = append(options, aCache)
 		}
 
 		if testCase.rowMapperCache != nil {
@@ -381,18 +452,42 @@ outer:
 		}
 
 		for j := 0; j < dbRequests; j++ {
-			if !testQueryAll(t, reader, testCase, j) {
+			if !testQueryAll(t, reader, testCase, j, aRecorder, aCache) {
 				continue outer
 			}
 		}
 	}
 }
 
+func getCacheWithRecorder(testCase *usecase) (cache.Cache, *recorder, error) {
+	config := testCase.cacheConfig
+	if config == nil {
+		return nil, nil, nil
+	}
+
+	aRecorder := &recorder{}
+	aCache, err := getCache(aRecorder, config)
+	return aCache, aRecorder, err
+}
+
+func getCache(aRecorder *recorder, config *cacheConfig) (cache.Cache, error) {
+	if config.cacheType != "aerospike" {
+		return afs.NewCache(config.location, config.duration, config.signature, option2.NewStream(64*1024*1024, 64*1024), aRecorder)
+	}
+
+	client, err := as.NewClient("127.0.0.1", 3000)
+	if err != nil {
+		return nil, err
+	}
+
+	return aerospike.New("test", "aerospike", client, uint32Max, aRecorder)
+}
+
 func boolPtr(b bool) *bool {
 	return &b
 }
 
-func testQueryAll(t *testing.T, reader *read.Reader, testCase *usecase, index int) bool {
+func testQueryAll(t *testing.T, reader *read.Reader, testCase *usecase, index int, aRecorder *recorder, aCache cache.Cache) bool {
 	var actual = make([]interface{}, 0)
 	err := reader.QueryAll(context.TODO(), func(row interface{}) error {
 		actual = append(actual, row)
@@ -422,27 +517,27 @@ func testQueryAll(t *testing.T, reader *read.Reader, testCase *usecase, index in
 		}
 	}
 
-	if testCase.recorder != nil {
+	if aRecorder != nil {
 		if testCase.expectedScanned != "" {
-			marshal, _ := json.Marshal(testCase.recorder.scannedValues)
-			assert.Equal(t, string(marshal), testCase.expectedScanned, testCase.description)
+			marshal, _ := json.Marshal(aRecorder.scannedValues)
+			assert.Equal(t, testCase.expectedScanned, string(marshal), testCase.description)
 		}
 
 		if testCase.expectedAdded != "" {
-			marshal, _ := json.Marshal(testCase.recorder.addedValues)
-			assert.Equal(t, string(marshal), testCase.expectedAdded, testCase.description)
+			marshal, _ := json.Marshal(aRecorder.addedValues)
+			assert.Equal(t, testCase.expectedAdded, string(marshal), testCase.description)
 		}
 	}
 
-	if testCase.cache != nil {
-		cacheEntry, err := testCase.cache.Get(context.TODO(), testCase.query, testCase.args)
+	if aCache != nil {
+		cacheEntry, err := aCache.Get(context.TODO(), testCase.query, testCase.args)
 		assert.Nil(t, err, testCase.description)
 		assert.True(t, cacheEntry.Has(), testCase.description)
 		argsMarshal, _ := json.Marshal(testCase.args)
 		assert.Equal(t, argsMarshal, cacheEntry.Meta.Args, testCase.description)
 		assert.Equal(t, testCase.query, cacheEntry.Meta.SQL, testCase.description)
 		if testCase.removeCache {
-			assert.Nil(t, testCase.cache.Delete(context.TODO(), cacheEntry), testCase.description)
+			assert.Nil(t, aCache.Delete(context.TODO(), cacheEntry), testCase.description)
 		}
 	}
 	return true
@@ -597,7 +692,7 @@ func BenchmarkStructMapper(b *testing.B) {
 
 	b.Run("With mapper cache and file data cache", func(b *testing.B) {
 		mapperCache := read.NewMapperCache(1024)
-		dataCache, err := cache.NewCache("/tmp/cache", time.Duration(1)*time.Minute, "", option2.NewStream(64*1024*1024, 64*1024))
+		dataCache, err := afs.NewCache("/tmp/cache", time.Duration(1)*time.Minute, "", option2.NewStream(64*1024*1024, 64*1024))
 		if !assert.Nil(b, err) {
 			return
 		}
@@ -625,7 +720,7 @@ func BenchmarkStructMapper(b *testing.B) {
 
 	b.Run("With mapper cache and memory data cache", func(b *testing.B) {
 		mapperCache := read.NewMapperCache(1024)
-		dataCache, err := cache.NewCache("mem:///tmp/cache", time.Duration(1)*time.Minute, "", option2.NewStream(64*1024*1024, 64*1024))
+		dataCache, err := afs.NewCache("mem:///tmp/cache", time.Duration(1)*time.Minute, "", option2.NewStream(64*1024*1024, 64*1024))
 		if !assert.Nil(b, err) {
 			return
 		}
@@ -650,4 +745,38 @@ func BenchmarkStructMapper(b *testing.B) {
 			assert.Equal(b, dataSize, counter)
 		}
 	})
+
+	b.Run("With mapper cache and aerospike data cache", func(b *testing.B) {
+		mapperCache := read.NewMapperCache(1024)
+		client, err := as.NewClient("127.0.0.1", 3000)
+		if !assert.Nil(b, err) {
+			return
+		}
+
+		dataCache, err := aerospike.New("test", "aerospike", client, uint32Max)
+		if !assert.Nil(b, err) {
+			return
+		}
+
+		cacheReader, err := read.New(context.TODO(), db, "SELECT * FROM foos", func() interface{} {
+			return &Foo{}
+		}, mapperCache, dataCache)
+
+		if !assert.Nil(b, err) {
+			return
+		}
+
+		b.ResetTimer()
+		b.ReportAllocs()
+		for i := 0; i < b.N; i++ {
+			counter := 0
+			err = cacheReader.QueryAll(context.TODO(), func(row interface{}) error {
+				counter++
+				return nil
+			})
+			assert.Nil(b, err)
+			assert.Equal(b, dataSize, counter)
+		}
+	})
+
 }

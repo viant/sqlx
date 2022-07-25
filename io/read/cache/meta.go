@@ -8,5 +8,5 @@ type Meta struct {
 	TimeToLive int
 	Fields     []*Field
 
-	url string
+	URL string `json:"-" yaml:"-"`
 }

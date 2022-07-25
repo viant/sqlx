@@ -1,13 +1,10 @@
 package cache
 
-import (
-	"bufio"
-	"net/http"
-	"strconv"
-	"strings"
-)
+type LineReader interface {
+	ReadLine() (line []byte, prefix bool, err error)
+}
 
-func readLine(reader *bufio.Reader) ([]byte, error) {
+func ReadLine(reader LineReader) ([]byte, error) {
 	line, prefix, err := reader.ReadLine()
 	if err != nil {
 		return nil, err
@@ -23,18 +20,4 @@ func readLine(reader *bufio.Reader) ([]byte, error) {
 	}
 
 	return line, nil
-}
-
-func isRateError(err error) bool {
-	if err == nil {
-		return false
-	}
-	return strings.Contains(err.Error(), strconv.Itoa(http.StatusTooManyRequests))
-}
-
-func isPreConditionError(err error) bool {
-	if err == nil {
-		return false
-	}
-	return strings.Contains(err.Error(), strconv.Itoa(http.StatusPreconditionFailed))
 }

@@ -1,70 +1,121 @@
 package cache
 
 import (
-	"bufio"
-	"context"
-	"encoding/json"
+	"database/sql"
+	"github.com/viant/sqlx/io"
 	goIo "io"
 )
 
 type Entry struct {
-	Meta Meta
-	Data []byte // Entry is used as Iterator, Data is last streamed line.
-	Id   string
+	Meta        Meta
+	Data        []byte // Entry is used as Iterator, Data is last streamed line.
+	Id          string
+	WriteCloser *WriteCloser
+	ReadCloser  *ReadCloser
 
 	index    int
-	rowAdded bool
-
-	reader      *bufio.Reader
-	writer      *bufio.Writer
-	writeCloser goIo.WriteCloser
-	readCloser  goIo.ReadCloser
-}
-
-func (c *Service) addRow(ctx context.Context, e *Entry, values []interface{}) error {
-	if len(values) == 0 {
-		return nil
-	}
-
-	if err := c.writeMetaIfNeeded(ctx, e); err != nil {
-		return err
-	}
-
-	marshal, err := json.Marshal(values)
-	if err != nil {
-		return err
-	}
-
-	err = c.write(e.writer, marshal, true)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (c *Service) writeMetaIfNeeded(ctx context.Context, e *Entry) error {
-	if e.rowAdded {
-		return nil
-	}
-
-	var err error
-	e.writer, err = c.writeMeta(ctx, e)
-	if err != nil {
-		return e.writeCloser.Close()
-	}
-
-	e.rowAdded = true
-	return nil
+	RowAdded bool
 }
 
 func (e *Entry) Next() bool {
-	line, err := readLine(e.reader)
+	line, err := ReadLine(e.ReadCloser)
 	e.Data = line
 
 	return err == nil
 }
 
 func (e *Entry) Has() bool {
-	return e.reader != nil
+	return e.ReadCloser != nil
+}
+
+func (e *Entry) SetWriter(writer Writer, closer goIo.Closer) {
+	e.WriteCloser = NewWriteCloser(writer, closer)
+}
+
+func (e *Entry) SetReader(reader Reader, closer goIo.Closer) {
+	e.ReadCloser = NewReadCloser(reader, closer)
+}
+
+func (e *Entry) AssignRows(rows *sql.Rows) error {
+	if len(e.Meta.Fields) > 0 {
+		return nil
+	}
+
+	types, err := rows.ColumnTypes()
+	if err != nil {
+		return err
+	}
+
+	ioColumns := io.TypesToColumns(types)
+	e.Meta.Fields = make([]*Field, len(ioColumns))
+
+	for i, column := range ioColumns {
+		length, _ := column.Length()
+		precision, scale, _ := column.DecimalSize()
+		nullable, _ := column.Nullable()
+		e.Meta.Fields[i] = &Field{
+			ColumnName:         column.Name(),
+			ColumnLength:       length,
+			ColumnPrecision:    precision,
+			ColumnScale:        scale,
+			ColumnScanType:     column.ScanType().String(),
+			_columnScanType:    column.ScanType(),
+			ColumnNullable:     nullable,
+			ColumnDatabaseName: column.DatabaseTypeName(),
+			ColumnTag:          column.Tag(),
+		}
+	}
+
+	return nil
+}
+
+func (e *Entry) Close() error {
+	return notNil(
+		e.closeReader(),
+		e.flush(),
+		e.closeWriter(),
+	)
+}
+
+func (e *Entry) closeReader() error {
+	if e.ReadCloser == nil {
+		return nil
+	}
+
+	return e.ReadCloser.Close()
+}
+
+func (e *Entry) closeWriter() error {
+	if e.WriteCloser == nil {
+		return nil
+	}
+
+	return e.WriteCloser.Close()
+}
+
+func (e *Entry) flush() error {
+	if e.WriteCloser == nil {
+		return nil
+	}
+
+	return e.WriteCloser.Flush()
+}
+
+func (e *Entry) Write(data []byte) error {
+	_, err := e.WriteCloser.Write(data)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func notNil(errors ...error) error {
+	for _, err := range errors {
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
