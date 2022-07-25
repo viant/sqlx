@@ -51,35 +51,6 @@ FROM information_schema.schemata
 			info.NewCriterion(info.Catalog, "CATALOG_NAME"),
 			info.NewCriterion(info.Schema, "SCHEMA_NAME"),
 		),
-
-		info.NewQuery(info.KindSchema, `SELECT 
-CATALOG_NAME, 
-SCHEMA_NAME,
-COALESCE(SQL_PATH,'') AS SQL_PATH,
-DEFAULT_CHARACTER_SET_NAME,
-DEFAULT_COLLATION_NAME AS DEFAULT_COLLATION_NAME
-FROM information_schema.schemata
-`, mySQL5,
-			info.NewCriterion(info.Catalog, "CATALOG_NAME"),
-			info.NewCriterion(info.Schema, "SCHEMA_NAME"),
-		),
-		info.NewQuery(info.KindTables, `SELECT 
-TABLE_CATALOG,
-TABLE_SCHEMA,
-TABLE_TYPE,
-TABLE_NAME,
-COALESCE(AUTO_INCREMENT, '') AS AUTO_INCREMENT,
-CREATE_TIME,
-UPDATE_TIME,
-TABLE_ROWS,
-VERSION,
-ENGINE
-FROM INFORMATION_SCHEMA.TABLES`,
-			mySQL5,
-			info.NewCriterion(info.Catalog, "CATALOG_NAME"),
-			info.NewCriterion(info.Schema, "SCHEMA_NAME"),
-		),
-
 		info.NewQuery(info.KindTables, `SELECT 
 TABLE_CATALOG,
 TABLE_SCHEMA,
@@ -249,7 +220,7 @@ where ID=CONNECTION_ID() LIMIT 1;
 			info.NewCriterion(info.Table, ""),
 		),
 
-		info.NewQuery(info.KindForeignKeysCheckOff, `SET FOREIGN_KEY_CHECKS=1`,
+		info.NewQuery(info.KindForeignKeysCheckOff, `SET FOREIGN_KEY_CHECKS=0`,
 			mySQL5,
 			info.NewCriterion(info.Catalog, ""),
 			info.NewCriterion(info.Schema, ""),

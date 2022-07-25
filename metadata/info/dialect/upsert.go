@@ -9,7 +9,7 @@ const (
 	//UpsertTypeMerge defines merge upsert type
 	UpsertTypeMerge //i.e PostgreSQL, BigQuery
 	//UpsertTypeMergeInto //defined merge into upsert
-	UpsertTypeMergeInto //i.e Oracle dialect
+	UpsertTypeMergeInto //i.e Oracle, Vertica, MS SQL, PostgreSQL dialect
 	//UpsertTypeInsertOrReplace defined insert or replace upsert
 	UpsertTypeInsertOrReplace //i.e. SQLLite
 	//UpsertTypeInsertOrUpdate defined insert or update upsert

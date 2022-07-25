@@ -21,6 +21,8 @@ func MatchProduct(db *sql.DB) *database.Product {
 			(candidate.DriverPkg != "" && strings.Contains(driverPkg, candidate.DriverPkg)) ||
 			(candidate.Driver != "" && strings.Contains(candidate.Driver, driverName)) {
 			product = candidate
+			product.DriverPkg = driverPkg
+			product.Driver = driverName
 		}
 		if strings.Contains(candidate.Driver, defaultProductName) {
 			defaultProduct = candidate
