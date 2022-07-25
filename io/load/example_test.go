@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"github.com/viant/sqlx/io/load"
+	_ "github.com/viant/sqlx/metadata/product/mysql/load"
 	"log"
 )
 

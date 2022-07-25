@@ -9,8 +9,9 @@ import (
 
 //Matcher implements column to struct filed mapper
 type Matcher struct {
-	resolver Resolve
-	tagName  string
+	resolver  Resolve
+	tagName   string
+	unmatched []int
 }
 
 //Match matches field with columns
@@ -32,40 +33,54 @@ func (f *Matcher) matchedColumns(xStruct *xunsafe.Struct, matched []Field, colum
 	if err := f.indexFields(idx, nil, xStruct, &fields); err != nil {
 		return err
 	}
-	var unmatched []int
 	for i := range matched {
 		candidate := &matched[i]
 		column := columns[i]
 		candidate.Column = column
 		pos := idx.match(column.Name())
 		if pos == -1 {
-			unmatched = append(unmatched, i)
+			f.unmatched = append(f.unmatched, i)
 			continue
 		}
 		fields[pos].Column = column
+		fields[pos].MatchesType = true
 		matched[i] = fields[pos]
 	}
-	if len(unmatched) == 0 {
+	if len(f.unmatched) == 0 {
 		return nil
 	}
 	var unmatchedColumn = make([]string, 0)
 	if f.resolver == nil {
-		for _, pos := range unmatched {
+		for _, pos := range f.unmatched {
 			unmatchedColumn = append(unmatchedColumn, matched[pos].Column.Name())
 		}
 		return fmt.Errorf("failed to match columns: %v", unmatchedColumn)
 	}
-	for _, pos := range unmatched {
+
+	for _, pos := range f.unmatched {
 		candidate := &matched[pos]
-		candidate.Field = &xunsafe.Field{
-			Name: candidate.Column.Name(),
-			Type: candidate.Column.ScanType(),
-		}
-		candidate.EvalAddr = f.resolver(candidate.Column)
-		if candidate.EvalAddr == nil {
-			return fmt.Errorf("failed to match column: %v", candidate.Column.Name())
+		if err := UpdateUnresolved(candidate, f.resolver); err != nil {
+			return err
 		}
 	}
+	return nil
+}
+
+func UpdateUnresolved(field *Field, resolver Resolve) error {
+	if field.Field != nil {
+		return nil
+	}
+
+	field.Field = &xunsafe.Field{
+		Name: field.Column.Name(),
+		Type: field.Column.ScanType(),
+	}
+
+	field.EvalAddr = resolver(field.Column)
+	if field.EvalAddr == nil {
+		return fmt.Errorf("failed to match column: %v", field.Column.Name())
+	}
+
 	return nil
 }
 

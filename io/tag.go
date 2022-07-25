@@ -23,9 +23,11 @@ func (f *Field) CanExpand() bool {
 	if f.Tag.Ns != "" {
 		return true
 	}
+
 	if !f.Anonymous {
 		return false
 	}
+
 	candidateType := f.Type
 	if candidateType.Kind() == reflect.Ptr {
 		candidateType = candidateType.Elem()

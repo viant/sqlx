@@ -12,8 +12,9 @@ type Field struct {
 	Tag
 	Column
 	*xunsafe.Field
-	EvalAddr func(pointer unsafe.Pointer) interface{}
-	Info     *sink.Column
+	EvalAddr    func(pointer unsafe.Pointer) interface{}
+	Info        *sink.Column
+	MatchesType bool
 }
 
 //Addr returns field pointer

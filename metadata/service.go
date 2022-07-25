@@ -162,7 +162,7 @@ func (s *Service) runQuery(ctx context.Context, db *sql.DB, query *info.Query, s
 	case *[]string:
 		return fetchToStrings(rows, value)
 	default:
-		return fetchStruct(rows, value)
+		return fetchStruct(ctx, rows, value)
 	}
 }
 

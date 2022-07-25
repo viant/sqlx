@@ -1,6 +1,7 @@
 package metadata
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"github.com/viant/sqlx/io/read"
@@ -28,7 +29,7 @@ func fetchToStrings(rows *sql.Rows, dest *[]string) error {
 	return nil
 }
 
-func fetchStruct(rows *sql.Rows, dest Sink) error {
+func fetchStruct(ctx context.Context, rows *sql.Rows, dest Sink) error {
 	valueType := reflect.TypeOf(dest)
 	if valueType.Kind() != reflect.Ptr {
 		return fmt.Errorf("expected pointer but had: %T", dest)
@@ -40,7 +41,7 @@ func fetchStruct(rows *sql.Rows, dest Sink) error {
 		reader := read.NewStmt(nil, func() interface{} {
 			return reflect.New(targetType).Interface()
 		})
-		return reader.ReadAll(rows, func(row interface{}) error {
+		return reader.ReadAll(ctx, rows, func(row interface{}) error {
 			// TODO: pointer or just a struct
 			targetValue.Elem().Set(reflect.ValueOf(row).Elem())
 			return nil
@@ -52,7 +53,7 @@ func fetchStruct(rows *sql.Rows, dest Sink) error {
 		reader := read.NewStmt(nil, func() interface{} {
 			return reflect.New(targetType).Interface()
 		})
-		return reader.ReadAll(rows, func(row interface{}) error {
+		return reader.ReadAll(ctx, rows, func(row interface{}) error {
 			item := reflect.ValueOf(row)
 			if !isTargetPointer {
 				item = item.Elem()
