@@ -48,7 +48,7 @@ func (f *Field) Tag() *io.Tag {
 	return f.ColumnTag
 }
 
-func (f *Field) init() error {
+func (f *Field) Init() error {
 	rType, err := ast.Parse(f.ColumnScanType)
 	if err != nil {
 		return err
