@@ -32,13 +32,14 @@ func (w *Writer) Flush() error {
 	}
 
 	var childKey *as.Key
+	var previousKeyValue string
 	for i := len(w.buffers) - 1; i >= 0; i-- {
 		childKeyValue := w.id
 		if i != 0 {
 			childKeyValue += "#" + strconv.Itoa(i)
 		}
 
-		binMap := w.binMap(i, childKeyValue)
+		binMap := w.binMap(i, previousKeyValue)
 
 		lastInsertedKey, err := w.cache.key(childKeyValue)
 		if err != nil {
@@ -51,6 +52,7 @@ func (w *Writer) Flush() error {
 		}
 
 		childKey = lastInsertedKey
+		previousKeyValue = childKeyValue
 	}
 
 	return nil

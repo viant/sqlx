@@ -9,8 +9,8 @@ require (
 	github.com/google/uuid v1.3.0
 	github.com/lib/pq v1.10.6
 	github.com/mattn/go-sqlite3 v1.14.13
-	github.com/vertica/vertica-sql-go v1.2.2
 	github.com/stretchr/testify v1.7.5
+	github.com/vertica/vertica-sql-go v1.2.2
 	github.com/viant/afs v1.16.0
 	github.com/viant/parsly v0.0.0-20220701205749-237fda4a6158
 	github.com/viant/toolbox v0.34.5
