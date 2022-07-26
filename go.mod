@@ -12,7 +12,7 @@ require (
 	github.com/stretchr/testify v1.7.5
 	github.com/vertica/vertica-sql-go v1.2.2
 	github.com/viant/afs v1.16.0
-	github.com/viant/parsly v0.0.0-20220701205749-237fda4a6158
+	github.com/viant/parsly v0.0.0-20220726191103-6f54d86a6bf9
 	github.com/viant/toolbox v0.34.5
 	github.com/viant/xunsafe v0.8.1-0.20220609224231-1d3e1fcf7bb6
 )
