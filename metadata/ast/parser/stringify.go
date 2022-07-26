@@ -82,6 +82,11 @@ func stringify(n node.Node, builder *bytes.Buffer) {
 		if actual.Alias != "" {
 			builder.WriteString(" " + actual.Alias)
 		}
+
+		if actual.Comments != "" {
+			builder.WriteString(" " + actual.Comments)
+		}
+
 	case *expr.Placeholder:
 		builder.WriteString(actual.Name)
 	case *expr.Unary:

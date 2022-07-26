@@ -36,7 +36,14 @@ func parseQuery(cursor *parsly.Cursor, dest *query.Select) error {
 			case parenthesesCode:
 				dest.From.X = expr.NewRaw(match.Text(cursor))
 			}
+			
 			dest.From.Alias = discoverAlias(cursor)
+
+			match = cursor.MatchAfterOptional(whitespaceMatcher, commentBlockMatcher)
+			if match.Code == commentBlock {
+				dest.From.Comments = match.Text(cursor)
+			}
+
 			dest.Joins = make([]*query.Join, 0)
 
 			match = cursor.MatchAfterOptional(whitespaceMatcher, joinToken, whereKeywordMatcher, groupByMatcher, havingKeywordMatcher, orderByKeywordMatcher, windowMatcher)
