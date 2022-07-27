@@ -70,6 +70,9 @@ var goNullInt64Type = reflect.PtrTo(reflect.TypeOf(int64(0)))
 var sqlNullFloat64Type = reflect.TypeOf(sql.NullFloat64{})
 var goNullFloat64Type = reflect.PtrTo(reflect.TypeOf(float64(0)))
 
+var sqlRawBytesType = reflect.TypeOf(sql.RawBytes{})
+var goRawBytesType = reflect.PtrTo(reflect.TypeOf(""))
+
 func normalizeScanType(scanType reflect.Type) reflect.Type {
 	switch scanType {
 	case sqlNullStringType:
@@ -80,6 +83,8 @@ func normalizeScanType(scanType reflect.Type) reflect.Type {
 		return goNullBoolType
 	case sqlNullByteType:
 		return goNullByteType
+	case sqlRawBytesType:
+		return goRawBytesType
 	case sqlNullInt16Type:
 		return goNullInt16Type
 	case sqlNullInt32Type:
