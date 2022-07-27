@@ -46,7 +46,9 @@ func (w *Writer) Flush() error {
 			return err
 		}
 
-		if err = w.client.Put(as.NewWritePolicy(0, w.expirationTimeInSeconds), lastInsertedKey, binMap); err != nil {
+		policy := as.NewWritePolicy(0, w.expirationTimeInSeconds)
+		policy.SendKey = true
+		if err = w.client.Put(policy, lastInsertedKey, binMap); err != nil {
 			w.delete(childKey)
 			return err
 		}
