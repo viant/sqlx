@@ -27,10 +27,15 @@ type Reader struct {
 	mapperCache        *MapperCache
 	targetDatatype     string
 	disableMapperCache DisableMapperCache
+	db                 *sql.DB
 }
 
 //QuerySingle returns single row
 func (r *Reader) QuerySingle(ctx context.Context, emit func(row interface{}) error, args ...interface{}) error {
+	if err := r.ensureStmt(ctx); err != nil {
+		return err
+	}
+
 	rows, err := r.stmt.QueryContext(ctx, args...)
 	if err != nil {
 		return fmt.Errorf("failed to run query: %v, due to %s", r.query, err)
@@ -78,6 +83,10 @@ func (r *Reader) QueryAll(ctx context.Context, emit func(row interface{}) error,
 
 func (r *Reader) createSource(ctx context.Context, entry *cache.Entry, args []interface{}) (*sql.Rows, cache.Source, error) {
 	if entry == nil || !entry.Has() || len(entry.Meta.Fields) == 0 {
+		if err := r.ensureStmt(ctx); err != nil {
+			return nil, nil, err
+		}
+
 		rows, err := r.stmt.QueryContext(ctx, args...)
 		if err != nil {
 			return nil, nil, fmt.Errorf("failed to run query: %v, due to %s", r.query, err)
@@ -280,19 +289,32 @@ func (r *Reader) applyRowsIfNeeded(entry *cache.Entry, rows *sql.Rows) error {
 	return r.cache.AssignRows(entry, rows)
 }
 
+func (r *Reader) ensureStmt(ctx context.Context) error {
+	if r.stmt != nil {
+		return nil
+	}
+
+	stmt, err := r.db.PrepareContext(ctx, r.query)
+	if err != nil {
+		return err
+	}
+
+	r.stmt = stmt
+	return nil
+}
+
 //New creates a records to a structs reader
 func New(ctx context.Context, db *sql.DB, query string, newRow func() interface{}, options ...option.Option) (*Reader, error) {
 	dialect := ensureDialect(options, db)
 	if dialect != nil {
 		query = dialect.EnsurePlaceholders(query)
 	}
-	stmt, err := db.PrepareContext(ctx, query)
-	if err != nil {
-		return nil, fmt.Errorf("failed to prepare query: %v, due to %w", query, err)
-	}
-	newStmt := NewStmt(stmt, newRow, options...)
+
+	options = append(options, db)
+
+	newStmt := NewStmt(nil, newRow, options...)
 	newStmt.query = query
-	return newStmt, err
+	return newStmt, nil
 }
 
 func ensureDialect(options []option.Option, db *sql.DB) *info.Dialect {
@@ -304,6 +326,7 @@ func ensureDialect(options []option.Option, db *sql.DB) *info.Dialect {
 		}
 		dialect = registry.LookupDialect(product)
 	}
+
 	return dialect
 }
 
@@ -319,6 +342,8 @@ func NewStmt(stmt *sql.Stmt, newRow func() interface{}, options ...option.Option
 	var readerCache cache.Cache
 	var mapperCache *MapperCache
 	var disableMapperCache DisableMapperCache
+	var db *sql.DB
+
 	for _, anOption := range options {
 		switch actual := anOption.(type) {
 		case cache.Cache:
@@ -327,6 +352,8 @@ func NewStmt(stmt *sql.Stmt, newRow func() interface{}, options ...option.Option
 			mapperCache = actual
 		case DisableMapperCache:
 			disableMapperCache = actual
+		case *sql.DB:
+			db = actual
 		}
 	}
 
@@ -339,6 +366,7 @@ func NewStmt(stmt *sql.Stmt, newRow func() interface{}, options ...option.Option
 		cache:              readerCache,
 		mapperCache:        mapperCache,
 		disableMapperCache: disableMapperCache,
+		db:                 db,
 	}
 }
 
