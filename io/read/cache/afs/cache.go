@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"github.com/google/uuid"
 	"github.com/viant/afs"
 	"github.com/viant/afs/option"
@@ -234,6 +235,9 @@ func (c *Cache) writeMeta(ctx context.Context, m *cache.Entry) error {
 	writer, err := c.afs.NewWriter(ctx, m.Meta.URL, 0644, &option.SkipChecksum{Skip: true})
 	if err != nil {
 		return err
+	}
+	if writer == nil {
+		return fmt.Errorf("invalid writer location: %v", m.Meta.URL)
 	}
 
 	bufioWriter := bufio.NewWriterSize(writer, 2048)
