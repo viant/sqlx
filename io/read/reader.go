@@ -58,8 +58,8 @@ func (r *Reader) QuerySingle(ctx context.Context, emit func(row interface{}) err
 }
 
 //QueryAll query all
-func (r *Reader) QueryAll(ctx context.Context, emit func(row interface{}) error, args ...interface{}) error {
-	entry, err := r.cacheEntry(ctx, r.query, args)
+func (r *Reader) QueryAll(ctx context.Context, emit func(row interface{}) error, smartMatcher *cache.SmartMatcher, args ...interface{}) error {
+	entry, err := r.cacheEntry(ctx, r.query, args, smartMatcher)
 	if err != nil {
 		return err
 	}
@@ -158,7 +158,7 @@ func (r *Reader) QueryAllWithSlice(ctx context.Context, emit func(row []interfac
 			return fmt.Errorf("expected %T, but had %T", aSlice, row)
 		}
 		return emit(aSlice)
-	}, args...)
+	}, nil, args...)
 }
 
 //QueryAllWithMap query all with a map
@@ -169,7 +169,7 @@ func (r *Reader) QueryAllWithMap(ctx context.Context, emit func(row map[string]i
 			return fmt.Errorf("expected %T, but had %T", aMap, row)
 		}
 		return emit(aMap)
-	}, args...)
+	}, nil, args...)
 }
 
 func (r *Reader) read(ctx context.Context, source cache.Source, mapperPtr *RowMapper, emit func(row interface{}) error, cacheEntry *cache.Entry) error {
@@ -272,9 +272,9 @@ func (r *Reader) Stmt() *sql.Stmt {
 	return r.stmt
 }
 
-func (r *Reader) cacheEntry(ctx context.Context, sql string, args []interface{}) (*cache.Entry, error) {
+func (r *Reader) cacheEntry(ctx context.Context, sql string, args []interface{}, matcher *cache.SmartMatcher) (*cache.Entry, error) {
 	if r.cache != nil {
-		entry, err := r.cache.Get(ctx, sql, args)
+		entry, err := r.cache.Get(ctx, sql, args, matcher)
 		return entry, err
 	}
 

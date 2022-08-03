@@ -7,15 +7,22 @@ import (
 	as "github.com/aerospike/aerospike-client-go"
 )
 
-type Reader struct {
-	namespace string
-	client    *as.Client
-	record    *as.Record
-	key       *as.Key
+type (
+	Reader struct {
+		namespace string
+		client    *as.Client
+		record    *as.Record
+		key       *as.Key
 
-	reader *bufio.Reader
-	set    string
-}
+		reader *bufio.Reader
+		set    string
+	}
+
+	readerWrapper struct {
+		err    error
+		reader *Reader
+	}
+)
 
 func (r *Reader) ReadLine() (line []byte, prefix bool, err error) {
 	if err := r.ensureReader(); err != nil {

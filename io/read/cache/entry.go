@@ -47,13 +47,23 @@ func (e *Entry) AssignRows(rows *sql.Rows) error {
 	}
 
 	ioColumns := io.TypesToColumns(types)
-	e.Meta.Fields = make([]*Field, len(ioColumns))
+	fields, err := ColumnsToFields(ioColumns)
+	if err != nil {
+		return err
+	}
+
+	e.Meta.Fields = fields
+	return nil
+}
+
+func ColumnsToFields(ioColumns []io.Column) ([]*Field, error) {
+	fields := make([]*Field, len(ioColumns))
 
 	for i, column := range ioColumns {
 		length, _ := column.Length()
 		precision, scale, _ := column.DecimalSize()
 		nullable, _ := column.Nullable()
-		e.Meta.Fields[i] = &Field{
+		fields[i] = &Field{
 			ColumnName:         column.Name(),
 			ColumnLength:       length,
 			ColumnPrecision:    precision,
@@ -66,7 +76,13 @@ func (e *Entry) AssignRows(rows *sql.Rows) error {
 		}
 	}
 
-	return nil
+	for _, field := range fields {
+		if err := field.Init(); err != nil {
+			return nil, err
+		}
+	}
+
+	return fields, nil
 }
 
 func (e *Entry) Close() error {
