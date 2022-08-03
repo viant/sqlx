@@ -23,10 +23,6 @@ func (c *Scanner) New(e *Entry) ScannerFn {
 	var err error
 
 	return func(values ...interface{}) error {
-		if c.recorder != nil {
-			c.recorder.ScanValues(values)
-		}
-
 		if len(values) != len(c.typeHolder.scanTypes) {
 			return fmt.Errorf("invalid cache format, expected to have %v values but got %v", len(values), len(c.typeHolder.scanTypes))
 		}
@@ -51,6 +47,11 @@ func (c *Scanner) New(e *Entry) ScannerFn {
 
 		e.index++
 		decoder.reset()
+
+		if c.recorder != nil {
+			c.recorder.ScanValues(values)
+		}
+		
 		return err
 	}
 }

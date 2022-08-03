@@ -42,6 +42,10 @@ type (
 	}
 )
 
+func (c *Cache) IndexBy(ctx context.Context, db *sql.DB, column, SQL string, args []interface{}) error {
+	return nil
+}
+
 func (c *Cache) Rollback(ctx context.Context, entry *cache.Entry) error {
 	return c.Delete(ctx, entry)
 }
@@ -73,7 +77,7 @@ func NewCache(URL string, ttl time.Duration, signature string, stream *option.St
 	return cache, nil
 }
 
-func (c *Cache) Get(ctx context.Context, SQL string, args []interface{}) (*cache.Entry, error) {
+func (c *Cache) Get(ctx context.Context, SQL string, args []interface{}, options ...interface{}) (*cache.Entry, error) {
 	URL, err := GenerateURL(SQL, c.storage, c.extension, args)
 	if err != nil {
 		return nil, err
@@ -181,8 +185,12 @@ func GenerateURL(SQL string, URL string, extension string, args []interface{}) (
 		return "", err
 	}
 
+	return GenerateWithMarshal(SQL, URL, extension, argMarshal)
+}
+
+func GenerateWithMarshal(SQL string, URL string, extension string, argMarshal []byte) (string, error) {
 	hasher := fnv.New64()
-	_, err = hasher.Write(append([]byte(SQL), argMarshal...))
+	_, err := hasher.Write(append([]byte(SQL), argMarshal...))
 
 	if err != nil {
 		return "", err

@@ -17,6 +17,8 @@ type (
 		ColumnNullable     bool
 		ColumnDatabaseName string
 		ColumnTag          *io.Tag
+
+		initialized bool
 	}
 )
 
@@ -49,6 +51,11 @@ func (f *Field) Tag() *io.Tag {
 }
 
 func (f *Field) Init() error {
+	if f.initialized {
+		return nil
+	}
+
+	f.initialized = true
 	rType, err := ast.Parse(f.ColumnScanType)
 	if err != nil {
 		return err

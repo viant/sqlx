@@ -29,6 +29,6 @@ func ExampleReader_ReadAll() {
 		foo := row.(*Foo)
 		foos = append(foos, foo)
 		return nil
-	})
+	}, nil)
 	log.Printf("read foos: %+v\n", foos)
 }
