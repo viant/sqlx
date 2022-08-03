@@ -6,4 +6,5 @@ type RecordMatched struct {
 	key      *as.Key
 	record   *as.Record
 	keyValue string
+	hasKey   bool
 }

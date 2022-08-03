@@ -16,6 +16,7 @@ type (
 
 		reader *bufio.Reader
 		set    string
+		order  []int
 	}
 
 	readerWrapper struct {

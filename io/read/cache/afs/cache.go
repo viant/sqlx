@@ -42,7 +42,7 @@ type (
 	}
 )
 
-func (c *Cache) IndexBy(ctx context.Context, fields []*cache.Field, column, SQL string, args []interface{}, values []*cache.IndexArgs) error {
+func (c *Cache) IndexBy(ctx context.Context, db *sql.DB, column, SQL string, args []interface{}) error {
 	return nil
 }
 

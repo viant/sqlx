@@ -9,9 +9,13 @@ import (
 	as "github.com/aerospike/aerospike-client-go"
 	"github.com/aerospike/aerospike-client-go/types"
 	"github.com/google/uuid"
+	"github.com/viant/sqlx/io"
 	"github.com/viant/sqlx/io/read/cache"
 	"github.com/viant/sqlx/io/read/cache/afs"
+	"github.com/viant/xunsafe"
+	"reflect"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -43,9 +47,29 @@ type (
 	}
 )
 
-func (a *Cache) IndexBy(ctx context.Context, fields []*cache.Field, column, SQL string, args []interface{}, values []*cache.IndexArgs) error {
+func (a *Cache) IndexBy(ctx context.Context, db *sql.DB, column, SQL string, args []interface{}) error {
 	if args == nil {
 		args = []interface{}{}
+	}
+
+	rows, err := db.Query(SQL, args...)
+	if err != nil {
+		return err
+	}
+
+	columnTypes, err := rows.ColumnTypes()
+	if err != nil {
+		return err
+	}
+
+	fields, err := cache.ColumnsToFields(io.TypesToColumns(columnTypes))
+	if err != nil {
+		return err
+	}
+
+	values, err := a.fetchAndIndexValues(fields, column, rows)
+	if err != nil {
+		return err
 	}
 
 	URL, err := afs.GenerateURL(SQL, "", "", args)
@@ -266,15 +290,13 @@ func (a *Cache) readRecord(SQL string, args []interface{}, argsMarshal []byte, k
 
 	policy := a.readPolicy()
 	record, err := a.client.Get(policy, fullMatchKey, cachedBins...)
-	if err != nil {
-		return nil, err
-	}
 
 	return &RecordMatched{
 		key:      fullMatchKey,
 		record:   record,
 		keyValue: aKey,
-	}, nil
+		hasKey:   err == nil,
+	}, err
 }
 
 func (a *Cache) readPolicy() *as.BasePolicy {
@@ -380,14 +402,29 @@ func (a *Cache) key(keyValue interface{}) (*as.Key, error) {
 	return aKey, err
 }
 
-func (a *Cache) reader(key *as.Key, record *as.Record) *Reader {
+func (a *Cache) reader(key *as.Key, record *as.Record) (*Reader, error) {
+	var order []int
+	readOrder, ok := record.Bins[readOrderBin].([]interface{})
+	if ok {
+		order = make([]int, len(readOrder))
+		for i, val := range readOrder {
+			actual, ok := val.(int)
+			if !ok {
+				return nil, fmt.Errorf("expected order value to be type of %T but got %T", actual, val)
+			}
+
+			order[i] = actual
+		}
+	}
+
 	return &Reader{
 		key:       key,
 		client:    a.client,
 		namespace: a.namespace,
 		record:    record,
 		set:       a.set,
-	}
+		order:     order,
+	}, nil
 }
 
 func (a *Cache) ensureTypeHolder(values []interface{}) {
@@ -504,25 +541,29 @@ func (a *Cache) columnURL(URL string, column string) string {
 }
 
 func (a *Cache) updateFullMatchEntry(ctx context.Context, anEntry *cache.Entry, match *RecordMatched, SQL string, argsMarshal []byte) error {
-	if match == nil {
+	if match == nil || !match.hasKey {
 		return nil
 	}
 
-	if a.recordMatches(match.record, SQL, argsMarshal) {
+	if !a.recordMatches(match.record, SQL, argsMarshal) {
+		if match.record != nil {
+			_ = a.Delete(ctx, anEntry)
+		}
+
 		return nil
 	}
 
-	if match.record != nil {
-		_ = a.Delete(ctx, anEntry)
+	reader, err := a.reader(match.key, match.record)
+	if err != nil {
+		return err
 	}
 
-	reader := a.reader(match.key, match.record)
 	anEntry.SetReader(reader, reader)
 	return nil
 }
 
 func (a *Cache) updateSmartMatchEntry(entry *cache.Entry, match *RecordMatched, matcher *cache.SmartMatcher) error {
-	if match == nil || entry.ReadCloser != nil {
+	if match == nil || entry.ReadCloser != nil || !match.hasKey {
 		return nil
 	}
 
@@ -535,7 +576,7 @@ func (a *Cache) updateSmartMatchEntry(entry *cache.Entry, match *RecordMatched, 
 		return nil
 	}
 
-	multiReader := &MultiReader{}
+	multiReader := NewMultiReader(matcher)
 
 	chanSize := len(matcher.In)
 	readerChan := make(chan *readerWrapper, chanSize)
@@ -618,7 +659,7 @@ func (a *Cache) readErr(matcher *cache.SmartMatcher, columnValue interface{}) (*
 		return nil, fmt.Errorf("cache record doesn't match actual struct")
 	}
 
-	return a.reader(aKey, record), nil
+	return a.reader(aKey, record)
 }
 
 func (a *Cache) isKeyNotFoundErr(err error) bool {
@@ -696,4 +737,78 @@ func (a *Cache) updateMetaFields(entry *cache.Entry, match *RecordMatched, smart
 	}
 
 	return nil
+}
+
+func (a *Cache) fetchAndIndexValues(fields []*cache.Field, column string, rows *sql.Rows) ([]*cache.IndexArgs, error) {
+	column = strings.ToLower(column)
+
+	var columnType reflect.Type
+	var columnIndex int
+	for i, field := range fields {
+		if strings.ToLower(field.Name()) == column {
+			columnType = field.ScanType()
+			columnIndex = i
+			break
+		}
+	}
+
+	if columnType == nil {
+		return nil, fmt.Errorf("not found column %v in the database response", columnType)
+	}
+
+	index := map[interface{}]int{}
+	result := make([]*cache.IndexArgs, 0)
+	var dereferencers []*xunsafe.Type
+
+	if columnType.Kind() == reflect.Ptr {
+		columnType = columnType.Elem()
+	}
+
+	for columnType.Kind() == reflect.Ptr {
+		dereferencers = append(dereferencers, xunsafe.NewType(columnType))
+		columnType = columnType.Elem()
+	}
+
+	var err error
+	var order int
+	for rows.Next() {
+		placeholders := make([]interface{}, len(fields))
+		for i := range placeholders {
+			placeholders[i] = new(interface{})
+		}
+
+		if err = rows.Scan(placeholders...); err != nil {
+			return nil, err
+		}
+
+		for i, placeholder := range placeholders {
+			actual, ok := placeholder.(*interface{})
+			if ok {
+				placeholders[i] = *actual
+			}
+		}
+
+		columnValue := placeholders[columnIndex]
+		for _, dereferencer := range dereferencers {
+			if dereferencer.Pointer(columnValue) == nil {
+				break
+			}
+
+			columnValue = dereferencer.Deref(columnValue)
+		}
+
+		argIndex, ok := index[columnValue]
+		if !ok {
+			argIndex = len(result)
+			index[columnValue] = argIndex
+			result = append(result, &cache.IndexArgs{})
+		}
+
+		result[argIndex].ColumnValue = columnValue
+		result[argIndex].ReadOrder = append(result[argIndex].ReadOrder, order)
+		result[argIndex].Data = append(result[argIndex].Data, placeholders)
+		order++
+	}
+
+	return result, nil
 }

@@ -175,7 +175,7 @@ func (d *Default) flush(ctx context.Context, values []interface{}, offset int, l
 
 	err = dataReader.QueryAll(ctx, func(row interface{}) error {
 		return nil
-	}, values...)
+	}, nil, values...)
 
 	return err
 }

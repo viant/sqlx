@@ -10,6 +10,8 @@ type (
 		RawArgs []interface{}
 		IndexBy string
 		In      []interface{}
+		Offset  int
+		Limit   int
 
 		marshalArgs []byte
 		initialized bool

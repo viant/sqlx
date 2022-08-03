@@ -37,7 +37,9 @@ func (r *recorder) AddValues(values []interface{}) {
 }
 
 func (r *recorder) ScanValues(values []interface{}) {
-	r.scannedValues = append(r.scannedValues, values)
+	valuesCopy := make([]interface{}, len(values))
+	copy(valuesCopy, values)
+	r.scannedValues = append(r.scannedValues, valuesCopy)
 }
 
 type (
@@ -67,7 +69,6 @@ type (
 	cacheWarmup struct {
 		column string
 		SQL    string
-		values []*cache.IndexArgs
 		args   []interface{}
 	}
 
@@ -80,7 +81,6 @@ type (
 )
 
 //TODO: Fix policies, specially when it comes to expiration time
-//TODO: Create child node if parent exceeds 1MB
 //TODO: Fix test cases to make them less vulnerable against the time.
 func TestReader_ReadAll(t *testing.T) {
 	cache.Now = func() time.Time {
@@ -269,7 +269,7 @@ func TestReader_ReadAll(t *testing.T) {
 				duration:  time.Duration(10000) * time.Minute,
 				signature: "events",
 			},
-			expectedScanned: `[[2,"Bruce","desc2","102"],[2,"Bruce","desc2","102"]]`,
+			expectedScanned: `[[1,"John","desc1","101"],[2,"Bruce","desc2","102"]]`,
 		},
 		{
 			description: "Cache with args",
@@ -406,49 +406,67 @@ func TestReader_ReadAll(t *testing.T) {
 				"insert into t10 values(1, \"John\", \"desc1\", \"101\")",
 				"insert into t10 values(2, \"Bruce\", \"desc2\", \"102\")",
 			},
-			query: "SELECT foo_id , foo_name, desc,  unk  FROM t10 ORDER BY 1",
+			query: "SELECT foo_id , foo_name, desc,  unk  FROM t10 ORDER BY 1 DESC",
 			newRow: func() interface{} {
 				return &case3Wrapper{}
 			},
 			resolver:        io.NewResolver(),
-			expectedScanned: `[[2,"Bruce","desc2","102"]]`,
+			expectedScanned: `[[2,"Bruce","desc2","102"],[1,"John","desc1","101"]]`,
 			cacheConfig: &cacheConfig{
 				cacheType: "aerospike",
 			},
-			expect:         `[{"Id":1,"Desc":"desc1","Name":"John"},{"Id":2,"Desc":"desc2","Name":"Bruce"}]`,
-			expectResolved: `["102", "101"]`,
+			expect:         `[{"Id":2,"Desc":"desc2","Name":"Bruce"},{"Id":1,"Desc":"desc1","Name":"John"}]`,
+			expectResolved: `["102","101"]`,
 			cacheWarmup: &cacheWarmup{
-				column: "parent_column",
-				SQL:    "SELECT * FROM t10",
-				values: []*cache.IndexArgs{
-					{
-						ColumnValue: 2,
-						ReadOrder:   []int{1},
-						Data: [][]interface{}{
-							{2, "Bruce", "desc2", "102"},
-						},
-					},
-					{
-						ColumnValue: 1,
-						ReadOrder:   []int{0},
-						Data: [][]interface{}{
-							{1, "John", "desc1", "101"},
-						},
-					},
-				},
+				column: "foo_id",
+				SQL:    "SELECT * FROM t10 ORDER BY 1 DESC",
 			},
 			smartMatcher: &cache.SmartMatcher{
-				RawSQL:  "SELECT * FROM t10",
+				RawSQL:  "SELECT * FROM t10 ORDER BY 1 DESC",
 				RawArgs: []interface{}{},
-				IndexBy: "parent_column",
+				IndexBy: "foo_id",
 				In:      []interface{}{1, 2},
+			},
+		},
+		{
+			description: "Aerospike smart cache read with pagination",
+			driver:      "sqlite3",
+			dsn:         "/tmp/sqllite.db",
+			initSQL: []string{
+				"CREATE TABLE IF NOT EXISTS t10 (foo_id INTEGER PRIMARY KEY, foo_name TEXT, desc TEXT, unk TEXT)",
+				"delete from t10",
+				"insert into t10 values(1, \"John\", \"desc1\", \"101\")",
+				"insert into t10 values(2, \"Bruce\", \"desc2\", \"102\")",
+			},
+			query: "SELECT foo_id , foo_name, desc,  unk  FROM t10 ORDER BY 1 DESC",
+			newRow: func() interface{} {
+				return &case3Wrapper{}
+			},
+			resolver:        io.NewResolver(),
+			expectedScanned: `[[1,"John","desc1","101"]]`,
+			cacheConfig: &cacheConfig{
+				cacheType: "aerospike",
+			},
+			expect:         `[{"Id":1,"Desc":"desc1","Name":"John"}]`,
+			expectResolved: `["101"]`,
+			cacheWarmup: &cacheWarmup{
+				column: "foo_id",
+				SQL:    "SELECT * FROM t10 ORDER BY 1 DESC",
+			},
+			smartMatcher: &cache.SmartMatcher{
+				RawSQL:  "SELECT * FROM t10 ORDER BY 1 DESC",
+				RawArgs: []interface{}{},
+				IndexBy: "foo_id",
+				In:      []interface{}{1, 2},
+				Offset:  1,
+				Limit:   1,
 			},
 		},
 	}
 
 outer:
-	for i, testCase := range useCases[len(useCases)-1:] {
-		//for i, testCase := range useCases {
+	//for i, testCase := range useCases[len(useCases)-1:] {
+	for i, testCase := range useCases {
 		fmt.Printf("Running testcase: %v | %v\n", i, testCase.description)
 		os.RemoveAll(testCase.dsn)
 		ctx := context.Background()
@@ -515,22 +533,7 @@ func getCacheWithRecorder(db *sql.DB, testCase *usecase) (cache.Cache, *recorder
 
 	warmup := testCase.cacheWarmup
 	if warmup != nil {
-		query, err := db.Query(warmup.SQL, warmup.args...)
-		if err != nil {
-			return nil, nil, err
-		}
-
-		types, err := query.ColumnTypes()
-		if err != nil {
-			return nil, nil, err
-		}
-
-		fields, err := cache.ColumnsToFields(io.TypesToColumns(types))
-		if err != nil {
-			return nil, nil, err
-		}
-
-		if err = aCache.IndexBy(context.TODO(), fields, warmup.column, warmup.SQL, warmup.args, warmup.values); err != nil {
+		if err = aCache.IndexBy(context.TODO(), db, warmup.column, warmup.SQL, warmup.args); err != nil {
 			return nil, nil, err
 		}
 	}
@@ -598,7 +601,7 @@ func testQueryAll(t *testing.T, reader *read.Reader, testCase *usecase, index in
 	}
 
 	if aCache != nil {
-		cacheEntry, err := aCache.Get(context.TODO(), testCase.query, testCase.args)
+		cacheEntry, err := aCache.Get(context.TODO(), testCase.query, testCase.args, testCase.smartMatcher)
 		assert.Nil(t, err, testCase.description)
 
 		if cacheEntry == nil {
