@@ -97,6 +97,10 @@ func (a *Cache) IndexBy(ctx context.Context, db *sql.DB, column, SQL string, arg
 		go a.indexByWithChan(ctx, errChan, URL, column, metaBin, values[i])
 	}
 
+	if chanSize == 0 {
+		close(errChan)
+	}
+
 	counter := 0
 	for err = range errChan {
 		if err != nil {
@@ -175,19 +179,19 @@ func (a *Cache) AddValues(ctx context.Context, entry *cache.Entry, values []inte
 }
 
 func (a *Cache) Get(ctx context.Context, SQL string, args []interface{}, options ...interface{}) (*cache.Entry, error) {
-	var smartMatcher *cache.SmartMatcher
+	var columnsInMatcher *cache.Matcher
 	for _, option := range options {
 		switch actual := option.(type) {
-		case *cache.SmartMatcher:
-			smartMatcher = actual
+		case *cache.Matcher:
+			columnsInMatcher = actual
 		}
 	}
 
-	if smartMatcher != nil {
-		smartMatcher.Init()
+	if columnsInMatcher != nil {
+		columnsInMatcher.Init()
 	}
 
-	fullMatch, smartMatch, errors := a.readRecords(SQL, args, smartMatcher)
+	fullMatch, columnsInMatch, errors := a.readRecords(SQL, args, columnsInMatcher)
 	for _, err := range errors {
 		if a.isServerNotAvailableErr(err) {
 			return nil, nil
@@ -207,25 +211,25 @@ func (a *Cache) Get(ctx context.Context, SQL string, args []interface{}, options
 			Args:       argsMarshal,
 			TimeToLive: int(time.Now().Add(time.Duration(a.expirationTimeInS)).UnixNano()),
 		},
-		Id: a.entryId(fullMatch, smartMatch),
+		Id: a.entryId(fullMatch, columnsInMatch),
 	}
 
 	if err = a.updateFullMatchEntry(ctx, anEntry, fullMatch, SQL, argsMarshal); err != nil {
 		return nil, err
 	}
 
-	if err = a.updateSmartMatchEntry(anEntry, smartMatch, smartMatcher); err != nil {
+	if err = a.updateColumnsInMatchEntry(anEntry, columnsInMatch, columnsInMatcher); err != nil {
 		return nil, err
 	}
 
-	if err = a.updateMetaFields(anEntry, fullMatch, smartMatch); err != nil {
+	if err = a.updateMetaFields(anEntry, fullMatch, columnsInMatch); err != nil {
 		return nil, err
 	}
 
 	return anEntry, a.updateWriter(anEntry, fullMatch, SQL, argsMarshal)
 }
 
-func (a *Cache) readRecords(SQL string, args []interface{}, matcher *cache.SmartMatcher) (fullMatch *RecordMatched, smartMatch *RecordMatched, errors []error) {
+func (a *Cache) readRecords(SQL string, args []interface{}, matcher *cache.Matcher) (fullMatch *RecordMatched, columnsInMatch *RecordMatched, errors []error) {
 	errors = make([]error, 2)
 	wg := sync.WaitGroup{}
 
@@ -235,7 +239,7 @@ func (a *Cache) readRecords(SQL string, args []interface{}, matcher *cache.Smart
 		fullMatch, errors[0] = a.readRecord(SQL, args, nil)
 	}(SQL, args, &wg)
 
-	go func(matcher *cache.SmartMatcher) {
+	go func(matcher *cache.Matcher) {
 		defer wg.Done()
 		if matcher == nil {
 			return
@@ -247,7 +251,7 @@ func (a *Cache) readRecords(SQL string, args []interface{}, matcher *cache.Smart
 			return
 		}
 
-		smartMatch, errors[1] = a.readRecord(matcher.RawSQL, matcher.RawArgs, argsMarshal, func(aKey string) (string, error) {
+		columnsInMatch, errors[1] = a.readRecord(matcher.SQL, matcher.Args, argsMarshal, func(aKey string) (string, error) {
 			return a.columnURL(aKey, matcher.IndexBy), nil
 		})
 	}(matcher)
@@ -259,7 +263,7 @@ func (a *Cache) readRecords(SQL string, args []interface{}, matcher *cache.Smart
 		}
 	}
 
-	return fullMatch, smartMatch, errors
+	return fullMatch, columnsInMatch, errors
 }
 
 func (a *Cache) readRecord(SQL string, args []interface{}, argsMarshal []byte, keyModifiers ...func(aKey string) (string, error)) (*RecordMatched, error) {
@@ -562,7 +566,7 @@ func (a *Cache) updateFullMatchEntry(ctx context.Context, anEntry *cache.Entry, 
 	return nil
 }
 
-func (a *Cache) updateSmartMatchEntry(entry *cache.Entry, match *RecordMatched, matcher *cache.SmartMatcher) error {
+func (a *Cache) updateColumnsInMatchEntry(entry *cache.Entry, match *RecordMatched, matcher *cache.Matcher) error {
 	if match == nil || entry.ReadCloser != nil || !match.hasKey {
 		return nil
 	}
@@ -572,7 +576,7 @@ func (a *Cache) updateSmartMatchEntry(entry *cache.Entry, match *RecordMatched, 
 		return err
 	}
 
-	if !a.recordMatches(match.record, matcher.RawSQL, args) {
+	if !a.recordMatches(match.record, matcher.SQL, args) {
 		return nil
 	}
 
@@ -616,8 +620,8 @@ func (a *Cache) updateWriter(anEntry *cache.Entry, fullMatch *RecordMatched, SQL
 	return nil
 }
 
-func (a *Cache) readChan(readerChan chan *readerWrapper, matcher *cache.SmartMatcher, columnValue interface{}) {
-	go func(matcher *cache.SmartMatcher, columnValue interface{}) {
+func (a *Cache) readChan(readerChan chan *readerWrapper, matcher *cache.Matcher, columnValue interface{}) {
+	go func(matcher *cache.Matcher, columnValue interface{}) {
 		reader, err := a.readErr(matcher, columnValue)
 		readerChan <- &readerWrapper{
 			err:    err,
@@ -626,7 +630,7 @@ func (a *Cache) readChan(readerChan chan *readerWrapper, matcher *cache.SmartMat
 	}(matcher, columnValue)
 }
 
-func (a *Cache) readErr(matcher *cache.SmartMatcher, columnValue interface{}) (*Reader, error) {
+func (a *Cache) readErr(matcher *cache.Matcher, columnValue interface{}) (*Reader, error) {
 	valueMarshal, err := json.Marshal(columnValue)
 	if err != nil {
 		return nil, err
@@ -637,7 +641,7 @@ func (a *Cache) readErr(matcher *cache.SmartMatcher, columnValue interface{}) (*
 		return nil, err
 	}
 
-	actualKeyValue, err := afs.GenerateWithMarshal(matcher.RawSQL, "", "", args)
+	actualKeyValue, err := afs.GenerateWithMarshal(matcher.SQL, "", "", args)
 	if err != nil {
 		return nil, err
 	}
@@ -655,7 +659,7 @@ func (a *Cache) readErr(matcher *cache.SmartMatcher, columnValue interface{}) (*
 		return nil, err
 	}
 
-	if !a.recordMatches(record, matcher.RawSQL, args) {
+	if !a.recordMatches(record, matcher.SQL, args) {
 		return nil, fmt.Errorf("cache record doesn't match actual struct")
 	}
 
@@ -690,26 +694,26 @@ func (a *Cache) isServerNotAvailableErr(err error) bool {
 	return code == types.TIMEOUT || code < 0
 }
 
-func (a *Cache) entryId(fullMatch *RecordMatched, smartMatch *RecordMatched) string {
+func (a *Cache) entryId(fullMatch *RecordMatched, columnsInMatch *RecordMatched) string {
 	if fullMatch != nil {
 		return fullMatch.keyValue
 	}
 
-	if smartMatch != nil {
-		return smartMatch.keyValue
+	if columnsInMatch != nil {
+		return columnsInMatch.keyValue
 	}
 
 	return ""
 }
 
-func (a *Cache) updateMetaFields(entry *cache.Entry, match *RecordMatched, smartMatch *RecordMatched) error {
+func (a *Cache) updateMetaFields(entry *cache.Entry, match *RecordMatched, columnsInMatch *RecordMatched) error {
 	var record *as.Record
 	if match != nil {
 		record = match.record
 	}
 
-	if record == nil && smartMatch != nil {
-		record = smartMatch.record
+	if record == nil && columnsInMatch != nil {
+		record = columnsInMatch.record
 	}
 
 	if record == nil {

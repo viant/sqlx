@@ -5,9 +5,9 @@ import "encoding/json"
 type (
 	AllowSmart bool
 
-	SmartMatcher struct {
-		RawSQL  string
-		RawArgs []interface{}
+	Matcher struct {
+		SQL     string
+		Args    []interface{}
 		IndexBy string
 		In      []interface{}
 		Offset  int
@@ -18,23 +18,23 @@ type (
 	}
 )
 
-func (m *SmartMatcher) Init() {
+func (m *Matcher) Init() {
 	if m.initialized {
 		return
 	}
 
 	m.initialized = true
-	if m.RawArgs == nil {
-		m.RawArgs = []interface{}{}
+	if m.Args == nil {
+		m.Args = []interface{}{}
 	}
 }
 
-func (m *SmartMatcher) MarshalArgs() ([]byte, error) {
+func (m *Matcher) MarshalArgs() ([]byte, error) {
 	if m.marshalArgs != nil {
 		return m.marshalArgs, nil
 	}
 
 	var err error
-	m.marshalArgs, err = json.Marshal(m.RawArgs)
+	m.marshalArgs, err = json.Marshal(m.Args)
 	return m.marshalArgs, err
 }

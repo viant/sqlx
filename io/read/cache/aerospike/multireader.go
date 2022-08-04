@@ -26,7 +26,7 @@ type (
 	}
 )
 
-func NewMultiReader(matcher *cache.SmartMatcher) *MultiReader {
+func NewMultiReader(matcher *cache.Matcher) *MultiReader {
 	return &MultiReader{
 		index:  map[int]int{},
 		toSkip: matcher.Offset,

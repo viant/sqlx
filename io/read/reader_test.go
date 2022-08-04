@@ -63,7 +63,7 @@ type (
 		rowMapperCache  *read.MapperCache
 		cacheConfig     *cacheConfig
 		cacheWarmup     *cacheWarmup
-		smartMatcher    *cache.SmartMatcher
+		matcher         *cache.Matcher
 	}
 
 	cacheWarmup struct {
@@ -421,9 +421,9 @@ func TestReader_ReadAll(t *testing.T) {
 				column: "foo_id",
 				SQL:    "SELECT * FROM t10 ORDER BY 1 DESC",
 			},
-			smartMatcher: &cache.SmartMatcher{
-				RawSQL:  "SELECT * FROM t10 ORDER BY 1 DESC",
-				RawArgs: []interface{}{},
+			matcher: &cache.Matcher{
+				SQL:     "SELECT * FROM t10 ORDER BY 1 DESC",
+				Args:    []interface{}{},
 				IndexBy: "foo_id",
 				In:      []interface{}{1, 2},
 			},
@@ -453,9 +453,9 @@ func TestReader_ReadAll(t *testing.T) {
 				column: "foo_id",
 				SQL:    "SELECT * FROM t10 ORDER BY 1 DESC",
 			},
-			smartMatcher: &cache.SmartMatcher{
-				RawSQL:  "SELECT * FROM t10 ORDER BY 1 DESC",
-				RawArgs: []interface{}{},
+			matcher: &cache.Matcher{
+				SQL:     "SELECT * FROM t10 ORDER BY 1 DESC",
+				Args:    []interface{}{},
 				IndexBy: "foo_id",
 				In:      []interface{}{1, 2},
 				Offset:  1,
@@ -563,7 +563,7 @@ func testQueryAll(t *testing.T, reader *read.Reader, testCase *usecase, index in
 	err := reader.QueryAll(context.TODO(), func(row interface{}) error {
 		actual = append(actual, row)
 		return nil
-	}, testCase.smartMatcher, testCase.args...)
+	}, testCase.matcher, testCase.args...)
 
 	if testCase.hasMapperError {
 		assert.NotNil(t, t, err, testCase.description)
@@ -601,7 +601,7 @@ func testQueryAll(t *testing.T, reader *read.Reader, testCase *usecase, index in
 	}
 
 	if aCache != nil {
-		cacheEntry, err := aCache.Get(context.TODO(), testCase.query, testCase.args, testCase.smartMatcher)
+		cacheEntry, err := aCache.Get(context.TODO(), testCase.query, testCase.args, testCase.matcher)
 		assert.Nil(t, err, testCase.description)
 
 		if cacheEntry == nil {
