@@ -12,7 +12,7 @@ import (
 	"reflect"
 )
 
-//Reader represents generic query reader
+// Reader represents generic query reader
 type Reader struct {
 	query              string
 	newRow             func() interface{}
@@ -27,10 +27,11 @@ type Reader struct {
 	mapperCache        *MapperCache
 	targetDatatype     string
 	disableMapperCache DisableMapperCache
+	cacheMatcher       *cache.Matcher
 	db                 *sql.DB
 }
 
-//QuerySingle returns single row
+// QuerySingle returns single row
 func (r *Reader) QuerySingle(ctx context.Context, emit func(row interface{}) error, args ...interface{}) error {
 	if err := r.ensureStmt(ctx); err != nil {
 		return err
@@ -57,9 +58,9 @@ func (r *Reader) QuerySingle(ctx context.Context, emit func(row interface{}) err
 	return nil
 }
 
-//QueryAll query all
-func (r *Reader) QueryAll(ctx context.Context, emit func(row interface{}) error, columnsInMatcher *cache.Matcher, args ...interface{}) error {
-	entry, err := r.cacheEntry(ctx, r.query, args, columnsInMatcher)
+// QueryAll query all
+func (r *Reader) QueryAll(ctx context.Context, emit func(row interface{}) error, args ...interface{}) error {
+	entry, err := r.cacheEntry(ctx, r.query, args)
 	if err != nil {
 		return err
 	}
@@ -103,7 +104,7 @@ func (r *Reader) createSource(ctx context.Context, entry *cache.Entry, args []in
 	return nil, source, nil
 }
 
-//ReadAll read all
+// ReadAll read all
 func (r *Reader) ReadAll(ctx context.Context, rows *sql.Rows, emit func(row interface{}) error, options ...option.Option) error {
 	cacheEntry := r.getCacheEntry(options)
 	readerRows, err := NewRows(rows, r.cache, cacheEntry)
@@ -145,7 +146,7 @@ func (r *Reader) getCacheEntry(options []option.Option) *cache.Entry {
 	return dataCacheEntry
 }
 
-//QueryAllWithSlice query all with a slice
+// QueryAllWithSlice query all with a slice
 func (r *Reader) QueryAllWithSlice(ctx context.Context, emit func(row []interface{}) error, args ...interface{}) error {
 	return r.QueryAll(ctx, func(row interface{}) error {
 		aSlice, ok := row.([]interface{})
@@ -153,10 +154,10 @@ func (r *Reader) QueryAllWithSlice(ctx context.Context, emit func(row []interfac
 			return fmt.Errorf("expected %T, but had %T", aSlice, row)
 		}
 		return emit(aSlice)
-	}, nil, args...)
+	}, args...)
 }
 
-//QueryAllWithMap query all with a map
+// QueryAllWithMap query all with a map
 func (r *Reader) QueryAllWithMap(ctx context.Context, emit func(row map[string]interface{}) error, args ...interface{}) error {
 	return r.QueryAll(ctx, func(row interface{}) error {
 		aMap, ok := row.(map[string]interface{})
@@ -164,7 +165,7 @@ func (r *Reader) QueryAllWithMap(ctx context.Context, emit func(row map[string]i
 			return fmt.Errorf("expected %T, but had %T", aMap, row)
 		}
 		return emit(aMap)
-	}, nil, args...)
+	}, args...)
 }
 
 func (r *Reader) read(ctx context.Context, source cache.Source, mapperPtr *RowMapper, emit func(row interface{}) error, cacheEntry *cache.Entry) error {
@@ -262,14 +263,14 @@ func (r *Reader) ensureRowMapper(source cache.Source, mapperPtr *RowMapper) (Row
 	return mapper, nil
 }
 
-//Stmt returns *sql.Stmt associated with Reader
+// Stmt returns *sql.Stmt associated with Reader
 func (r *Reader) Stmt() *sql.Stmt {
 	return r.stmt
 }
 
-func (r *Reader) cacheEntry(ctx context.Context, sql string, args []interface{}, matcher *cache.Matcher) (*cache.Entry, error) {
+func (r *Reader) cacheEntry(ctx context.Context, sql string, args []interface{}) (*cache.Entry, error) {
 	if r.cache != nil {
-		entry, err := r.cache.Get(ctx, sql, args, matcher)
+		entry, err := r.cache.Get(ctx, sql, args, r.cacheMatcher)
 		return entry, err
 	}
 
@@ -298,7 +299,7 @@ func (r *Reader) ensureStmt(ctx context.Context) error {
 	return nil
 }
 
-//New creates a records to a structs reader
+// New creates a records to a structs reader
 func New(ctx context.Context, db *sql.DB, query string, newRow func() interface{}, options ...option.Option) (*Reader, error) {
 	dialect := ensureDialect(options, db)
 	if dialect != nil {
@@ -325,7 +326,7 @@ func ensureDialect(options []option.Option, db *sql.DB) *info.Dialect {
 	return dialect
 }
 
-//NewStmt creates a statement reader
+// NewStmt creates a statement reader
 func NewStmt(stmt *sql.Stmt, newRow func() interface{}, options ...option.Option) *Reader {
 	var getRowMapper NewRowMapper
 	var unmappedFn io.Resolve
@@ -352,7 +353,7 @@ func NewStmt(stmt *sql.Stmt, newRow func() interface{}, options ...option.Option
 		}
 	}
 
-	return &Reader{
+	result := &Reader{
 		newRow:             newRow,
 		stmt:               stmt,
 		tagName:            option.Options(options).Tag(),
@@ -363,16 +364,21 @@ func NewStmt(stmt *sql.Stmt, newRow func() interface{}, options ...option.Option
 		disableMapperCache: disableMapperCache,
 		db:                 db,
 	}
+	var columnsInMatcher *cache.Matcher
+	if option.Assign(options, &columnsInMatcher) {
+		result.cacheMatcher = columnsInMatcher
+	}
+	return result
 }
 
-//NewMap creates records to map reader
+// NewMap creates records to map reader
 func NewMap(ctx context.Context, db *sql.DB, query string, options ...option.Option) (*Reader, error) {
 	return New(ctx, db, query, func() interface{} {
 		return make(map[string]interface{})
 	}, options...)
 }
 
-//NewSlice create records to a slice reader
+// NewSlice create records to a slice reader
 func NewSlice(ctx context.Context, db *sql.DB, query string, columns int, options ...option.Option) (*Reader, error) {
 	return New(ctx, db, query, func() interface{} {
 		return make([]interface{}, columns)
