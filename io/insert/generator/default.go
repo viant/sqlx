@@ -14,7 +14,7 @@ import (
 	"unsafe"
 )
 
-//Default represents generator for default strategy
+// Default represents generator for default strategy
 // TODO: Add order to union
 // TODO: Refresh session when rType changes
 type Default struct {
@@ -26,7 +26,7 @@ type Default struct {
 	columns     []sink.Column
 }
 
-//NewDefault creates a default generator
+// NewDefault creates a default generator
 func NewDefault(dialect *info.Dialect, db *sql.DB, session *sink.Session) *Default {
 	return &Default{
 		dialect: dialect,
@@ -35,7 +35,7 @@ func NewDefault(dialect *info.Dialect, db *sql.DB, session *sink.Session) *Defau
 	}
 }
 
-//Apply generated values to the any
+// Apply generated values to the any
 func (d *Default) Apply(ctx context.Context, any interface{}, table string, batchSize int) error {
 	valueAt, size, err := io.Values(any)
 	if err != nil || size == 0 {
@@ -175,7 +175,7 @@ func (d *Default) flush(ctx context.Context, values []interface{}, offset int, l
 
 	err = dataReader.QueryAll(ctx, func(row interface{}) error {
 		return nil
-	}, nil, values...)
+	}, values...)
 
 	return err
 }
