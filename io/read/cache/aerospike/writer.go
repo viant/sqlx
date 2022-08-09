@@ -43,7 +43,9 @@ func (w *Writer) Flush() error {
 
 		lastInsertedKey, err := w.cache.key(childKeyValue)
 		if err != nil {
-			return err
+			if lastInsertedKey, err = w.cache.key(childKeyValue); err != nil {
+				return err
+			}
 		}
 
 		policy := w.cache.writePolicy()
