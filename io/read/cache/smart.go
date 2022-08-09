@@ -7,6 +7,7 @@ type (
 
 	Matcher struct {
 		SQL     string
+		Ordered bool //SQL uses order by indexby column
 		Args    []interface{}
 		IndexBy string
 		In      []interface{}

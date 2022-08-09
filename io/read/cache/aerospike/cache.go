@@ -66,24 +66,22 @@ func (a *Cache) IndexBy(ctx context.Context, db *sql.DB, column, SQL string, arg
 	if err != nil {
 		return err
 	}
-
-	values, err := a.fetchAndIndexValues(fields, column, rows)
-	if err != nil {
-		return err
-	}
+	var values = make(chan *cache.Indexed)
+	errors := &Errors{}
+	go func() {
+		err = a.fetchAndIndexValues(fields, column, rows, values)
+		errors.Add(err)
+		close(values)
+	}()
 
 	URL, err := afs.GenerateURL(SQL, "", "", args)
 	if err != nil {
 		return err
 	}
-
-	chanSize := len(values)
-	errChan := make(chan error, chanSize)
 	argsMarshal, err := json.Marshal(args)
 	if err != nil {
 		return err
 	}
-
 	fieldMarshal, err := json.Marshal(fields)
 	if err != nil {
 		return err
@@ -92,28 +90,13 @@ func (a *Cache) IndexBy(ctx context.Context, db *sql.DB, column, SQL string, arg
 	argsStringified := string(argsMarshal)
 	fieldsStringified := string(fieldMarshal)
 
-	for i := range values {
+	for value := range values {
 		metaBin := a.metaBin(SQL, argsStringified, fieldsStringified, column)
-		go a.indexByWithChan(ctx, errChan, URL, column, metaBin, values[i])
+		go a.indexByWithChan(ctx, errors, URL, column, metaBin, value)
 	}
-
-	if chanSize == 0 {
-		close(errChan)
+	if err = errors.Err(); err != nil {
+		return err
 	}
-
-	counter := 0
-	for err = range errChan {
-		if err != nil {
-			return err
-		}
-
-		counter++
-
-		if counter == chanSize {
-			close(errChan)
-		}
-	}
-
 	return a.putColumnMarker(URL, column, a.metaBin(SQL, argsStringified, fieldsStringified, column))
 }
 
@@ -473,11 +456,11 @@ func (a *Cache) updateEntryFields(record *as.Record, entry *cache.Entry) error {
 	return nil
 }
 
-func (a *Cache) indexByWithChan(ctx context.Context, errChan chan error, URL string, column string, metaBin as.BinMap, args *cache.IndexArgs) {
-	errChan <- a.indexByWithErr(args, URL, column, metaBin)
+func (a *Cache) indexByWithChan(ctx context.Context, errs *Errors, URL string, column string, metaBin as.BinMap, args *cache.Indexed) {
+	errs.Add(a.writeIndexData(args, URL, column, metaBin))
 }
 
-func (a *Cache) indexByWithErr(args *cache.IndexArgs, URL string, column string, metaBin as.BinMap) error {
+func (a *Cache) writeIndexData(args *cache.Indexed, URL string, column string, metaBin as.BinMap) error {
 	if args.ColumnValue == nil {
 		return nil
 	}
@@ -749,7 +732,7 @@ func (a *Cache) updateMetaFields(entry *cache.Entry, match *RecordMatched, colum
 	return nil
 }
 
-func (a *Cache) fetchAndIndexValues(fields []*cache.Field, column string, rows *sql.Rows) ([]*cache.IndexArgs, error) {
+func (a *Cache) fetchAndIndexValues(fields []*cache.Field, column string, rows *sql.Rows, dest chan *cache.Indexed) error {
 	column = strings.ToLower(column)
 
 	var columnType reflect.Type
@@ -763,11 +746,11 @@ func (a *Cache) fetchAndIndexValues(fields []*cache.Field, column string, rows *
 	}
 
 	if columnType == nil {
-		return nil, fmt.Errorf("not found column %v in the database response", columnType)
+		return fmt.Errorf("not found column %v in the database response", columnType)
 	}
 
 	index := map[interface{}]int{}
-	result := make([]*cache.IndexArgs, 0)
+	result := make([]*cache.Indexed, 0)
 	var dereferencers []*xunsafe.Type
 
 	xTypes := make([]*xunsafe.Type, len(fields))
@@ -793,7 +776,7 @@ func (a *Cache) fetchAndIndexValues(fields []*cache.Field, column string, rows *
 		}
 
 		if err = rows.Scan(placeholders...); err != nil {
-			return nil, err
+			return err
 		}
 
 		for i := range placeholders {
@@ -813,7 +796,7 @@ func (a *Cache) fetchAndIndexValues(fields []*cache.Field, column string, rows *
 		if !ok {
 			argIndex = len(result)
 			index[columnValue] = argIndex
-			result = append(result, &cache.IndexArgs{})
+			result = append(result, &cache.Indexed{})
 		}
 
 		result[argIndex].ColumnValue = columnValue
@@ -822,5 +805,9 @@ func (a *Cache) fetchAndIndexValues(fields []*cache.Field, column string, rows *
 		order++
 	}
 
-	return result, nil
+	for i := range result {
+		dest <- result[i]
+	}
+
+	return nil
 }

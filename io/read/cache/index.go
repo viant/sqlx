@@ -1,6 +1,6 @@
 package cache
 
-type IndexArgs struct {
+type Indexed struct {
 	ColumnValue interface{}
 	Data        [][]interface{}
 	ReadOrder   []int

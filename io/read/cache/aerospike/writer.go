@@ -26,11 +26,9 @@ type Writer struct {
 
 func (w *Writer) Flush() error {
 	var err error
-
 	if err = w.ensureFields(); err != nil {
 		return err
 	}
-
 	var childKey *as.Key
 	var previousKeyValue string
 	for i := len(w.buffers) - 1; i >= 0; i-- {
@@ -39,20 +37,19 @@ func (w *Writer) Flush() error {
 			childKeyValue += "#" + strconv.Itoa(i)
 		}
 		binMap := w.binMap(i, previousKeyValue)
-		lastInsertedKey, err := w.cache.key(childKeyValue)
+		key, err := w.cache.key(childKeyValue)
 		if err != nil {
 			return err
 		}
 
 		policy := w.cache.writePolicy()
-		if err = w.client.Put(policy, lastInsertedKey, binMap); err != nil {
+		if err = w.client.Put(policy, key, binMap); err != nil {
 			w.delete(childKey)
 			return err
 		}
-		childKey = lastInsertedKey
+		childKey = key
 		previousKeyValue = childKeyValue
 	}
-
 	return nil
 }
 
