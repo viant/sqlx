@@ -505,6 +505,10 @@ outer:
 			options = append(options, read.DisableMapperCache(*testCase.disableCache))
 		}
 
+		if testCase.matcher != nil {
+			options = append(options, testCase.matcher)
+		}
+
 		reader, err := read.New(ctx, db, testCase.query, testCase.newRow, options...)
 		if !assert.Nil(t, err, testCase.description) {
 			continue
@@ -563,7 +567,7 @@ func testQueryAll(t *testing.T, reader *read.Reader, testCase *usecase, index in
 	err := reader.QueryAll(context.TODO(), func(row interface{}) error {
 		actual = append(actual, row)
 		return nil
-	}, testCase.matcher, testCase.args...)
+	}, testCase.args...)
 
 	if testCase.hasMapperError {
 		assert.NotNil(t, t, err, testCase.description)
