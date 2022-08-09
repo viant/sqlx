@@ -510,6 +510,7 @@ func (a *Cache) columnValueURL(column string, columnValueMarshal []byte, URL str
 func (a *Cache) writePolicy() *as.WritePolicy {
 	policy := as.NewWritePolicy(0, a.expirationTimeInS)
 	policy.SendKey = true
+	policy.MaxRetries = 3
 	return policy
 }
 

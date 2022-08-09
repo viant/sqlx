@@ -38,14 +38,10 @@ func (w *Writer) Flush() error {
 		if i != 0 {
 			childKeyValue += "#" + strconv.Itoa(i)
 		}
-
 		binMap := w.binMap(i, previousKeyValue)
-
 		lastInsertedKey, err := w.cache.key(childKeyValue)
 		if err != nil {
-			if lastInsertedKey, err = w.cache.key(childKeyValue); err != nil {
-				return err
-			}
+			return err
 		}
 
 		policy := w.cache.writePolicy()
@@ -53,7 +49,6 @@ func (w *Writer) Flush() error {
 			w.delete(childKey)
 			return err
 		}
-
 		childKey = lastInsertedKey
 		previousKeyValue = childKeyValue
 	}
