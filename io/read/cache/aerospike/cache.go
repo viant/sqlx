@@ -583,7 +583,12 @@ func (a *Cache) updateColumnsInMatchEntry(entry *cache.Entry, match *RecordMatch
 	multiReader := NewMultiReader(matcher)
 
 	chanSize := len(matcher.In)
+
 	readerChan := make(chan *readerWrapper, chanSize)
+	if chanSize == 0 {
+		close(readerChan)
+	}
+
 	for i := range matcher.In {
 		a.readChan(readerChan, matcher, matcher.In[i])
 	}
@@ -764,6 +769,11 @@ func (a *Cache) fetchAndIndexValues(fields []*cache.Field, column string, rows *
 	result := make([]*cache.IndexArgs, 0)
 	var dereferencers []*xunsafe.Type
 
+	xTypes := make([]*xunsafe.Type, len(fields))
+	for i, field := range fields {
+		xTypes[i] = xunsafe.NewType(field.ScanType())
+	}
+
 	if columnType.Kind() == reflect.Ptr {
 		columnType = columnType.Elem()
 	}
@@ -778,18 +788,15 @@ func (a *Cache) fetchAndIndexValues(fields []*cache.Field, column string, rows *
 	for rows.Next() {
 		placeholders := make([]interface{}, len(fields))
 		for i := range placeholders {
-			placeholders[i] = new(interface{})
+			placeholders[i] = reflect.New(fields[i].ScanType()).Interface()
 		}
 
 		if err = rows.Scan(placeholders...); err != nil {
 			return nil, err
 		}
 
-		for i, placeholder := range placeholders {
-			actual, ok := placeholder.(*interface{})
-			if ok {
-				placeholders[i] = *actual
-			}
+		for i := range placeholders {
+			placeholders[i] = xTypes[i].Deref(placeholders[i])
 		}
 
 		columnValue := placeholders[columnIndex]
