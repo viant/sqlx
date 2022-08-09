@@ -15,16 +15,16 @@ type (
 
 	UnorderedSource struct {
 		index       map[interface{}]int
-		buffer      []*cache.Indexed
+		indexed     []*cache.Indexed
 		dest        chan *cache.Indexed
 		columnIndex int
 	}
 
 	OrderedSource struct {
-		last        *cache.Indexed
-		current     *cache.Indexed
-		dest        chan *cache.Indexed
-		columnIndex int
+		currentValue interface{}
+		indexed      *cache.Indexed
+		dest         chan *cache.Indexed
+		columnIndex  int
 	}
 
 	SingleSource struct {
@@ -50,8 +50,17 @@ func (s *SingleSource) Index(value interface{}) *cache.Indexed {
 }
 
 func (o *OrderedSource) Index(value interface{}) *cache.Indexed {
-	//TODO implement me
-	panic("implement me")
+	if o.currentValue == nil {
+		o.currentValue = value
+		o.indexed = cache.NewIndexed(value)
+	}
+	if o.currentValue != value {
+		index := *o.indexed
+		o.dest <- &index
+		o.currentValue = value
+		o.indexed = cache.NewIndexed(value)
+	}
+	return o.indexed
 }
 
 func NewIndexSource(column string, ordered bool, fields []*cache.Field, dest chan *cache.Indexed) (IndexSource, error) {
@@ -100,8 +109,8 @@ func NewUnorderedSource(dest chan *cache.Indexed, index int) *UnorderedSource {
 }
 
 func (u *UnorderedSource) Close() error {
-	for i := range u.buffer {
-		u.dest <- u.buffer[i]
+	for i := range u.indexed {
+		u.dest <- u.indexed[i]
 	}
 
 	return nil
@@ -110,12 +119,11 @@ func (u *UnorderedSource) Close() error {
 func (u *UnorderedSource) Index(columnValue interface{}) *cache.Indexed {
 	argIndex, ok := u.index[columnValue]
 	if !ok {
-		argIndex = len(u.buffer)
+		argIndex = len(u.indexed)
 		u.index[columnValue] = argIndex
-		u.buffer = append(u.buffer, cache.NewIndexed(columnValue))
+		u.indexed = append(u.indexed, cache.NewIndexed(columnValue))
 	}
-
-	return u.buffer[argIndex]
+	return u.indexed[argIndex]
 }
 
 func NewOrderedSource(dest chan *cache.Indexed, index int) *OrderedSource {
@@ -126,6 +134,9 @@ func NewOrderedSource(dest chan *cache.Indexed, index int) *OrderedSource {
 }
 
 func (o *OrderedSource) Close() error {
-	//TODO implement me
-	panic("implement me")
+	if o.indexed != nil {
+		o.dest <- o.indexed
+		o.indexed = nil
+	}
+	return nil
 }

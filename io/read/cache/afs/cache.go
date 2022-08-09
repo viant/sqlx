@@ -11,8 +11,7 @@ import (
 	"github.com/viant/afs"
 	"github.com/viant/afs/option"
 	"github.com/viant/sqlx/io/read/cache"
-	"hash/fnv"
-	"strconv"
+	"github.com/viant/sqlx/io/read/cache/hash"
 	"strings"
 	"sync"
 	"time"
@@ -50,7 +49,7 @@ func (c *Cache) Rollback(ctx context.Context, entry *cache.Entry) error {
 	return c.Delete(ctx, entry)
 }
 
-//NewCache creates new cache.
+// NewCache creates new cache.
 func NewCache(URL string, ttl time.Duration, signature string, stream *option.Stream, options ...interface{}) (*Cache, error) {
 	var recorder cache.Recorder
 	for _, anOption := range options {
@@ -78,7 +77,7 @@ func NewCache(URL string, ttl time.Duration, signature string, stream *option.St
 }
 
 func (c *Cache) Get(ctx context.Context, SQL string, args []interface{}, options ...interface{}) (*cache.Entry, error) {
-	URL, err := GenerateURL(SQL, c.storage, c.extension, args)
+	URL, err := hash.GenerateURL(SQL, c.storage, c.extension, args)
 	if err != nil {
 		return nil, err
 	}
@@ -177,27 +176,6 @@ func (c *Cache) checkMeta(dataReader cache.LineReader, entryMeta *cache.Meta) (b
 	}
 
 	return true, nil
-}
-
-func GenerateURL(SQL string, URL string, extension string, args []interface{}) (string, error) {
-	argMarshal, err := json.Marshal(args)
-	if err != nil {
-		return "", err
-	}
-
-	return GenerateWithMarshal(SQL, URL, extension, argMarshal)
-}
-
-func GenerateWithMarshal(SQL string, URL string, extension string, argMarshal []byte) (string, error) {
-	hasher := fnv.New64()
-	_, err := hasher.Write(append([]byte(SQL), argMarshal...))
-
-	if err != nil {
-		return "", err
-	}
-
-	entryKey := strconv.Itoa(int(hasher.Sum64()))
-	return URL + entryKey + extension, nil
 }
 
 func (c *Cache) readData(ctx context.Context, entry *cache.Entry) (int, error) {

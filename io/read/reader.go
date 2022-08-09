@@ -339,6 +339,7 @@ func NewStmt(stmt *sql.Stmt, newRow func() interface{}, options ...option.Option
 	var mapperCache *MapperCache
 	var disableMapperCache DisableMapperCache
 	var db *sql.DB
+	var columnsInMatcher *cache.Matcher
 
 	for _, anOption := range options {
 		switch actual := anOption.(type) {
@@ -348,6 +349,10 @@ func NewStmt(stmt *sql.Stmt, newRow func() interface{}, options ...option.Option
 			mapperCache = actual
 		case DisableMapperCache:
 			disableMapperCache = actual
+		case *cache.Matcher:
+			columnsInMatcher = actual
+		case **cache.Matcher:
+			columnsInMatcher = *actual
 		case *sql.DB:
 			db = actual
 		}
@@ -362,11 +367,8 @@ func NewStmt(stmt *sql.Stmt, newRow func() interface{}, options ...option.Option
 		cache:              readerCache,
 		mapperCache:        mapperCache,
 		disableMapperCache: disableMapperCache,
+		cacheMatcher:       columnsInMatcher,
 		db:                 db,
-	}
-	var columnsInMatcher *cache.Matcher
-	if option.Assign(options, &columnsInMatcher) {
-		result.cacheMatcher = columnsInMatcher
 	}
 	return result
 }

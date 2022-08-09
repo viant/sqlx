@@ -9,10 +9,12 @@ import (
 	as "github.com/aerospike/aerospike-client-go"
 	"github.com/aerospike/aerospike-client-go/types"
 	"github.com/google/uuid"
+	"github.com/viant/parsly/matcher"
 	"github.com/viant/sqlx/io"
 	"github.com/viant/sqlx/io/read/cache"
-	"github.com/viant/sqlx/io/read/cache/afs"
+	"github.com/viant/sqlx/io/read/cache/hash"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -40,6 +42,7 @@ type (
 		mux               sync.Mutex
 		expirationTimeInS uint32
 		allowSmart        bool
+		chanSize          int
 		timeoutConfig     *TimeoutConfig
 	}
 )
@@ -49,7 +52,8 @@ func (a *Cache) IndexBy(ctx context.Context, db *sql.DB, column, SQL string, arg
 		args = []interface{}{}
 	}
 
-	rows, err := db.Query(SQL, args...)
+	querySQL, isOrdered := tryOrderedSQL(SQL, column)
+	rows, err := db.Query(querySQL, args...)
 	if err != nil {
 		return err
 	}
@@ -64,15 +68,15 @@ func (a *Cache) IndexBy(ctx context.Context, db *sql.DB, column, SQL string, arg
 		return err
 	}
 
-	var values = make(chan *cache.Indexed)
+	var values = make(chan *cache.Indexed, 512)
 	errors := &Errors{}
 	go func() {
-		err = a.fetchAndIndexValues(fields, column, rows, values)
+		err = a.fetchAndIndexValues(fields, column, rows, values, isOrdered)
 		errors.Add(err)
 		close(values)
 	}()
 
-	URL, err := afs.GenerateURL(SQL, "", "", args)
+	URL, err := hash.GenerateURL(SQL, "", "", args)
 	if err != nil {
 		return err
 	}
@@ -100,6 +104,20 @@ func (a *Cache) IndexBy(ctx context.Context, db *sql.DB, column, SQL string, arg
 	}
 
 	return a.putColumnMarker(URL, column, a.metaBin(SQL, argsStringified, fieldsStringified, column))
+}
+
+func tryOrderedSQL(SQL string, column string) (string, bool) {
+	lcSQL := strings.ToLower(SQL)
+	orderByIndex := strings.LastIndex(lcSQL, "order ")
+	if orderByIndex != -1 && matcher.IsWhiteSpace(lcSQL[orderByIndex-1]) {
+		orderByIndex = -1
+	}
+	hasOrderBy := orderByIndex != -1
+	if hasOrderBy {
+		orderClause := string(lcSQL[orderByIndex+len("order ")])
+		return SQL, strings.Contains(orderClause, strings.ToLower(column))
+	}
+	return SQL + " ORDER BY " + column, true
 }
 
 func (a *Cache) metaBin(SQL string, argsStringified string, fieldsStringified string, column string) as.BinMap {
@@ -256,9 +274,9 @@ func (a *Cache) readRecord(SQL string, args []interface{}, argsMarshal []byte, k
 	var err error
 
 	if argsMarshal == nil {
-		aKey, err = afs.GenerateURL(SQL, "", "", args)
+		aKey, err = hash.GenerateURL(SQL, "", "", args)
 	} else {
-		aKey, err = afs.GenerateWithMarshal(SQL, "", "", argsMarshal)
+		aKey, err = hash.GenerateWithMarshal(SQL, "", "", argsMarshal)
 	}
 
 	if err != nil {
@@ -596,7 +614,7 @@ func (a *Cache) updateWriter(anEntry *cache.Entry, fullMatch *RecordMatched, SQL
 
 func (a *Cache) readChan(readerChan chan *readerWrapper, matcher *cache.Matcher, columnValue interface{}) {
 	go func(matcher *cache.Matcher, columnValue interface{}) {
-		reader, err := a.readErr(matcher, columnValue)
+		reader, err := a.newReader(matcher, columnValue)
 		readerChan <- &readerWrapper{
 			err:    err,
 			reader: reader,
@@ -604,7 +622,7 @@ func (a *Cache) readChan(readerChan chan *readerWrapper, matcher *cache.Matcher,
 	}(matcher, columnValue)
 }
 
-func (a *Cache) readErr(matcher *cache.Matcher, columnValue interface{}) (*Reader, error) {
+func (a *Cache) newReader(matcher *cache.Matcher, columnValue interface{}) (*Reader, error) {
 	valueMarshal, err := json.Marshal(columnValue)
 	if err != nil {
 		return nil, err
@@ -615,7 +633,7 @@ func (a *Cache) readErr(matcher *cache.Matcher, columnValue interface{}) (*Reade
 		return nil, err
 	}
 
-	actualKeyValue, err := afs.GenerateWithMarshal(matcher.SQL, "", "", args)
+	actualKeyValue, err := hash.GenerateWithMarshal(matcher.SQL, "", "", args)
 	if err != nil {
 		return nil, err
 	}
@@ -717,8 +735,8 @@ func (a *Cache) updateMetaFields(entry *cache.Entry, match *RecordMatched, colum
 	return nil
 }
 
-func (a *Cache) fetchAndIndexValues(fields []*cache.Field, column string, rows *sql.Rows, dest chan *cache.Indexed) error {
-	indexSource, err := NewIndexSource(column, false, fields, dest)
+func (a *Cache) fetchAndIndexValues(fields []*cache.Field, column string, rows *sql.Rows, dest chan *cache.Indexed, ordered bool) error {
+	indexSource, err := NewIndexSource(column, ordered, fields, dest)
 	if err != nil {
 		return err
 	}
