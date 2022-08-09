@@ -583,7 +583,12 @@ func (a *Cache) updateColumnsInMatchEntry(entry *cache.Entry, match *RecordMatch
 	multiReader := NewMultiReader(matcher)
 
 	chanSize := len(matcher.In)
+
 	readerChan := make(chan *readerWrapper, chanSize)
+	if chanSize == 0 {
+		close(readerChan)
+	}
+
 	for i := range matcher.In {
 		a.readChan(readerChan, matcher, matcher.In[i])
 	}
