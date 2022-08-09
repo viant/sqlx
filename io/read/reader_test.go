@@ -196,7 +196,6 @@ func TestReader_ReadAll(t *testing.T) {
 			},
 			expect: `[{"id":1,"name":"John"},{"id":2,"name":"Bruce"}]`,
 		},
-
 		{
 			description: "Complex struct mapper",
 			driver:      "sqlite3",
@@ -387,6 +386,10 @@ func TestReader_ReadAll(t *testing.T) {
 			newRow: func() interface{} {
 				return &case3Wrapper{}
 			},
+			cacheWarmup: &cacheWarmup{
+				SQL:  "SELECT foo_id , foo_name, desc,  unk  FROM t9 WHERE foo_id = ? ORDER BY 1",
+				args: []interface{}{2},
+			},
 			resolver:        io.NewResolver(),
 			expect:          `[{"Id":2,"Desc":"desc2","Name":"Bruce"}]`,
 			expectResolved:  `["102"]`,
@@ -462,6 +465,40 @@ func TestReader_ReadAll(t *testing.T) {
 				Limit:   1,
 			},
 		},
+		//{
+		//	description: "Aerospike smart cache with order by",
+		//	driver:      "sqlite3",
+		//	dsn:         "/tmp/sqllite.db",
+		//	initSQL: []string{
+		//		"CREATE TABLE IF NOT EXISTS t11 (foo_id INTEGER PRIMARY KEY, foo_name TEXT, desc TEXT, unk TEXT)",
+		//		"delete from t11",
+		//		"insert into t11 values(1, \"John\", \"desc1\", \"101\")",
+		//		"insert into t11 values(2, \"Bruce\", \"desc2\", \"102\")",
+		//		"insert into t11 values(3, \"William\", \"desc2\", \"102\")",
+		//	},
+		//	query: "SELECT foo_id , foo_name, desc,  unk  FROM t10 ORDER BY 3 DESC",
+		//	newRow: func() interface{} {
+		//		return &case3Wrapper{}
+		//	},
+		//	resolver:        io.NewResolver(),
+		//	expectedScanned: `[[1,"John","desc1","101"]]`,
+		//	cacheConfig: &cacheConfig{
+		//		cacheType: "aerospike",
+		//	},
+		//	expect:         `[{"Id":1,"Desc":"desc1","Name":"John"}]`,
+		//	expectResolved: `["101"]`,
+		//	cacheWarmup: &cacheWarmup{
+		//		column: "desc",
+		//		SQL:    "SELECT foo_id , foo_name, desc,  unk  FROM t10 ORDER BY 3 DESC",
+		//	},
+		//	matcher: &cache.Matcher{
+		//		SQL:     "SELECT foo_id , foo_name, desc,  unk  FROM t10 ORDER BY 3 DESC",
+		//		Args:    []interface{}{},
+		//		IndexBy: "desc",
+		//		Ordered: true,
+		//		In:      []interface{}{"desc2"},
+		//	},
+		//},
 	}
 
 outer:

@@ -12,10 +12,7 @@ import (
 	"github.com/viant/sqlx/io"
 	"github.com/viant/sqlx/io/read/cache"
 	"github.com/viant/sqlx/io/read/cache/afs"
-	"github.com/viant/xunsafe"
-	"reflect"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 )
@@ -66,6 +63,7 @@ func (a *Cache) IndexBy(ctx context.Context, db *sql.DB, column, SQL string, arg
 	if err != nil {
 		return err
 	}
+
 	var values = make(chan *cache.Indexed)
 	errors := &Errors{}
 	go func() {
@@ -78,10 +76,12 @@ func (a *Cache) IndexBy(ctx context.Context, db *sql.DB, column, SQL string, arg
 	if err != nil {
 		return err
 	}
+
 	argsMarshal, err := json.Marshal(args)
 	if err != nil {
 		return err
 	}
+
 	fieldMarshal, err := json.Marshal(fields)
 	if err != nil {
 		return err
@@ -94,9 +94,11 @@ func (a *Cache) IndexBy(ctx context.Context, db *sql.DB, column, SQL string, arg
 		metaBin := a.metaBin(SQL, argsStringified, fieldsStringified, column)
 		go a.indexByWithChan(ctx, errors, URL, column, metaBin, value)
 	}
+
 	if err = errors.Err(); err != nil {
 		return err
 	}
+
 	return a.putColumnMarker(URL, column, a.metaBin(SQL, argsStringified, fieldsStringified, column))
 }
 
@@ -476,17 +478,18 @@ func (a *Cache) writeIndexData(args *cache.Indexed, URL string, column string, m
 		return err
 	}
 
-	data, err := a.marshalData(args.Data)
-	if err != nil {
-		return err
-	}
-
+	data := args.Data.Bytes()
 	metaBin[dataBin] = string(data)
 	metaBin[readOrderBin] = args.ReadOrder
+
 	return a.client.Put(a.writePolicy(), key, metaBin)
 }
 
 func (a *Cache) columnValueURL(column string, columnValueMarshal []byte, URL string) string {
+	if column == "" {
+		return URL
+	}
+
 	return column + "#" + strconv.Quote(string(columnValueMarshal)) + "#" + URL
 }
 
@@ -495,24 +498,6 @@ func (a *Cache) writePolicy() *as.WritePolicy {
 	policy.SendKey = true
 	policy.MaxRetries = 3
 	return policy
-}
-
-func (a *Cache) marshalData(data [][]interface{}) ([]byte, error) {
-	buffer := bytes.NewBuffer([]byte{})
-	for i, datum := range data {
-		if i != 0 {
-			buffer.WriteByte('\n')
-		}
-
-		marshal, err := json.Marshal(datum)
-		if err != nil {
-			return nil, err
-		}
-
-		buffer.Write(marshal)
-	}
-
-	return buffer.Bytes(), nil
 }
 
 func (a *Cache) putColumnMarker(URL string, column string, bin as.BinMap) error {
@@ -733,81 +718,32 @@ func (a *Cache) updateMetaFields(entry *cache.Entry, match *RecordMatched, colum
 }
 
 func (a *Cache) fetchAndIndexValues(fields []*cache.Field, column string, rows *sql.Rows, dest chan *cache.Indexed) error {
-	column = strings.ToLower(column)
-
-	var columnType reflect.Type
-	var columnIndex int
-	for i, field := range fields {
-		if strings.ToLower(field.Name()) == column {
-			columnType = field.ScanType()
-			columnIndex = i
-			break
-		}
+	indexSource, err := NewIndexSource(column, false, fields, dest)
+	if err != nil {
+		return err
 	}
 
-	if columnType == nil {
-		return fmt.Errorf("not found column %v in the database response", columnType)
-	}
+	columnIndex := indexSource.ColumnIndex()
+	placeholders := NewPlaceholders(columnIndex, fields)
 
-	index := map[interface{}]int{}
-	result := make([]*cache.Indexed, 0)
-	var dereferencers []*xunsafe.Type
-
-	xTypes := make([]*xunsafe.Type, len(fields))
-	for i, field := range fields {
-		xTypes[i] = xunsafe.NewType(field.ScanType())
-	}
-
-	if columnType.Kind() == reflect.Ptr {
-		columnType = columnType.Elem()
-	}
-
-	for columnType.Kind() == reflect.Ptr {
-		dereferencers = append(dereferencers, xunsafe.NewType(columnType))
-		columnType = columnType.Elem()
-	}
-
-	var err error
-	var order int
 	for rows.Next() {
-		placeholders := make([]interface{}, len(fields))
-		for i := range placeholders {
-			placeholders[i] = reflect.New(fields[i].ScanType()).Interface()
-		}
-
-		if err = rows.Scan(placeholders...); err != nil {
+		if err = rows.Scan(placeholders.ScanPlaceholders()...); err != nil {
 			return err
 		}
 
-		for i := range placeholders {
-			placeholders[i] = xTypes[i].Deref(placeholders[i])
-		}
-
-		columnValue := placeholders[columnIndex]
-		for _, dereferencer := range dereferencers {
-			if dereferencer.Pointer(columnValue) == nil {
-				break
-			}
-
-			columnValue = dereferencer.Deref(columnValue)
-		}
-
-		argIndex, ok := index[columnValue]
+		columnValue, ok := placeholders.ColumnValue()
 		if !ok {
-			argIndex = len(result)
-			index[columnValue] = argIndex
-			result = append(result, &cache.Indexed{})
+			continue
 		}
 
-		result[argIndex].ColumnValue = columnValue
-		result[argIndex].ReadOrder = append(result[argIndex].ReadOrder, order)
-		result[argIndex].Data = append(result[argIndex].Data, placeholders)
-		order++
+		indexed := indexSource.Index(columnValue)
+
+		if err = indexed.StringifyData(placeholders.Order, placeholders.Values()); err != nil {
+			return err
+		}
+
+		placeholders.Next()
 	}
 
-	for i := range result {
-		dest <- result[i]
-	}
-
-	return nil
+	return indexSource.Close()
 }
