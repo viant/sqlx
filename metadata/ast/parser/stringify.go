@@ -4,8 +4,11 @@ import (
 	"bytes"
 	"fmt"
 	"github.com/viant/sqlx/metadata/ast/expr"
+	"github.com/viant/sqlx/metadata/ast/insert"
 	"github.com/viant/sqlx/metadata/ast/node"
 	"github.com/viant/sqlx/metadata/ast/query"
+	"github.com/viant/sqlx/metadata/ast/update"
+	"strings"
 )
 
 func Stringify(n node.Node) string {
@@ -125,6 +128,37 @@ func stringify(n node.Node, builder *bytes.Buffer) {
 			builder.WriteByte('.')
 		}
 		stringify(actual.X, builder)
+	case *update.Item:
+		stringify(actual.Column, builder)
+		builder.WriteString(" = ")
+		stringify(actual.Expr, builder)
+	case *update.Statement:
+		builder.WriteString("UPDATE ")
+		stringify(actual.Target.X, builder)
+		builder.WriteString(" SET ")
+		for i := range actual.Set {
+			if i > 0 {
+				builder.WriteString(", ")
+			}
+			stringify(actual.Set[i], builder)
+		}
+		if actual.Qualify != nil {
+			builder.WriteString(" WHERE ")
+			stringify(actual.Qualify, builder)
+		}
+	case *insert.Statement:
+		builder.WriteString("INSERT INTO ")
+		stringify(actual.Target.X, builder)
+		builder.WriteString(" (")
+		builder.WriteString(strings.Join(actual.Columns, ", "))
+		builder.WriteString(") VALUES(")
+		for i, value := range actual.Values {
+			if i > 0 {
+				builder.WriteString(", ")
+			}
+			stringify(value.Expr, builder)
+		}
+		builder.WriteString(")")
 	default:
 		panic(fmt.Sprintf("%T unsupported", n))
 	}

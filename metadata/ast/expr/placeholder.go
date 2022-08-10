@@ -1,7 +1,8 @@
 package expr
 
 type Placeholder struct {
-	Name string
+	Name     string
+	Comments string
 }
 
 func NewPlaceholder(name string) *Placeholder {

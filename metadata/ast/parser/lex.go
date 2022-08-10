@@ -20,6 +20,7 @@ const (
 	notOperator
 	binaryOperator
 	logicalOperator
+	assignOperator
 	intLiteral
 	numericLiteral
 	boolLiteral
@@ -30,6 +31,10 @@ const (
 	betweenToken
 	commentBlock
 	selectKeyword
+	updateKeyword
+	setKeyword
+	insertIntoKeyword
+	insertValuesKeyword
 	placeholderTokenCode
 	selectorTokenCode
 	asKeyword
@@ -83,7 +88,17 @@ var havingKeywordMatcher = parsly.NewToken(havingKeyword, "HAVING", matcher.NewF
 var orderByKeywordMatcher = parsly.NewToken(orderByKeyword, "ORDER BY", matcher.NewSpacedFragment("order by", &option.Case{}))
 var windowMatcher = parsly.NewToken(windowTokenCode, "LIMIT|OFFSET", matcher.NewSet([]string{"limit", "offset"}, &option.Case{}))
 
+var updateKeywordMatcher = parsly.NewToken(updateKeyword, "UPDATE", matcher.NewFragment("update", &option.Case{}))
+var setKeywordMatcher = parsly.NewToken(setKeyword, "SET", matcher.NewFragment("set", &option.Case{}))
+
+var insertIntoKeywordMatcher = parsly.NewToken(insertIntoKeyword, "INSERT INTO", matcher.NewSpacedSet([]string{
+	"insert into"}, &option.Case{}))
+
+var insertValesKeywordMatcher = parsly.NewToken(insertValuesKeyword, "VALUES", matcher.NewFragment("values", &option.Case{}))
+
 var binaryOperatorMatcher = parsly.NewToken(binaryOperator, "binary OPERATOR", matcher.NewSpacedSet([]string{"+", "!=", "=", "-", ">", "<", "=>", "=<", "*", "/", "in", "not in", "is not", "is"}, &option.Case{}))
+var assignOperatorMatcher = parsly.NewToken(assignOperator, "assign OPERATOR", matcher.NewSpacedSet([]string{"="}, &option.Case{}))
+
 var logicalOperatorMatcher = parsly.NewToken(logicalOperator, "AND|OR", matcher.NewSet([]string{"and", "or"}, &option.Case{}))
 var rangeOperatorMatcher = parsly.NewToken(rangeOperator, ".. AND .. ", matcher.NewSet([]string{"and"}, &option.Case{}))
 
