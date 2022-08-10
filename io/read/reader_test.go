@@ -779,7 +779,7 @@ func BenchmarkStructMapper(b *testing.B) {
 			err = reader.QueryAll(context.TODO(), func(row interface{}) error {
 				counter++
 				return nil
-			}, nil)
+			})
 			assert.Nil(b, err)
 			assert.Equal(b, dataSize, counter)
 		}
@@ -801,7 +801,7 @@ func BenchmarkStructMapper(b *testing.B) {
 			err = reader.QueryAll(context.TODO(), func(row interface{}) error {
 				counter++
 				return nil
-			}, nil)
+			})
 			assert.Nil(b, err)
 			assert.Equal(b, dataSize, counter)
 		}
@@ -829,7 +829,7 @@ func BenchmarkStructMapper(b *testing.B) {
 			err = cacheReader.QueryAll(context.TODO(), func(row interface{}) error {
 				counter++
 				return nil
-			}, nil)
+			})
 			assert.Nil(b, err)
 			assert.Equal(b, dataSize, counter)
 		}
@@ -857,7 +857,7 @@ func BenchmarkStructMapper(b *testing.B) {
 			err = cacheReader.QueryAll(context.TODO(), func(row interface{}) error {
 				counter++
 				return nil
-			}, nil)
+			})
 			assert.Nil(b, err)
 			assert.Equal(b, dataSize, counter)
 		}
@@ -890,7 +890,7 @@ func BenchmarkStructMapper(b *testing.B) {
 			err = cacheReader.QueryAll(context.TODO(), func(row interface{}) error {
 				counter++
 				return nil
-			}, nil)
+			})
 			assert.Nil(b, err)
 			assert.Equal(b, dataSize, counter)
 		}

@@ -112,7 +112,7 @@ func (a *Cache) IndexBy(ctx context.Context, db *sql.DB, column, SQL string, arg
 func tryOrderedSQL(SQL string, column string) (string, bool) {
 	lcSQL := strings.ToLower(SQL)
 	orderByIndex := strings.LastIndex(lcSQL, "order ")
-	if orderByIndex != -1 && matcher.IsWhiteSpace(lcSQL[orderByIndex-1]) {
+	if orderByIndex != -1 && !matcher.IsWhiteSpace(lcSQL[orderByIndex-1]) {
 		orderByIndex = -1
 	}
 	hasOrderBy := orderByIndex != -1
