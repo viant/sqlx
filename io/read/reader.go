@@ -74,7 +74,15 @@ func (r *Reader) QueryAll(ctx context.Context, emit func(row interface{}) error,
 		return err
 	}
 
-	return r.readAll(ctx, emit, entry, source)
+	if err = r.readAll(ctx, emit, entry, source); err != nil {
+		return err
+	}
+
+	if rows != nil {
+		return rows.Err()
+	}
+
+	return nil
 }
 
 func (r *Reader) createSource(ctx context.Context, entry *cache.Entry, args []interface{}) (*sql.Rows, cache.Source, error) {
