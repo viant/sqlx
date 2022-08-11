@@ -33,7 +33,7 @@ const (
 	readOrderBin = "ReadOrder"
 )
 
-var cachedBins = []string{typesBin, argsBin, sqlBin, dataBin, fieldsBin}
+var cachedBins = []string{typesBin, argsBin, sqlBin, dataBin, fieldsBin, compDataBin}
 
 type (
 	Cache struct {

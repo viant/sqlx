@@ -2,6 +2,7 @@ package hash
 
 import (
 	"encoding/json"
+	"fmt"
 	"hash/fnv"
 	"strconv"
 )
@@ -24,6 +25,7 @@ func GenerateWithMarshal(SQL string, URL string, extension string, argMarshal []
 	}
 	entryKey := strconv.Itoa(int(hasher.Sum64()))
 	result := URL + entryKey + extension
+	fmt.Printf("HASH: %v\n", result)
 	return result, nil
 }
 
