@@ -4,6 +4,7 @@ import (
 	"github.com/viant/parsly"
 	"github.com/viant/sqlx/metadata/ast/expr"
 	"github.com/viant/sqlx/metadata/ast/insert"
+	"github.com/viant/sqlx/metadata/ast/node"
 	"strings"
 )
 
@@ -64,12 +65,14 @@ func parseInsertValues(encodedValues string, offset int) ([]*insert.Value, error
 }
 
 func expectInsertValue(cursor *parsly.Cursor, values *[]*insert.Value) error {
+	pos := cursor.Pos
 	operand, err := expectOperand(cursor)
 	if err != nil || operand == nil {
 		return err
 	}
-	*values = append(*values, &insert.Value{Expr: operand})
-
+	*values = append(*values, &insert.Value{Expr: operand,
+		Span: node.Span{Begin: uint32(pos), End: uint32(cursor.Pos)},
+		Raw:  strings.TrimSpace(string(cursor.Input[pos:cursor.Pos]))})
 	match := cursor.MatchAfterOptional(whitespaceMatcher, nextMatcher)
 	if match.Code != nextCode {
 		return nil

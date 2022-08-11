@@ -6,5 +6,6 @@ type Value struct {
 	Expr     node.Node
 	Comments string
 	Raw      string
-	Meta     interface{}
+	node.Span
+	Meta interface{}
 }
