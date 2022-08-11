@@ -68,6 +68,7 @@ func parseUpdateSetItems(cursor *parsly.Cursor, stmt *update.Statement) error {
 }
 
 func expectUpdateSetItem(cursor *parsly.Cursor) (*update.Item, error) {
+	beginPos := cursor.Pos
 	match := cursor.MatchAfterOptional(whitespaceMatcher, selectorMatcher)
 	if match.Code != selectorTokenCode {
 		return nil, cursor.NewError(selectorMatcher)
@@ -83,5 +84,7 @@ func expectUpdateSetItem(cursor *parsly.Cursor) (*update.Item, error) {
 		return nil, err
 	}
 	item.Expr = operand
+	item.Begin = uint32(beginPos)
+	item.End = uint32(cursor.Pos)
 	return item, err
 }
