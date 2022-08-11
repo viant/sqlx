@@ -99,7 +99,7 @@ func (a *Cache) IndexBy(ctx context.Context, db *sql.DB, column, SQL string, arg
 
 	for value := range values {
 		metaBin := a.metaBin(SQL, argsStringified, fieldsStringified, column)
-		go a.indexByWithChan(ctx, errors, URL, column, metaBin, value)
+		errors.Add(a.writeIndexData(value, URL, column, metaBin))
 	}
 
 	if err = errors.Err(); err != nil {
@@ -477,10 +477,6 @@ func (a *Cache) updateEntryFields(record *as.Record, entry *cache.Entry) error {
 	}
 
 	return nil
-}
-
-func (a *Cache) indexByWithChan(ctx context.Context, errs *Errors, URL string, column string, metaBin as.BinMap, args *cache.Indexed) {
-	errs.Add(a.writeIndexData(args, URL, column, metaBin))
 }
 
 func (a *Cache) writeIndexData(args *cache.Indexed, URL string, column string, metaBin as.BinMap) error {
