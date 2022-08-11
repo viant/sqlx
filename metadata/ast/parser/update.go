@@ -84,7 +84,7 @@ func expectUpdateSetItem(cursor *parsly.Cursor) (*update.Item, error) {
 		return nil, err
 	}
 	item.Expr = operand
-	item.Begin = uint32(beginPos)
+	item.Begin = uint32(beginPos) + 1
 	item.End = uint32(cursor.Pos)
 	return item, err
 }
