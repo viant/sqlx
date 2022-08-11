@@ -2,6 +2,7 @@ package aerospike
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
 	"database/sql"
 	"encoding/json"
@@ -13,6 +14,7 @@ import (
 	"github.com/viant/sqlx/io"
 	"github.com/viant/sqlx/io/read/cache"
 	"github.com/viant/sqlx/io/read/cache/hash"
+	sio "io"
 	"strconv"
 	"strings"
 	"sync"
@@ -23,6 +25,7 @@ const (
 	sqlBin       = "SQL"
 	argsBin      = "Args"
 	dataBin      = "Data"
+	compDataBin  = "CData"
 	typesBin     = "Type"
 	fieldsBin    = "Fields"
 	childBin     = "Child"
@@ -109,7 +112,7 @@ func (a *Cache) IndexBy(ctx context.Context, db *sql.DB, column, SQL string, arg
 func tryOrderedSQL(SQL string, column string) (string, bool) {
 	lcSQL := strings.ToLower(SQL)
 	orderByIndex := strings.LastIndex(lcSQL, "order ")
-	if orderByIndex != -1 && matcher.IsWhiteSpace(lcSQL[orderByIndex-1]) {
+	if orderByIndex != -1 && !matcher.IsWhiteSpace(lcSQL[orderByIndex-1]) {
 		orderByIndex = -1
 	}
 	hasOrderBy := orderByIndex != -1
@@ -497,10 +500,51 @@ func (a *Cache) writeIndexData(args *cache.Indexed, URL string, column string, m
 	}
 
 	data := args.Data.Bytes()
-	metaBin[dataBin] = string(data)
+	isCompressed := false
+	if len(data) > compressionThreshold {
+		compressed, ok := compress(data)
+		isCompressed = ok
+
+		if ok {
+			metaBin[compDataBin] = compressed
+		}
+	}
+
+	if !isCompressed {
+		metaBin[dataBin] = string(data)
+	}
+
 	metaBin[readOrderBin] = args.ReadOrder
 
 	return a.client.Put(a.writePolicy(), key, metaBin)
+}
+
+func compress(data []byte) ([]byte, bool) {
+	buffer := &bytes.Buffer{}
+	gzipWriter := gzip.NewWriter(buffer)
+	if _, err := sio.Copy(gzipWriter, bytes.NewBuffer(data)); err == nil {
+		if err = gzipWriter.Flush(); err == nil {
+			_ = gzipWriter.Close()
+			return buffer.Bytes(), true
+		}
+	}
+	return nil, false
+}
+
+func uncompress(data []byte) ([]byte, error) {
+	gzipReader, err := gzip.NewReader(bytes.NewReader(data))
+	if err != nil {
+		return nil, err
+	}
+
+	defer gzipReader.Close()
+	buffer := bytes.NewBuffer(nil)
+	_, err = sio.Copy(buffer, gzipReader)
+	if err != nil {
+		return nil, err
+	}
+
+	return buffer.Bytes(), nil
 }
 
 func (a *Cache) columnValueURL(column string, columnValueMarshal []byte, URL string) string {
