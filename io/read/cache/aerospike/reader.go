@@ -74,6 +74,10 @@ func (r *Reader) ensureReader() error {
 }
 
 func (r *Reader) dataContent() ([]byte, error) {
+	if data, ok := r.record.Bins[compDataBin]; ok {
+		return uncompress(data.([]byte))
+	}
+
 	data := r.record.Bins[dataBin]
 	if data == nil {
 		return []byte{}, nil
