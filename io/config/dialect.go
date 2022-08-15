@@ -19,7 +19,7 @@ func Dialect(ctx context.Context, db *sql.DB, opts ...option.Option) (*info.Dial
 		meta := metadata.New()
 		product, err = meta.DetectProduct(ctx, db)
 		if err != nil {
-			return nil, fmt.Errorf("missing product option: %T", db)
+			return nil, fmt.Errorf("missing product option: %T %v", db, err)
 		}
 	}
 	dialect := registry.LookupDialect(product)
