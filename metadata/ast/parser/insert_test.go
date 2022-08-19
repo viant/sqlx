@@ -21,6 +21,11 @@ func TestParseInsert(t *testing.T) {
 			SQL:         "INSERT INTO t (c1, c2) VALUES(1, 2)",
 			expect:      "INSERT INTO t (c1, c2) VALUES(1, 2)",
 		},
+		{
+			description: "basic insert",
+			SQL:         "INSERT INTO CI_AD_ORDER(ID, NAME) VALUES(0, $Name);",
+			expect:      "INSERT INTO CI_AD_ORDER (ID, NAME) VALUES(0, $Name)",
+		},
 	}
 
 	//for _, testCase := range testCases[len(testCases)-1:] {

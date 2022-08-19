@@ -36,7 +36,7 @@ func parseQuery(cursor *parsly.Cursor, dest *query.Select) error {
 			case parenthesesCode:
 				dest.From.X = expr.NewRaw(match.Text(cursor))
 			}
-			
+
 			dest.From.Alias = discoverAlias(cursor)
 
 			match = cursor.MatchAfterOptional(whitespaceMatcher, commentBlockMatcher)
@@ -95,6 +95,7 @@ func matchPostFrom(cursor *parsly.Cursor, dest *query.Select, match *parsly.Toke
 		if err := parseSelectListItem(cursor, &dest.OrderBy); err != nil {
 			return false, err
 		}
+
 		match = cursor.MatchAfterOptional(whitespaceMatcher, windowMatcher)
 		return matchPostFrom(cursor, dest, match)
 	case windowTokenCode:

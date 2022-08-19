@@ -33,7 +33,7 @@ func parseJoin(cursor *parsly.Cursor, join *query.Join, dest *query.Select) erro
 	if err := parseBinaryExpr(cursor, binary); err != nil {
 		return err
 	}
-	match = cursor.MatchAfterOptional(whitespaceMatcher, joinToken, groupByMatcher, havingKeywordMatcher, whereKeywordMatcher, windowMatcher)
+	match = cursor.MatchAfterOptional(whitespaceMatcher, joinToken, groupByMatcher, havingKeywordMatcher, whereKeywordMatcher, orderByKeywordMatcher, windowMatcher)
 	if match.Code == parsly.EOF {
 		return nil
 	}
