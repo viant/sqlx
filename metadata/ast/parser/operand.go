@@ -8,7 +8,7 @@ import (
 )
 
 func discoverAlias(cursor *parsly.Cursor) string {
-	match := cursor.MatchAfterOptional(whitespaceMatcher, exceptKeywordMatcher, asKeywordMatcher, onKeywordMatcher, fromKeywordMatcher, joinToken, whereKeywordMatcher, groupByMatcher, havingKeywordMatcher, windowMatcher, identifierMatcher)
+	match := cursor.MatchAfterOptional(whitespaceMatcher, exceptKeywordMatcher, asKeywordMatcher, onKeywordMatcher, fromKeywordMatcher, joinToken, whereKeywordMatcher, groupByMatcher, havingKeywordMatcher, orderByKeywordMatcher, windowMatcher, identifierMatcher)
 	switch match.Code {
 	case asKeyword:
 		match := cursor.MatchAfterOptional(whitespaceMatcher, identifierMatcher)
@@ -29,7 +29,7 @@ func expectOperand(cursor *parsly.Cursor) (node.Node, error) {
 
 	match := cursor.MatchAfterOptional(whitespaceMatcher,
 		commentBlockMatcher,
-		asKeywordMatcher, exceptKeywordMatcher, onKeywordMatcher, fromKeywordMatcher, whereKeywordMatcher, joinToken, groupByMatcher, havingKeywordMatcher, windowMatcher, nextMatcher,
+		asKeywordMatcher, exceptKeywordMatcher, onKeywordMatcher, fromKeywordMatcher, whereKeywordMatcher, joinToken, groupByMatcher, havingKeywordMatcher, orderByKeywordMatcher, windowMatcher, nextMatcher,
 		parenthesesMatcher,
 		caseBlockMatcher,
 		starTokenMatcher,
