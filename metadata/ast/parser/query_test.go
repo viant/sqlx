@@ -17,10 +17,13 @@ func TestParseSelect(t *testing.T) {
 			expect      string
 		}{
 
+			/*
+
+			 */
 			{
-				description: "order by with expr",
-				SQL:         `SELECT c1 FROM table1 t JOIN table2 t1 ON t1.ID = t2.T_ID WHERE t1.C1 IS NOT NULL AND t1.C2 IS NOT NULL AND STATUS IN (0,1) AND v1.STARTDATE < NOW() ORDER BY ABS(TIMESTAMPDIFF(SECOND, Time, NOW())) DESC`,
-				expect:      `SELECT c1 FROM table1 t JOIN table2 t1 ON t1.ID = t2.T_ID WHERE t1.C1 IS NOT NULL AND t1.C2 IS NOT NULL AND STATUS IN (0,1) AND v1.STARTDATE < NOW() ORDER BY ABS(TIMESTAMPDIFF(SECOND, Time, NOW())) DESC`,
+				description: "expr with comments",
+				SQL:         `SELECT    1 + (COUNT(1) / $View.Limit)  AS PAGE_CNT /* {"DataType":"int"} */ FROM table t`,
+				expect:      `SELECT 1 + (COUNT(1) / $View.Limit) AS PAGE_CNT /* {"DataType":"int"} */ FROM table t`,
 			},
 
 			{
