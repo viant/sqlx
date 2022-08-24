@@ -36,9 +36,7 @@ func parseQuery(cursor *parsly.Cursor, dest *query.Select) error {
 			case parenthesesCode:
 				dest.From.X = expr.NewRaw(match.Text(cursor))
 			}
-
 			dest.From.Alias = discoverAlias(cursor)
-
 			match = cursor.MatchAfterOptional(whitespaceMatcher, commentBlockMatcher)
 			if match.Code == commentBlock {
 				dest.From.Comments = match.Text(cursor)
@@ -73,6 +71,7 @@ func matchPostFrom(cursor *parsly.Cursor, dest *query.Select, match *parsly.Toke
 		if err := ParseQualify(cursor, dest.Qualify); err != nil {
 			return false, err
 		}
+
 		match = cursor.MatchAfterOptional(whitespaceMatcher, groupByMatcher, havingKeywordMatcher, orderByKeywordMatcher, windowMatcher)
 		return matchPostFrom(cursor, dest, match)
 
@@ -90,13 +89,12 @@ func matchPostFrom(cursor *parsly.Cursor, dest *query.Select, match *parsly.Toke
 		}
 		match = cursor.MatchAfterOptional(whitespaceMatcher, orderByKeywordMatcher, windowMatcher)
 		return matchPostFrom(cursor, dest, match)
-
 	case orderByKeyword:
-		if err := parseSelectListItem(cursor, &dest.OrderBy); err != nil {
+		if err := parseOrderByListItem(cursor, &dest.OrderBy); err != nil {
 			return false, err
 		}
-
 		match = cursor.MatchAfterOptional(whitespaceMatcher, windowMatcher)
+
 		return matchPostFrom(cursor, dest, match)
 	case windowTokenCode:
 		matchedText := match.Text(cursor)

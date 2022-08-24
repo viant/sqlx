@@ -8,6 +8,7 @@ import (
 )
 
 func discoverAlias(cursor *parsly.Cursor) string {
+	pos := cursor.Pos
 	match := cursor.MatchAfterOptional(whitespaceMatcher, exceptKeywordMatcher, asKeywordMatcher, onKeywordMatcher, fromKeywordMatcher, joinToken, whereKeywordMatcher, groupByMatcher, havingKeywordMatcher, orderByKeywordMatcher, windowMatcher, identifierMatcher)
 	switch match.Code {
 	case asKeyword:
@@ -15,8 +16,8 @@ func discoverAlias(cursor *parsly.Cursor) string {
 		return match.Text(cursor)
 	case identifierCode:
 		return match.Text(cursor)
-	case exceptKeyword, fromKeyword, onKeyword, joinTokenCode, whereKeyword, groupByKeyword, havingKeyword, windowTokenCode:
-		cursor.Pos -= match.Size
+	case exceptKeyword, fromKeyword, onKeyword, orderByKeyword, joinTokenCode, whereKeyword, groupByKeyword, havingKeyword, windowTokenCode:
+		cursor.Pos = pos
 	}
 	return ""
 }
@@ -28,15 +29,20 @@ func expectOperand(cursor *parsly.Cursor) (node.Node, error) {
 	}
 
 	match := cursor.MatchAfterOptional(whitespaceMatcher,
-		commentBlockMatcher,
-		asKeywordMatcher, exceptKeywordMatcher, onKeywordMatcher, fromKeywordMatcher, whereKeywordMatcher, joinToken, groupByMatcher, havingKeywordMatcher, orderByKeywordMatcher, windowMatcher, nextMatcher,
+		orderByKeywordMatcher,
+		asKeywordMatcher,
+		exceptKeywordMatcher,
+		onKeywordMatcher, fromKeywordMatcher, whereKeywordMatcher, joinToken, groupByMatcher, havingKeywordMatcher, windowMatcher, nextMatcher,
 		parenthesesMatcher,
 		caseBlockMatcher,
 		starTokenMatcher,
 		notOperatorMatcher,
 		nullMatcher,
 		placeholderMatcher,
-		selectorMatcher)
+		selectorMatcher,
+		commentBlockMatcher,
+	)
+	pos := cursor.Pos
 	switch match.Code {
 	case selectorTokenCode, placeholderTokenCode:
 
@@ -46,6 +52,7 @@ func expectOperand(cursor *parsly.Cursor) (node.Node, error) {
 		if match.Code == placeholderTokenCode {
 			selector = expr.NewPlaceholder(selRaw)
 		}
+
 		match = cursor.MatchAfterOptional(whitespaceMatcher, parenthesesMatcher, exceptKeywordMatcher)
 		switch match.Code {
 		case parenthesesCode:
@@ -54,7 +61,12 @@ func expectOperand(cursor *parsly.Cursor) (node.Node, error) {
 			return parseStarExpr(cursor, selRaw, selector)
 		}
 		if strings.HasSuffix(selRaw, "*") {
-			return expr.NewStar(selector), nil
+			comments := ""
+			match = cursor.MatchAfterOptional(whitespaceMatcher, commentBlockMatcher)
+			if match.Code == commentBlock {
+				comments = match.Text(cursor)
+			}
+			return expr.NewStar(selector, comments), nil
 		}
 		return selector, nil
 	case exceptKeyword:
@@ -66,12 +78,17 @@ func expectOperand(cursor *parsly.Cursor) (node.Node, error) {
 	case starTokenCode:
 		selRaw := match.Text(cursor)
 		selector := expr.NewSelector(selRaw)
+		match = cursor.MatchAfterOptional(whitespaceMatcher, commentBlockMatcher)
+		comments := ""
+		if match.Code == commentBlock {
+			comments = match.Text(cursor)
+		}
 		match = cursor.MatchAfterOptional(whitespaceMatcher, exceptKeywordMatcher)
 		switch match.Code {
 		case exceptKeyword:
 			return parseStarExpr(cursor, selRaw, selector)
 		}
-		return expr.NewStar(selector), err
+		return expr.NewStar(selector, comments), err
 	case parenthesesCode:
 		return expr.NewParenthesis(match.Text(cursor)), nil
 	case notOperator:
@@ -81,17 +98,21 @@ func expectOperand(cursor *parsly.Cursor) (node.Node, error) {
 		}
 		return unary, nil
 
-	case asKeyword, onKeyword, fromKeyword, whereKeyword, joinTokenCode, groupByKeyword, havingKeyword, windowTokenCode, nextCode, commentBlock:
-		cursor.Pos -= match.Size
+	case asKeyword, orderByKeyword, onKeyword, fromKeyword, whereKeyword, joinTokenCode, groupByKeyword, havingKeyword, windowTokenCode, nextCode, commentBlock:
+		cursor.Pos -= pos
 	}
 	return nil, nil
 }
 
 func parseStarExpr(cursor *parsly.Cursor, selRaw string, selector node.Node) (node.Node, error) {
-	star := expr.NewStar(selector)
+	star := expr.NewStar(selector, "")
 	if !strings.HasSuffix(selRaw, "*") {
 		return star, nil
 	}
 	_, err := expectExpectIdentifiers(cursor, &star.Except)
+	match := cursor.MatchAfterOptional(whitespaceMatcher, commentBlockMatcher)
+	if match.Code == commentBlock {
+		star.Comments = match.Text(cursor)
+	}
 	return star, err
 }

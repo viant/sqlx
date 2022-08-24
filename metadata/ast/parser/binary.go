@@ -2,6 +2,7 @@ package parser
 
 import (
 	"github.com/viant/parsly"
+	"github.com/viant/parsly/matcher"
 	"github.com/viant/sqlx/metadata/ast/expr"
 )
 
@@ -13,10 +14,18 @@ func parseBinaryExpr(cursor *parsly.Cursor, binary *expr.Binary) error {
 			return err
 		}
 	}
+	//fmt.Printf("After op %v,: %s\n", binary.Op, cursor.Input[cursor.Pos:])
+	pos := cursor.Pos
 	if binary.Op == "" {
 		match := cursor.MatchAfterOptional(whitespaceMatcher, betweenKeywordMatcher, binaryOperatorMatcher, logicalOperatorMatcher)
 		switch match.Code {
-		case binaryOperator, logicalOperator:
+		case logicalOperator:
+			if !matcher.IsWhiteSpace(cursor.Input[cursor.Pos]) {
+				cursor.Pos = pos
+				return nil
+			}
+			binary.Op = match.Text(cursor)
+		case binaryOperator:
 			binary.Op = match.Text(cursor)
 		case betweenToken:
 			binary.Op = match.Text(cursor)

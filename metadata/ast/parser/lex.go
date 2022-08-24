@@ -29,6 +29,7 @@ const (
 	doubleQuotedStringLiteral
 	caseBlock
 	betweenToken
+	orderDirection
 	commentBlock
 	selectKeyword
 	updateKeyword
@@ -62,6 +63,9 @@ var notOperatorMatcher = parsly.NewToken(notOperator, "NOT", matcher.NewFragment
 var nullMatcher = parsly.NewToken(nullTokenCode, "NULL", matcher.NewFragment("null", &option.Case{}))
 var selectionKindMatcher = parsly.NewToken(selectionKindCode, "ALL|DISTINCT|STRUCT", matcher.NewSet([]string{
 	"ALL", "DISTINCT", "STRUCT",
+}, &option.Case{}))
+var orderDirectionMatcher = parsly.NewToken(orderDirection, "ASC|DESC", matcher.NewSet([]string{
+	"ASC", "DESC",
 }, &option.Case{}))
 var caseBlockMatcher = parsly.NewToken(caseBlock, "CASE", matcher.NewSeqBlock("CASE", "END"))
 var commentBlockMatcher = parsly.NewToken(commentBlock, "/* */", matcher.NewSeqBlock("/*", "*/"))

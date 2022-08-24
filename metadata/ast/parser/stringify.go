@@ -34,6 +34,14 @@ func stringify(n node.Node, builder *bytes.Buffer) {
 			builder.WriteString(" WHERE ")
 			stringify(actual.Qualify.X, builder)
 		}
+
+		if len(actual.OrderBy) > 0 {
+			builder.WriteString(" ORDER BY ")
+			for _, item := range actual.OrderBy {
+				stringify(item, builder)
+			}
+		}
+
 	case *query.Join:
 		builder.WriteByte(' ')
 		builder.WriteString(actual.Raw)
@@ -75,6 +83,11 @@ func stringify(n node.Node, builder *bytes.Buffer) {
 				builder.WriteString(item)
 			}
 		}
+		if actual.Comments != "" {
+			builder.WriteString(" ")
+			builder.WriteString(actual.Comments)
+
+		}
 
 	case *expr.Raw:
 		builder.WriteString(" ")
@@ -104,6 +117,9 @@ func stringify(n node.Node, builder *bytes.Buffer) {
 		}
 		if actual.Comments != "" {
 			builder.WriteString(" " + actual.Comments)
+		}
+		if actual.Direction != "" {
+			builder.WriteString(" " + actual.Direction)
 		}
 	case *expr.Binary:
 		stringify(actual.X, builder)

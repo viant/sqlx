@@ -19,8 +19,8 @@ func TestParseSelect(t *testing.T) {
 
 			{
 				description: "order by with expr",
-				SQL:         `SELECT c1 FROM table1 t JOIN table2 t1 ON t1.ID = t2.T_ID WHERE t1.C1 IS NOT NULL AND t1.C2 IS NOT NULL AND STATUS IN (0,1) AND v1.STARTDATE < NOW() ORDER BY ABS(TIMESTAMPDIFF(SECOND, Time, NOW()))`,
-				expect:      `SELECT c1 FROM table1 t JOIN table2 t1 ON t1.ID = t2.T_ID WHERE t1.C1 IS NOT NULL AND t1.C2 IS NOT NULL AND STATUS IN (0,1) AND v1.STARTDATE < NOW() ORDER BY ABS(TIMESTAMPDIFF(SECOND, Time, NOW()))`,
+				SQL:         `SELECT c1 FROM table1 t JOIN table2 t1 ON t1.ID = t2.T_ID WHERE t1.C1 IS NOT NULL AND t1.C2 IS NOT NULL AND STATUS IN (0,1) AND v1.STARTDATE < NOW() ORDER BY ABS(TIMESTAMPDIFF(SECOND, Time, NOW())) DESC`,
+				expect:      `SELECT c1 FROM table1 t JOIN table2 t1 ON t1.ID = t2.T_ID WHERE t1.C1 IS NOT NULL AND t1.C2 IS NOT NULL AND STATUS IN (0,1) AND v1.STARTDATE < NOW() ORDER BY ABS(TIMESTAMPDIFF(SECOND, Time, NOW())) DESC`,
 			},
 
 			{
@@ -28,6 +28,12 @@ func TestParseSelect(t *testing.T) {
 				SQL:         "SELECT c1 /* comment */, c2 FROM `proj.dataset.table` t",
 				expect:      "SELECT c1 /* comment */, c2 FROM `proj.dataset.table` t",
 			},
+			{
+				description: "start with comments",
+				SQL:         "SELECT t.* /* some comments */ FROM tableX t",
+				expect:      "SELECT t.* /* some comments */ FROM tableX t",
+			},
+
 			{
 				description: "bq table select",
 				SQL:         "SELECT c1 AS a1 , c2 FROM `proj.dataset.table` t",
@@ -128,7 +134,6 @@ func TestParseSelect(t *testing.T) {
 			},
 		}
 
-		//for _, testCase := range testCases[len(testCases)-1:] {
 		for _, testCase := range testCases {
 			query, err := ParseQuery(testCase.SQL)
 			if !assert.Nil(t, err) {
