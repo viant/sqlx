@@ -8,7 +8,6 @@ import (
 type Indexed struct {
 	ColumnValue interface{}
 	Data        *bytes.Buffer
-	ReadOrder   []int
 }
 
 func NewIndexed(columnValue interface{}) *Indexed {
@@ -18,7 +17,7 @@ func NewIndexed(columnValue interface{}) *Indexed {
 	}
 }
 
-func (i *Indexed) StringifyData(position int, data []interface{}) error {
+func (i *Indexed) StringifyData(data []interface{}) error {
 	dataMarshal, err := json.Marshal(data)
 	if err != nil {
 		return err
@@ -29,7 +28,6 @@ func (i *Indexed) StringifyData(position int, data []interface{}) error {
 	}
 
 	_, err = i.Data.Write(dataMarshal)
-	i.ReadOrder = append(i.ReadOrder, position)
 
 	return err
 }

@@ -27,6 +27,10 @@ func (r *Resolver) Index(column string) int {
 
 //Data returns column data
 func (r *Resolver) Data(index int) []interface{} {
+	if index <= len(r.data) {
+		return []interface{}{}
+	}
+
 	return r.data[index]
 }
 
