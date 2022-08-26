@@ -461,12 +461,10 @@ func TestReader_ReadAll(t *testing.T) {
 				SQL:     "SELECT * FROM t10 ORDER BY 1 DESC",
 				Args:    []interface{}{},
 				IndexBy: "foo_id",
-				In:      []interface{}{0, 1, 2},
-				Offset:  1,
+				In:      []interface{}{1},
 				Limit:   1,
 			},
 		},
-
 		{
 			description: "Aerospike cache with record pagination",
 			driver:      "sqlite3",
@@ -485,7 +483,7 @@ func TestReader_ReadAll(t *testing.T) {
 				return &case3Wrapper{}
 			},
 			resolver:        io.NewResolver(),
-			expectedScanned: `[{"Id":1,"Desc":"desc1","Name":"John"},{"Id":5,"Desc":"desc5","Name":"Name - 3"},{"Id":2,"Desc":"desc2","Name":"Bruce"},{"Id":3,"Desc":"desc3","Name":"Name - 1"}]`,
+			expectedScanned: `[[1,"John","desc1","101"],[5,"Name - 3","desc5","101"],[2,"Bruce","desc2","102"],[3,"Name - 1","desc3","102"]]`,
 			cacheConfig: &cacheConfig{
 				cacheType: "aerospike",
 			},
@@ -504,11 +502,110 @@ func TestReader_ReadAll(t *testing.T) {
 				Limit:   2,
 			},
 		},
+		{
+			description: "Database record pagination",
+			driver:      "sqlite3",
+			dsn:         "/tmp/sqllite.db",
+			initSQL: []string{
+				"CREATE TABLE IF NOT EXISTS t12 (foo_id INTEGER PRIMARY KEY, foo_name TEXT, desc TEXT, unk TEXT)",
+				"delete from t12",
+				`insert into t12 values(1, "John", "desc1", "101")`,
+				`insert into t12 values(2, "Bruce", "desc2", "102")`,
+				`insert into t12 values(3, "Name - 1", "desc3", "102")`,
+				`insert into t12 values(4, "Name - 2", "desc4", "102")`,
+				`insert into t12 values(5, "Name - 3", "desc5", "101")`,
+			},
+			query: "SELECT * FROM t12 ORDER BY 4 DESC",
+			newRow: func() interface{} {
+				return &case3Wrapper{}
+			},
+			resolver:       io.NewResolver(),
+			expect:         `[{"Id":3,"Desc":"desc3","Name":"Name - 1"},{"Id":4,"Desc":"desc4","Name":"Name - 2"},{"Id":5,"Desc":"desc5","Name":"Name - 3"}]`,
+			expectResolved: `["102","102","101"]`,
+			matcher: &cache.Matcher{
+				SQL:     "SELECT * FROM t12 ORDER BY 4 DESC",
+				Args:    []interface{}{},
+				IndexBy: "unk",
+				In:      []interface{}{"101", "102"},
+				Offset:  1,
+				Limit:   2,
+			},
+		},
+		{
+			description: "Database record pagination | offset > len(table)",
+			driver:      "sqlite3",
+			dsn:         "/tmp/sqllite.db",
+			initSQL: []string{
+				"CREATE TABLE IF NOT EXISTS t13 (foo_id INTEGER PRIMARY KEY, foo_name TEXT, desc TEXT, unk TEXT)",
+				"delete from t13",
+				`insert into t13 values(1, "John", "desc1", "101")`,
+				`insert into t13 values(2, "Bruce", "desc2", "102")`,
+				`insert into t13 values(3, "Name - 1", "desc3", "102")`,
+				`insert into t13 values(4, "Name - 2", "desc4", "102")`,
+				`insert into t13 values(5, "Name - 3", "desc5", "101")`,
+			},
+			query: "SELECT * FROM t13 ORDER BY 4 DESC",
+			newRow: func() interface{} {
+				return &case3Wrapper{}
+			},
+			resolver:       io.NewResolver(),
+			expect:         `[]`,
+			expectResolved: `[]`,
+			matcher: &cache.Matcher{
+				SQL:     "SELECT * FROM t13 ORDER BY 4 DESC",
+				Args:    []interface{}{},
+				IndexBy: "unk",
+				In:      []interface{}{"101", "102"},
+				Offset:  10,
+				Limit:   2,
+			},
+		},
+		{
+			description: "Aerospike cache with record pagination | offset > len(table)",
+			driver:      "sqlite3",
+			dsn:         "/tmp/sqllite.db",
+			initSQL: []string{
+				"CREATE TABLE IF NOT EXISTS t14 (foo_id INTEGER PRIMARY KEY, foo_name TEXT, desc TEXT, unk TEXT)",
+				"delete from t14",
+				`insert into t14 values(1, "John", "desc1", "101")`,
+				`insert into t14 values(2, "Bruce", "desc2", "102")`,
+				`insert into t14 values(3, "Name - 1", "desc3", "102")`,
+				`insert into t14 values(4, "Name - 2", "desc4", "102")`,
+				`insert into t14 values(5, "Name - 3", "desc5", "101")`,
+			},
+			query: "SELECT * FROM t14 ORDER BY 4 DESC",
+			newRow: func() interface{} {
+				return &case3Wrapper{}
+			},
+			resolver:        io.NewResolver(),
+			expectedScanned: `[]`,
+			cacheConfig: &cacheConfig{
+				cacheType: "aerospike",
+			},
+			expect:         `[]`,
+			expectResolved: `[]`,
+			cacheWarmup: &cacheWarmup{
+				column: "unk",
+				SQL:    "SELECT * FROM t14 ORDER BY 4 DESC",
+			},
+			matcher: &cache.Matcher{
+				SQL:     "SELECT * FROM t14 ORDER BY 4 DESC",
+				Args:    []interface{}{},
+				IndexBy: "unk",
+				In:      []interface{}{"101", "102"},
+				Offset:  100,
+				Limit:   2,
+			},
+		},
 	}
 
 outer:
 	//for i, testCase := range useCases[len(useCases)-1:] {
 	for i, testCase := range useCases {
+		if testCase.matcher != nil {
+			testCase.matcher.OnSkip = testCase.resolver.OnSkip
+		}
+
 		fmt.Printf("Running testcase: %v | %v\n", i, testCase.description)
 		os.RemoveAll(testCase.dsn)
 		ctx := context.Background()
@@ -555,6 +652,7 @@ outer:
 		if !assert.Nil(t, err, testCase.description) {
 			continue
 		}
+
 		dbRequests := 1
 		if testCase.rowMapperCache != nil {
 			dbRequests = 2
@@ -664,24 +762,24 @@ func testQueryAll(t *testing.T, reader *read.Reader, testCase *usecase, index in
 	return true
 }
 
-func slicesEqualIgnoreOrder(t *testing.T, description string, slice, slice2 string) bool {
+func slicesEqualIgnoreOrder(t *testing.T, description string, expected, actual string) bool {
 	var xSlice []interface{}
-	if !assert.Nil(t, json.Unmarshal([]byte(slice), &xSlice), description) {
+	if len(expected) != 0 && !assert.Nil(t, json.Unmarshal([]byte(expected), &xSlice), description) {
 		return false
 	}
 
 	var ySlice []interface{}
-	if !assert.Nil(t, json.Unmarshal([]byte(slice), &ySlice), description) {
+	if len(actual) != 0 && !assert.Nil(t, json.Unmarshal([]byte(actual), &ySlice), description) {
 		return false
 	}
 
-	if !assert.Equal(t, len(xSlice), len(ySlice), description) {
-		return false
+	if len(xSlice) != len(ySlice) {
+		return assert.Equal(t, xSlice, ySlice, description)
 	}
 
 outer:
-	for i, xValue := range xSlice {
-		for _, yValue := range ySlice {
+	for _, xValue := range xSlice {
+		for j, yValue := range ySlice {
 			if yValue == nil {
 				continue
 			}
@@ -690,7 +788,7 @@ outer:
 			yValueMarshal, _ := json.Marshal(yValue)
 
 			if string(xValueMarshal) == string(yValueMarshal) {
-				ySlice[i] = nil
+				ySlice[j] = nil
 				continue outer
 			}
 		}

@@ -20,6 +20,7 @@ type (
 		In      []interface{}
 		Offset  int
 		Limit   int
+		OnSkip  func(values []interface{}) error
 
 		marshalArgs []byte
 		initialized bool
