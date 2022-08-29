@@ -2,7 +2,6 @@ package parser
 
 import (
 	"bytes"
-	"fmt"
 	"github.com/viant/parsly"
 	"github.com/viant/sqlx/metadata/ast/expr"
 	"github.com/viant/sqlx/metadata/ast/query"
@@ -57,7 +56,6 @@ func parseQuery(cursor *parsly.Cursor, dest *query.Select) error {
 			}
 			dest.From.Alias = discoverAlias(cursor)
 			match = cursor.MatchAfterOptional(whitespaceMatcher, commentBlockMatcher)
-			fmt.Printf("match: %v %T\n", match.Code, match.Matcher)
 			if match.Code == commentBlock {
 				dest.From.Comments = match.Text(cursor)
 			}
