@@ -185,10 +185,10 @@ func (a *Cache) AddValues(ctx context.Context, entry *cache.Entry, values []inte
 }
 
 func (a *Cache) Get(ctx context.Context, SQL string, args []interface{}, options ...interface{}) (*cache.Entry, error) {
-	var columnsInMatcher *cache.Matcher
+	var columnsInMatcher *cache.Index
 	for _, option := range options {
 		switch actual := option.(type) {
-		case *cache.Matcher:
+		case *cache.Index:
 			columnsInMatcher = actual
 		}
 	}
@@ -235,7 +235,7 @@ func (a *Cache) Get(ctx context.Context, SQL string, args []interface{}, options
 	return anEntry, a.updateWriter(anEntry, fullMatch, SQL, argsMarshal)
 }
 
-func (a *Cache) readRecords(SQL string, args []interface{}, matcher *cache.Matcher) (fullMatch *RecordMatched, columnsInMatch *RecordMatched, errors []error) {
+func (a *Cache) readRecords(SQL string, args []interface{}, matcher *cache.Index) (fullMatch *RecordMatched, columnsInMatch *RecordMatched, errors []error) {
 	errors = make([]error, 2)
 	wg := sync.WaitGroup{}
 
@@ -245,7 +245,7 @@ func (a *Cache) readRecords(SQL string, args []interface{}, matcher *cache.Match
 		fullMatch, errors[0] = a.readRecord(SQL, args, nil)
 	}(SQL, args, &wg)
 
-	go func(matcher *cache.Matcher) {
+	go func(matcher *cache.Index) {
 		defer wg.Done()
 		if matcher == nil {
 			return
@@ -258,7 +258,7 @@ func (a *Cache) readRecords(SQL string, args []interface{}, matcher *cache.Match
 		}
 
 		columnsInMatch, errors[1] = a.readRecord(matcher.SQL, matcher.Args, argsMarshal, func(aKey string) (string, error) {
-			return a.columnURL(aKey, matcher.IndexBy), nil
+			return a.columnURL(aKey, matcher.By), nil
 		})
 	}(matcher)
 	wg.Wait()
@@ -586,7 +586,7 @@ func (a *Cache) updateFullMatchEntry(ctx context.Context, anEntry *cache.Entry, 
 	return nil
 }
 
-func (a *Cache) updateColumnsInMatchEntry(entry *cache.Entry, match *RecordMatched, matcher *cache.Matcher) error {
+func (a *Cache) updateColumnsInMatchEntry(entry *cache.Entry, match *RecordMatched, matcher *cache.Index) error {
 	if match == nil || entry.ReadCloser != nil || !match.hasKey {
 		return nil
 	}
@@ -645,8 +645,8 @@ func (a *Cache) updateWriter(anEntry *cache.Entry, fullMatch *RecordMatched, SQL
 	return nil
 }
 
-func (a *Cache) readChan(readerChan chan *readerWrapper, matcher *cache.Matcher, columnValue interface{}) {
-	go func(matcher *cache.Matcher, columnValue interface{}) {
+func (a *Cache) readChan(readerChan chan *readerWrapper, matcher *cache.Index, columnValue interface{}) {
+	go func(matcher *cache.Index, columnValue interface{}) {
 		reader, err := a.newReader(matcher, columnValue)
 		readerChan <- &readerWrapper{
 			err:    err,
@@ -655,7 +655,7 @@ func (a *Cache) readChan(readerChan chan *readerWrapper, matcher *cache.Matcher,
 	}(matcher, columnValue)
 }
 
-func (a *Cache) newReader(matcher *cache.Matcher, columnValue interface{}) (*Reader, error) {
+func (a *Cache) newReader(matcher *cache.Index, columnValue interface{}) (*Reader, error) {
 	valueMarshal, err := json.Marshal(columnValue)
 	if err != nil {
 		return nil, err
@@ -671,7 +671,7 @@ func (a *Cache) newReader(matcher *cache.Matcher, columnValue interface{}) (*Rea
 		return nil, err
 	}
 
-	actualKeyValue = a.columnValueURL(matcher.IndexBy, valueMarshal, actualKeyValue)
+	actualKeyValue = a.columnValueURL(matcher.By, valueMarshal, actualKeyValue)
 	aKey, err := a.key(actualKeyValue)
 	if err != nil {
 		return nil, err

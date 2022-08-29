@@ -63,7 +63,7 @@ type (
 		rowMapperCache  *read.MapperCache
 		cacheConfig     *cacheConfig
 		cacheWarmup     *cacheWarmup
-		matcher         *cache.Matcher
+		matcher         *cache.Index
 	}
 
 	cacheWarmup struct {
@@ -424,11 +424,11 @@ func TestReader_ReadAll(t *testing.T) {
 				column: "foo_id",
 				SQL:    "SELECT * FROM t10 ORDER BY 1 DESC",
 			},
-			matcher: &cache.Matcher{
-				SQL:     "SELECT * FROM t10 ORDER BY 1 DESC",
-				Args:    []interface{}{},
-				IndexBy: "foo_id",
-				In:      []interface{}{1, 2},
+			matcher: &cache.Index{
+				SQL:  "SELECT * FROM t10 ORDER BY 1 DESC",
+				Args: []interface{}{},
+				By:   "foo_id",
+				In:   []interface{}{1, 2},
 			},
 		},
 		{
@@ -457,12 +457,12 @@ func TestReader_ReadAll(t *testing.T) {
 				column: "foo_id",
 				SQL:    "SELECT * FROM t10 ORDER BY 1 DESC",
 			},
-			matcher: &cache.Matcher{
-				SQL:     "SELECT * FROM t10 ORDER BY 1 DESC",
-				Args:    []interface{}{},
-				IndexBy: "foo_id",
-				In:      []interface{}{1},
-				Limit:   1,
+			matcher: &cache.Index{
+				SQL:   "SELECT * FROM t10 ORDER BY 1 DESC",
+				Args:  []interface{}{},
+				By:    "foo_id",
+				In:    []interface{}{1},
+				Limit: 1,
 			},
 		},
 		{
@@ -493,13 +493,13 @@ func TestReader_ReadAll(t *testing.T) {
 				column: "unk",
 				SQL:    "SELECT * FROM t11 ORDER BY 4 DESC",
 			},
-			matcher: &cache.Matcher{
-				SQL:     "SELECT * FROM t11 ORDER BY 4 DESC",
-				Args:    []interface{}{},
-				IndexBy: "unk",
-				In:      []interface{}{"101", "102"},
-				Offset:  0,
-				Limit:   2,
+			matcher: &cache.Index{
+				SQL:    "SELECT * FROM t11 ORDER BY 4 DESC",
+				Args:   []interface{}{},
+				By:     "unk",
+				In:     []interface{}{"101", "102"},
+				Offset: 0,
+				Limit:  2,
 			},
 		},
 		{
@@ -522,13 +522,13 @@ func TestReader_ReadAll(t *testing.T) {
 			resolver:       io.NewResolver(),
 			expect:         `[{"Id":3,"Desc":"desc3","Name":"Name - 1"},{"Id":4,"Desc":"desc4","Name":"Name - 2"},{"Id":5,"Desc":"desc5","Name":"Name - 3"}]`,
 			expectResolved: `["102","102","101"]`,
-			matcher: &cache.Matcher{
-				SQL:     "SELECT * FROM t12 ORDER BY 4 DESC",
-				Args:    []interface{}{},
-				IndexBy: "unk",
-				In:      []interface{}{"101", "102"},
-				Offset:  1,
-				Limit:   2,
+			matcher: &cache.Index{
+				SQL:    "SELECT * FROM t12 ORDER BY 4 DESC",
+				Args:   []interface{}{},
+				By:     "unk",
+				In:     []interface{}{"101", "102"},
+				Offset: 1,
+				Limit:  2,
 			},
 		},
 		{
@@ -551,13 +551,13 @@ func TestReader_ReadAll(t *testing.T) {
 			resolver:       io.NewResolver(),
 			expect:         `[]`,
 			expectResolved: `[]`,
-			matcher: &cache.Matcher{
-				SQL:     "SELECT * FROM t13 ORDER BY 4 DESC",
-				Args:    []interface{}{},
-				IndexBy: "unk",
-				In:      []interface{}{"101", "102"},
-				Offset:  10,
-				Limit:   2,
+			matcher: &cache.Index{
+				SQL:    "SELECT * FROM t13 ORDER BY 4 DESC",
+				Args:   []interface{}{},
+				By:     "unk",
+				In:     []interface{}{"101", "102"},
+				Offset: 10,
+				Limit:  2,
 			},
 		},
 		{
@@ -588,13 +588,13 @@ func TestReader_ReadAll(t *testing.T) {
 				column: "unk",
 				SQL:    "SELECT * FROM t14 ORDER BY 4 DESC",
 			},
-			matcher: &cache.Matcher{
-				SQL:     "SELECT * FROM t14 ORDER BY 4 DESC",
-				Args:    []interface{}{},
-				IndexBy: "unk",
-				In:      []interface{}{"101", "102"},
-				Offset:  100,
-				Limit:   2,
+			matcher: &cache.Index{
+				SQL:    "SELECT * FROM t14 ORDER BY 4 DESC",
+				Args:   []interface{}{},
+				By:     "unk",
+				In:     []interface{}{"101", "102"},
+				Offset: 100,
+				Limit:  2,
 			},
 		},
 		{
@@ -618,13 +618,13 @@ func TestReader_ReadAll(t *testing.T) {
 			resolver:       io.NewResolver(),
 			expect:         `[{"Id":2,"Desc":"desc2","Name":"Bruce"},{"Id":3,"Desc":"desc3","Name":"Name - 1"},{"Id":4,"Desc":"desc4","Name":"Name - 2"},{"Id":1,"Desc":"desc1","Name":"John"},{"Id":5,"Desc":"desc5","Name":"Name - 3"},{"Id":6,"Desc":"desc6","Name":"Name - 4"}]`,
 			expectResolved: `["102","102","102","101","101","101"]`,
-			matcher: &cache.Matcher{
-				SQL:     "SELECT * FROM t13 ORDER BY 4 DESC",
-				Args:    []interface{}{},
-				IndexBy: "unk",
-				In:      []interface{}{"101", "102"},
-				Offset:  0,
-				Limit:   0,
+			matcher: &cache.Index{
+				SQL:    "SELECT * FROM t13 ORDER BY 4 DESC",
+				Args:   []interface{}{},
+				By:     "unk",
+				In:     []interface{}{"101", "102"},
+				Offset: 0,
+				Limit:  0,
 			},
 		},
 	}

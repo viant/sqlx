@@ -17,7 +17,7 @@ type Rows struct {
 	xTypes              []*xunsafe.Type
 	cache               cache.Cache
 	entry               *cache.Entry
-	matcher             *cache.Matcher
+	matcher             *cache.Index
 	occurIndex          map[interface{}]int
 	columnIndex         int
 	matcherColumnDerefs []*xunsafe.Type
@@ -36,7 +36,7 @@ func (c *Rows) CheckType(ctx context.Context, values []interface{}) (bool, error
 	return true, nil
 }
 
-func NewRows(rows *sql.Rows, cache cache.Cache, entry *cache.Entry, matcher *cache.Matcher) (*Rows, error) {
+func NewRows(rows *sql.Rows, cache cache.Cache, entry *cache.Entry, matcher *cache.Index) (*Rows, error) {
 	readerRows := &Rows{
 		rows:        rows,
 		cache:       cache,
@@ -171,12 +171,12 @@ func (c *Rows) initMatcherColumn() error {
 		return nil
 	}
 
-	if len(c.matcher.In) <= 1 || c.matcher.IndexBy == "" {
+	if len(c.matcher.In) <= 1 || c.matcher.By == "" {
 		return nil
 	}
 
 	for i, column := range c.columns {
-		if column.Name() == c.matcher.IndexBy {
+		if column.Name() == c.matcher.By {
 			c.columnIndex = i
 			return nil
 		}
