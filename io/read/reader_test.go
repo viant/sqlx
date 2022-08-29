@@ -597,6 +597,36 @@ func TestReader_ReadAll(t *testing.T) {
 				Limit:   2,
 			},
 		},
+		{
+			description: "Database record pagination | limit: 0, pagination: 0",
+			driver:      "sqlite3",
+			dsn:         "/tmp/sqllite.db",
+			initSQL: []string{
+				"CREATE TABLE IF NOT EXISTS t13 (foo_id INTEGER PRIMARY KEY, foo_name TEXT, desc TEXT, unk TEXT)",
+				"delete from t13",
+				`insert into t13 values(1, "John", "desc1", "101")`,
+				`insert into t13 values(2, "Bruce", "desc2", "102")`,
+				`insert into t13 values(3, "Name - 1", "desc3", "102")`,
+				`insert into t13 values(4, "Name - 2", "desc4", "102")`,
+				`insert into t13 values(5, "Name - 3", "desc5", "101")`,
+				`insert into t13 values(6, "Name - 4", "desc6", "101")`,
+			},
+			query: "SELECT * FROM t13 ORDER BY 4 DESC",
+			newRow: func() interface{} {
+				return &case3Wrapper{}
+			},
+			resolver:       io.NewResolver(),
+			expect:         `[{"Id":2,"Desc":"desc2","Name":"Bruce"},{"Id":3,"Desc":"desc3","Name":"Name - 1"},{"Id":4,"Desc":"desc4","Name":"Name - 2"},{"Id":1,"Desc":"desc1","Name":"John"},{"Id":5,"Desc":"desc5","Name":"Name - 3"},{"Id":6,"Desc":"desc6","Name":"Name - 4"}]`,
+			expectResolved: `["102","102","102","101","101","101"]`,
+			matcher: &cache.Matcher{
+				SQL:     "SELECT * FROM t13 ORDER BY 4 DESC",
+				Args:    []interface{}{},
+				IndexBy: "unk",
+				In:      []interface{}{"101", "102"},
+				Offset:  0,
+				Limit:   0,
+			},
+		},
 	}
 
 outer:
