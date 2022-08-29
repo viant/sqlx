@@ -21,6 +21,7 @@ type Rows struct {
 	occurIndex          map[interface{}]int
 	columnIndex         int
 	matcherColumnDerefs []*xunsafe.Type
+	exhausted           int
 }
 
 func (c *Rows) Rollback(ctx context.Context) error {
@@ -59,9 +60,8 @@ func (c *Rows) ConvertColumns() ([]io.Column, error) {
 }
 
 func (c *Rows) Scanner(ctx context.Context) cache.ScannerFn {
-	exhausted := 0
 	return func(args ...interface{}) error {
-		if c.matcher != nil && len(c.matcher.In) > 0 && len(c.matcher.In) == exhausted {
+		if c.matcher != nil && len(c.matcher.In) > 0 && len(c.matcher.In) == c.exhausted {
 			return goIo.EOF
 		}
 
@@ -78,8 +78,8 @@ func (c *Rows) Scanner(ctx context.Context) cache.ScannerFn {
 				return SkipError("skipped")
 			}
 
-			if occurTimes == c.matcher.Limit {
-				exhausted++
+			if occurTimes == c.matcher.Limit && c.matcher.Limit != 0 {
+				c.exhausted++
 			}
 		}
 
