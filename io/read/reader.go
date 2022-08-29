@@ -3,33 +3,43 @@ package read
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"github.com/viant/sqlx/io"
 	"github.com/viant/sqlx/io/read/cache"
 	"github.com/viant/sqlx/metadata/info"
 	"github.com/viant/sqlx/metadata/registry"
 	"github.com/viant/sqlx/option"
+	goIo "io"
 	"reflect"
 )
 
 // Reader represents generic query reader
-type Reader struct {
-	query              string
-	newRow             func() interface{}
-	targetType         reflect.Type
-	tagName            string
-	stmt               *sql.Stmt
-	rows               *sql.Rows
-	getRowMapper       NewRowMapper
-	unmappedFn         io.Resolve
-	shallDeref         bool
-	cache              cache.Cache
-	mapperCache        *MapperCache
-	targetDatatype     string
-	disableMapperCache DisableMapperCache
-	matcher            *cache.Matcher
-	db                 *sql.DB
-}
+type (
+	Reader struct {
+		query              string
+		newRow             func() interface{}
+		targetType         reflect.Type
+		tagName            string
+		stmt               *sql.Stmt
+		rows               *sql.Rows
+		getRowMapper       NewRowMapper
+		unmappedFn         io.Resolve
+		shallDeref         bool
+		cache              cache.Cache
+		mapperCache        *MapperCache
+		targetDatatype     string
+		disableMapperCache DisableMapperCache
+		matcher            *cache.Matcher
+		db                 *sql.DB
+		row                *bufferEntry
+	}
+
+	bufferEntry struct {
+		row    *interface{}
+		values *[]interface{}
+	}
+)
 
 // QuerySingle returns single row
 func (r *Reader) QuerySingle(ctx context.Context, emit func(row interface{}) error, args ...interface{}) error {
@@ -135,7 +145,11 @@ func (r *Reader) readAll(ctx context.Context, emit func(row interface{}) error, 
 		err = r.read(ctx, source, &mapper, emit, cacheEntry)
 	}
 
-	if err == nil {
+	if r.row != nil && r.matcher != nil && r.matcher.OnSkip != nil {
+		_ = r.matcher.OnSkip(*r.row.values)
+	}
+
+	if err == nil || errors.Is(err, goIo.EOF) {
 		return source.Close(ctx)
 	} else {
 		_ = source.Rollback(ctx)
@@ -177,59 +191,84 @@ func (r *Reader) QueryAllWithMap(ctx context.Context, emit func(row map[string]i
 }
 
 func (r *Reader) read(ctx context.Context, source cache.Source, mapperPtr *RowMapper, emit func(row interface{}) error, cacheEntry *cache.Entry) error {
-	row := r.newRow()
-	if r.targetType == nil {
-		r.targetType = reflect.TypeOf(row)
-		r.targetDatatype = r.targetType.String()
-		r.shallDeref = r.targetType.Kind() == reflect.Map || r.targetType.Kind() == reflect.Slice
-	}
-
-	mapper, err := r.ensureRowMapper(source, mapperPtr)
+	row, values, err := r.prepareRow(source, mapperPtr)
 	if err != nil {
 		return err
 	}
 
-	rowValues, err := mapper(row)
-	if err != nil {
-		return err
-	}
-
-	typeMatches, err := source.CheckType(ctx, rowValues)
+	typeMatches, err := source.CheckType(ctx, values)
 	if !typeMatches {
 		return fmt.Errorf("invalid cache type")
 	}
 
 	scanner := source.Scanner(ctx)
-	if err = scanner(rowValues...); err != nil {
+	skipped := false
+	if err = scanner(values...); err != nil {
 		_, ok := err.(SkipError)
 		if !ok {
 			return fmt.Errorf("failed to scan %v, due to %w", r.query, err)
 		}
 
-		if r.matcher != nil && r.matcher.OnSkip != nil {
-			if afterSkipErr := r.matcher.OnSkip(rowValues); afterSkipErr != nil {
-				return afterSkipErr
-			}
-		}
+		err = nil
+		skipped = true
 	}
 
-	if err == nil { // err can be not nil, it means that the record should be skipped
-		if err = r.ensureDereferences(row, source, rowValues); err != nil {
-			return err
-		}
-
-		if err = emit(row); err != nil {
-			return err
-		}
+	if err = r.addToEntry(ctx, cacheEntry, values); err != nil {
+		return err
 	}
 
-	if cacheEntry != nil && !cacheEntry.Has() {
-		if err = r.cache.AddValues(ctx, cacheEntry, rowValues); err != nil {
-			return err
-		}
+	if skipped {
+		return nil
 	}
+
+	if err = r.ensureDereferences(row, source, values); err != nil {
+		return err
+	}
+
+	if err = emit(row); err != nil {
+		return err
+	}
+
+	r.row = nil
 
 	return nil
+}
+
+func (r *Reader) addToEntry(ctx context.Context, cacheEntry *cache.Entry, values []interface{}) error {
+	if cacheEntry == nil {
+		return nil
+	}
+
+	if cacheEntry.Has() {
+		return nil
+	}
+
+	return r.cache.AddValues(ctx, cacheEntry, values)
+}
+
+func (r *Reader) prepareRow(source cache.Source, mapperPtr *RowMapper) (row interface{}, values []interface{}, err error) {
+	if r.row != nil {
+		return *r.row.row, *r.row.values, nil
+	}
+
+	newRow := r.newRow()
+	r.ensureTargetType(newRow)
+	mapper, err := r.ensureRowMapper(source, mapperPtr)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	rowValues, err := mapper(newRow)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	r.row = &bufferEntry{
+		row:    &newRow,
+		values: &rowValues,
+	}
+
+	return newRow, rowValues, nil
 }
 
 func (r *Reader) ensureDereferences(row interface{}, source cache.Source, rowValues []interface{}) error {
@@ -320,6 +359,16 @@ func (r *Reader) ensureStmt(ctx context.Context) error {
 
 	r.stmt = stmt
 	return nil
+}
+
+func (r *Reader) ensureTargetType(row interface{}) {
+	if r.targetType != nil {
+		return
+	}
+
+	r.targetType = reflect.TypeOf(row)
+	r.targetDatatype = r.targetType.String()
+	r.shallDeref = r.targetType.Kind() == reflect.Map || r.targetType.Kind() == reflect.Slice
 }
 
 // New creates a records to a structs reader

@@ -7,6 +7,7 @@ import (
 	"github.com/viant/sqlx/io"
 	"github.com/viant/sqlx/io/read/cache"
 	"github.com/viant/xunsafe"
+	goIo "io"
 	"reflect"
 )
 
@@ -58,7 +59,12 @@ func (c *Rows) ConvertColumns() ([]io.Column, error) {
 }
 
 func (c *Rows) Scanner(ctx context.Context) cache.ScannerFn {
+	exhausted := 0
 	return func(args ...interface{}) error {
+		if c.matcher != nil && len(c.matcher.In) > 0 && len(c.matcher.In) == exhausted {
+			return goIo.EOF
+		}
+
 		var err error
 		if err = c.rows.Scan(args...); err != nil {
 			return err
@@ -67,9 +73,13 @@ func (c *Rows) Scanner(ctx context.Context) cache.ScannerFn {
 		if !(c.columnIndex == -1 || c.matcher == nil) {
 			columnValue := c.asKey(args[c.columnIndex])
 			occurTimes := c.occurIndex[columnValue]
-			if occurTimes < c.matcher.Offset {
+			if occurTimes < c.matcher.Offset || occurTimes > c.matcher.Limit {
 				c.occurIndex[columnValue] = occurTimes + 1
 				return SkipError("skipped")
+			}
+
+			if occurTimes == c.matcher.Limit {
+				exhausted++
 			}
 		}
 
