@@ -17,13 +17,15 @@ func TestParseSelect(t *testing.T) {
 			expect      string
 		}{
 
-			/*
-
-			 */
+			{
+				description: "comments",
+				SQL:         `SELECT user.* FROM user u -- extra comments `,
+				expect:      `SELECT user.* FROM user u`,
+			},
 			{
 				description: "expr with comments",
-				SQL:         `SELECT    1 + (COUNT(1) / $View.Limit)  AS PAGE_CNT /* {"DataType":"int"} */ FROM table t`,
-				expect:      `SELECT 1 + (COUNT(1) / $View.Limit) AS PAGE_CNT /* {"DataType":"int"} */ FROM table t`,
+				SQL:         `SELECT user.* FROM (SELECT t.* FROM USER t  ) user /* {"Self":{"Holder":"Team", "Child":"ID", "Parent":"MGR_ID" }} */ `,
+				expect:      `SELECT user.* FROM  (SELECT t.* FROM USER t  )  user /* {"Self":{"Holder":"Team", "Child":"ID", "Parent":"MGR_ID" }} */`,
 			},
 
 			{

@@ -18,6 +18,9 @@ func Stringify(n node.Node) string {
 }
 
 func stringify(n node.Node, builder *bytes.Buffer) {
+	if n == nil {
+		panic("node was nill")
+	}
 	switch actual := n.(type) {
 	case *query.Select:
 		builder.WriteString("SELECT ")
@@ -94,6 +97,9 @@ func stringify(n node.Node, builder *bytes.Buffer) {
 		builder.WriteString(actual.Raw)
 		builder.WriteString(" ")
 	case *query.From:
+		if actual.X == nil {
+			return
+		}
 		stringify(actual.X, builder)
 		if actual.Alias != "" {
 			builder.WriteString(" " + actual.Alias)

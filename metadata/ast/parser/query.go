@@ -1,6 +1,8 @@
 package parser
 
 import (
+	"bytes"
+	"fmt"
 	"github.com/viant/parsly"
 	"github.com/viant/sqlx/metadata/ast/expr"
 	"github.com/viant/sqlx/metadata/ast/query"
@@ -9,8 +11,25 @@ import (
 
 func ParseQuery(SQL string) (*query.Select, error) {
 	result := &query.Select{}
+	SQL = removeSQLComments(SQL)
 	cursor := parsly.NewCursor("", []byte(SQL), 0)
 	return result, parseQuery(cursor, result)
+}
+
+func removeSQLComments(SQL string) string {
+	lines := strings.Split(SQL, "\n")
+	buffer := new(bytes.Buffer)
+	for i, line := range lines {
+		if i > 0 {
+			buffer.WriteString("\n")
+		}
+		i++
+		if index := strings.Index(line, "--"); index != -1 {
+			line = line[:index]
+		}
+		buffer.WriteString(line)
+	}
+	return buffer.String()
 }
 
 func parseQuery(cursor *parsly.Cursor, dest *query.Select) error {
@@ -38,6 +57,7 @@ func parseQuery(cursor *parsly.Cursor, dest *query.Select) error {
 			}
 			dest.From.Alias = discoverAlias(cursor)
 			match = cursor.MatchAfterOptional(whitespaceMatcher, commentBlockMatcher)
+			fmt.Printf("match: %v %T\n", match.Code, match.Matcher)
 			if match.Code == commentBlock {
 				dest.From.Comments = match.Text(cursor)
 			}
