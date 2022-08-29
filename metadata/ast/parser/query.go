@@ -2,6 +2,7 @@ package parser
 
 import (
 	"bytes"
+	"fmt"
 	"github.com/viant/parsly"
 	"github.com/viant/sqlx/metadata/ast/expr"
 	"github.com/viant/sqlx/metadata/ast/query"
@@ -12,7 +13,11 @@ func ParseQuery(SQL string) (*query.Select, error) {
 	result := &query.Select{}
 	SQL = removeSQLComments(SQL)
 	cursor := parsly.NewCursor("", []byte(SQL), 0)
-	return result, parseQuery(cursor, result)
+	err := parseQuery(cursor, result)
+	if err != nil {
+		return result, fmt.Errorf("%w, %s", SQL)
+	}
+	return result, err
 }
 
 func removeSQLComments(SQL string) string {
