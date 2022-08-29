@@ -7,14 +7,20 @@ import (
 	"github.com/viant/sqlx/io"
 	"github.com/viant/sqlx/io/read/cache"
 	"github.com/viant/xunsafe"
+	goIo "io"
+	"reflect"
 )
 
 type Rows struct {
-	rows    *sql.Rows
-	columns []io.Column
-	xTypes  []*xunsafe.Type
-	cache   cache.Cache
-	entry   *cache.Entry
+	rows                *sql.Rows
+	columns             []io.Column
+	xTypes              []*xunsafe.Type
+	cache               cache.Cache
+	entry               *cache.Entry
+	matcher             *cache.Matcher
+	occurIndex          map[interface{}]int
+	columnIndex         int
+	matcherColumnDerefs []*xunsafe.Type
 }
 
 func (c *Rows) Rollback(ctx context.Context) error {
@@ -29,11 +35,14 @@ func (c *Rows) CheckType(ctx context.Context, values []interface{}) (bool, error
 	return true, nil
 }
 
-func NewRows(rows *sql.Rows, cache cache.Cache, entry *cache.Entry) (*Rows, error) {
+func NewRows(rows *sql.Rows, cache cache.Cache, entry *cache.Entry, matcher *cache.Matcher) (*Rows, error) {
 	readerRows := &Rows{
-		rows:  rows,
-		cache: cache,
-		entry: entry,
+		rows:        rows,
+		cache:       cache,
+		entry:       entry,
+		matcher:     matcher,
+		occurIndex:  map[interface{}]int{},
+		columnIndex: -1,
 	}
 
 	return readerRows, nil
@@ -50,10 +59,28 @@ func (c *Rows) ConvertColumns() ([]io.Column, error) {
 }
 
 func (c *Rows) Scanner(ctx context.Context) cache.ScannerFn {
+	exhausted := 0
 	return func(args ...interface{}) error {
+		if c.matcher != nil && len(c.matcher.In) > 0 && len(c.matcher.In) == exhausted {
+			return goIo.EOF
+		}
+
 		var err error
 		if err = c.rows.Scan(args...); err != nil {
 			return err
+		}
+
+		if !(c.columnIndex == -1 || c.matcher == nil) {
+			columnValue := c.asKey(args[c.columnIndex])
+			occurTimes := c.occurIndex[columnValue]
+			if occurTimes < c.matcher.Offset || occurTimes > c.matcher.Limit {
+				c.occurIndex[columnValue] = occurTimes + 1
+				return SkipError("skipped")
+			}
+
+			if occurTimes == c.matcher.Limit {
+				exhausted++
+			}
 		}
 
 		if err = c.rows.Err(); err != nil {
@@ -90,17 +117,6 @@ func (c *Rows) XTypes() []*xunsafe.Type {
 	return c.xTypes
 }
 
-func (c *Rows) init() error {
-	err := c.initColumns()
-	if err != nil {
-		return err
-	}
-
-	c.initXTypes()
-
-	return nil
-}
-
 func (c *Rows) initColumns() error {
 	columnNames, err := c.rows.Columns()
 	if err != nil {
@@ -111,7 +127,8 @@ func (c *Rows) initColumns() error {
 	if columnsTypes, _ := c.rows.ColumnTypes(); len(columnNames) > 0 {
 		c.columns = io.TypesToColumns(columnsTypes)
 	}
-	return nil
+
+	return c.initMatcherColumn()
 }
 
 func (c *Rows) initXTypes() {
@@ -147,4 +164,44 @@ func (c *Rows) Close(ctx context.Context) error {
 
 func (c *Rows) Next() bool {
 	return c.rows.Next()
+}
+
+func (c *Rows) initMatcherColumn() error {
+	if c.matcher == nil {
+		return nil
+	}
+
+	if len(c.matcher.In) <= 1 || c.matcher.IndexBy == "" {
+		return nil
+	}
+
+	for i, column := range c.columns {
+		if column.Name() == c.matcher.IndexBy {
+			c.columnIndex = i
+			return nil
+		}
+	}
+
+	return nil
+}
+
+func (c *Rows) asKey(val interface{}) interface{} {
+	if len(c.matcherColumnDerefs) == 0 {
+		rType := reflect.TypeOf(val)
+		for rType.Kind() == reflect.Ptr {
+			rTypeElem := rType.Elem()
+			c.matcherColumnDerefs = append(c.matcherColumnDerefs, xunsafe.NewType(rTypeElem))
+			rType = rTypeElem
+		}
+	}
+
+	for _, deref := range c.matcherColumnDerefs {
+		if xunsafe.AsPointer(deref) == nil {
+			return nil
+		}
+
+		val = deref.Deref(val)
+	}
+
+	return io.NormalizeKey(val)
 }

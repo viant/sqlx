@@ -413,17 +413,13 @@ func (a *Cache) key(keyValue interface{}) (*as.Key, error) {
 }
 
 func (a *Cache) reader(key *as.Key, record *as.Record) (*Reader, error) {
-	var order []int
 	readOrder, ok := record.Bins[readOrderBin].([]interface{})
 	if ok {
-		order = make([]int, len(readOrder))
-		for i, val := range readOrder {
+		for _, val := range readOrder {
 			actual, ok := val.(int)
 			if !ok {
 				return nil, fmt.Errorf("expected order value to be type of %T but got %T", actual, val)
 			}
-
-			order[i] = actual
 		}
 	}
 
@@ -433,7 +429,6 @@ func (a *Cache) reader(key *as.Key, record *as.Record) (*Reader, error) {
 		namespace: a.namespace,
 		record:    record,
 		set:       a.set,
-		order:     order,
 	}, nil
 }
 
@@ -509,8 +504,6 @@ func (a *Cache) writeIndexData(args *cache.Indexed, URL string, column string, m
 	if !isCompressed {
 		metaBin[dataBin] = string(data)
 	}
-
-	metaBin[readOrderBin] = args.ReadOrder
 
 	return a.client.Put(a.writePolicy(), key, metaBin)
 }
@@ -796,11 +789,9 @@ func (a *Cache) fetchAndIndexValues(fields []*cache.Field, column string, rows *
 
 		indexed := indexSource.Index(columnValue)
 
-		if err = indexed.StringifyData(placeholders.Order, placeholders.Values()); err != nil {
+		if err = indexed.StringifyData(placeholders.Values()); err != nil {
 			return err
 		}
-
-		placeholders.Next()
 	}
 
 	return indexSource.Close()

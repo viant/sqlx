@@ -12,7 +12,6 @@ type Placeholders struct {
 	ptrs                []interface{}
 	columnIndex         int
 	columnDereferencers []*xunsafe.Type
-	Order               int
 }
 
 func (p *Placeholders) init() {
@@ -72,10 +71,6 @@ func (p *Placeholders) ScanPlaceholders() []interface{} {
 
 func (p *Placeholders) Values() []interface{} {
 	return p.deref
-}
-
-func (p *Placeholders) Next() {
-	p.Order++
 }
 
 func NewPlaceholders(columnIndex int, fields []*cache.Field) *Placeholders {

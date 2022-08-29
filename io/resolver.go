@@ -27,6 +27,10 @@ func (r *Resolver) Index(column string) int {
 
 //Data returns column data
 func (r *Resolver) Data(index int) []interface{} {
+	if index >= len(r.data) {
+		return []interface{}{}
+	}
+
 	return r.data[index]
 }
 
@@ -44,6 +48,15 @@ func (r *Resolver) Resolve(column Column) func(ptr unsafe.Pointer) interface{} {
 		r.data[index] = append(r.data[index], result)
 		return result
 	}
+}
+
+func (r *Resolver) OnSkip(values []interface{}) error {
+	if len(r.data) == 0 && len(r.data[0]) == 0 {
+		return nil
+	}
+
+	r.data[0] = r.data[0][:len(r.data[0])-1]
+	return nil
 }
 
 //NewResolver creates a resolver

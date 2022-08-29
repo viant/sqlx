@@ -2,8 +2,15 @@ package cache
 
 import "encoding/json"
 
+const (
+	DefaultPaginationType PaginationType = ""
+	SQLPaginationType     PaginationType = "SQL"
+	RecordPaginationType  PaginationType = "Record"
+)
+
 type (
-	AllowSmart bool
+	AllowSmart     bool
+	PaginationType string
 
 	Matcher struct {
 		SQL     string
@@ -13,6 +20,7 @@ type (
 		In      []interface{}
 		Offset  int
 		Limit   int
+		OnSkip  func(values []interface{}) error
 
 		marshalArgs []byte
 		initialized bool
