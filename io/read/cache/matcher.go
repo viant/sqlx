@@ -2,21 +2,15 @@ package cache
 
 import "encoding/json"
 
-const (
-	DefaultPaginationType PaginationType = ""
-	SQLPaginationType     PaginationType = "SQL"
-	RecordPaginationType  PaginationType = "Record"
-)
-
 type (
-	AllowSmart     bool
-	PaginationType string
+	AllowSmart bool
 
-	Matcher struct {
+	//Index abstraction to represent data optimisation with caching and custom pagination
+	Index struct {
+		By      string
 		SQL     string
 		Ordered bool //SQL uses order by indexby column
 		Args    []interface{}
-		IndexBy string
 		In      []interface{}
 		Offset  int
 		Limit   int
@@ -27,7 +21,7 @@ type (
 	}
 )
 
-func (m *Matcher) Init() {
+func (m *Index) Init() {
 	if m.initialized {
 		return
 	}
@@ -38,7 +32,7 @@ func (m *Matcher) Init() {
 	}
 }
 
-func (m *Matcher) MarshalArgs() ([]byte, error) {
+func (m *Index) MarshalArgs() ([]byte, error) {
 	if m.marshalArgs != nil {
 		return m.marshalArgs, nil
 	}
