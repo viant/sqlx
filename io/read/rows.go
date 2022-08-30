@@ -72,9 +72,14 @@ func (c *Rows) Scanner(ctx context.Context) cache.ScannerFn {
 
 		if !(c.columnIndex == -1 || c.matcher == nil) {
 			columnValue := c.asKey(args[c.columnIndex])
-			occurTimes := c.occurIndex[columnValue]
-			if occurTimes < c.matcher.Offset || occurTimes > c.matcher.Limit {
-				c.occurIndex[columnValue] = occurTimes + 1
+			occurTimes := c.occurIndex[columnValue] + 1
+			limitReached := (occurTimes-c.matcher.Offset) > c.matcher.Limit && c.matcher.Limit != 0
+
+			if !limitReached {
+				c.occurIndex[columnValue] = occurTimes
+			}
+
+			if (occurTimes <= c.matcher.Offset && c.matcher.Offset != 0) || limitReached {
 				return SkipError("skipped")
 			}
 

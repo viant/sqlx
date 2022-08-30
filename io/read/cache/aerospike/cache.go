@@ -22,15 +22,14 @@ import (
 )
 
 const (
-	sqlBin       = "SQL"
-	argsBin      = "Args"
-	dataBin      = "Data"
-	compDataBin  = "CData"
-	typesBin     = "Type"
-	fieldsBin    = "Fields"
-	childBin     = "Child"
-	columnBin    = "Column"
-	readOrderBin = "ReadOrder"
+	sqlBin      = "SQL"
+	argsBin     = "Args"
+	dataBin     = "Data"
+	compDataBin = "CData"
+	typesBin    = "Type"
+	fieldsBin   = "Fields"
+	childBin    = "Child"
+	columnBin   = "Column"
 )
 
 var cachedBins = []string{typesBin, argsBin, sqlBin, dataBin, fieldsBin, compDataBin}
@@ -60,6 +59,10 @@ func (a *Cache) IndexBy(ctx context.Context, db *sql.DB, column, SQL string, arg
 	if err != nil {
 		return err
 	}
+
+	defer func() {
+		_ = rows.Close()
+	}()
 
 	columnTypes, err := rows.ColumnTypes()
 	if err != nil {
@@ -413,15 +416,6 @@ func (a *Cache) key(keyValue interface{}) (*as.Key, error) {
 }
 
 func (a *Cache) reader(key *as.Key, record *as.Record) (*Reader, error) {
-	readOrder, ok := record.Bins[readOrderBin].([]interface{})
-	if ok {
-		for _, val := range readOrder {
-			actual, ok := val.(int)
-			if !ok {
-				return nil, fmt.Errorf("expected order value to be type of %T but got %T", actual, val)
-			}
-		}
-	}
 
 	return &Reader{
 		key:       key,

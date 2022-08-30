@@ -204,6 +204,10 @@ func (r *Reader) read(ctx context.Context, source cache.Source, mapperPtr *RowMa
 	scanner := source.Scanner(ctx)
 	skipped := false
 	if err = scanner(values...); err != nil {
+		if errors.Is(err, goIo.EOF) {
+			return err
+		}
+
 		_, ok := err.(SkipError)
 		if !ok {
 			return fmt.Errorf("failed to scan %v, due to %w", r.query, err)
