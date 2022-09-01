@@ -1,14 +1,31 @@
 package cache
 
 import (
+	"bytes"
 	"fmt"
 	"github.com/francoispqt/gojay"
 	"github.com/viant/xunsafe"
 	"reflect"
 	"time"
+	"unsafe"
 )
 
 var timeType = reflect.TypeOf(time.Time{})
+var curOffset uintptr
+
+var nullBytes = []byte("null")
+
+func init() {
+	cur, ok := reflect.TypeOf(gojay.Decoder{}).FieldByName("cursor")
+	if !ok {
+		panic("failed to get Decoder.cursor field")
+	}
+	curOffset = cur.Offset
+}
+
+func cursor(dec *gojay.Decoder) int {
+	return *(*int)(unsafe.Pointer(uintptr(unsafe.Pointer(dec)) + curOffset))
+}
 
 type (
 	Decoder struct {
@@ -19,15 +36,17 @@ type (
 
 		sliceType    reflect.Type
 		sliceDecoder DecoderFn
+		Data         []byte
 	}
 
 	DecoderFn func(decoder *gojay.Decoder) (interface{}, error)
 )
 
-func NewDecoder(scanTypes []reflect.Type) *Decoder {
+func NewDecoder(scanTypes []reflect.Type, data []byte) *Decoder {
 	return &Decoder{
 		scanTypes: scanTypes,
 		values:    make([]interface{}, len(scanTypes)),
+		Data:      data,
 	}
 }
 
@@ -47,9 +66,15 @@ func (d *Decoder) UnmarshalJSONArray(decoder *gojay.Decoder) error {
 		decoderFn = d.sliceDecoder
 	}
 
+	beforePos := cursor(decoder)
 	value, err := decoderFn(decoder)
 	if err != nil {
 		return err
+	}
+	after := cursor(decoder)
+
+	if bytes.Equal(bytes.TrimSpace(d.Data[beforePos:after]), nullBytes) {
+		value = nil
 	}
 
 	if len(d.scanTypes) > 0 {
@@ -67,7 +92,7 @@ func (d *Decoder) buildDecoders() {
 
 	d.decoders = make([]DecoderFn, len(d.scanTypes))
 	for i, dataType := range d.scanTypes {
-		d.decoders[i] = newDecoderFn(dataType)
+		d.decoders[i] = newDecoderFn(dataType, d.Data)
 	}
 }
 
@@ -78,7 +103,7 @@ func (d *Decoder) reset() {
 	d.index = 0
 }
 
-func newDecoderFn(dataType reflect.Type) DecoderFn {
+func newDecoderFn(dataType reflect.Type, data []byte) DecoderFn {
 	actualDataType := dataType
 
 	wasPtr := false
@@ -118,7 +143,8 @@ func newDecoderFn(dataType reflect.Type) DecoderFn {
 		return func(decoder *gojay.Decoder) (interface{}, error) {
 			valuesDecoder := &Decoder{
 				sliceType:    sliceItemType,
-				sliceDecoder: newDecoderFn(sliceItemType),
+				sliceDecoder: newDecoderFn(sliceItemType, data),
+				Data:         data,
 			}
 
 			if err := decoder.DecodeArray(valuesDecoder); err != nil {

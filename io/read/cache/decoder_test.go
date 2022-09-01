@@ -54,11 +54,18 @@ func TestDecoder(t *testing.T) {
 			marshaled: `["0000-01-01T15:06:00Z"]`,
 			expected:  []interface{}{asTimePtrWithLayout(time.Kitchen, "3:06PM")},
 		},
+		{
+			scanTypes: []reflect.Type{
+				reflect.PtrTo(reflect.TypeOf(0)),
+			},
+			marshaled: `[null]`,
+			expected:  []interface{}{nil},
+		},
 	}
 
 	//for _, testCase := range testCases[len(testCases)-1:] {
 	for _, testCase := range testCases {
-		decoder := NewDecoder(testCase.scanTypes)
+		decoder := NewDecoder(testCase.scanTypes, []byte(testCase.marshaled))
 		assert.Nil(t, gojay.UnmarshalJSONArray([]byte(testCase.marshaled), decoder), testCase.description)
 		for i, value := range decoder.values {
 			assert.EqualValuesf(t, testCase.expected[i], value, testCase.description)

@@ -28,14 +28,19 @@ func (c *Scanner) New(e *Entry) ScannerFn {
 		}
 
 		if decoder == nil {
-			decoder = NewDecoder(c.typeHolder.scanTypes)
+			decoder = NewDecoder(c.typeHolder.scanTypes, e.Data)
 		}
 
+		decoder.Data = e.Data
 		if err = gojay.UnmarshalJSONArray(e.Data, decoder); err != nil {
 			return err
 		}
 
 		for i, cachedValue := range decoder.values {
+			if cachedValue == nil {
+				continue
+			}
+
 			destPtr := xunsafe.AsPointer(values[i])
 			srcPtr := xunsafe.AsPointer(cachedValue)
 			if destPtr == nil || srcPtr == nil {
@@ -51,7 +56,7 @@ func (c *Scanner) New(e *Entry) ScannerFn {
 		if c.recorder != nil {
 			c.recorder.ScanValues(values)
 		}
-		
+
 		return err
 	}
 }
