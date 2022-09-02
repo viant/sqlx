@@ -1,50 +1,54 @@
 package reader
 
-//Buffer represents buffer
+import (
+	"io"
+)
+
+// Buffer represents itemBuffer
 type Buffer struct {
-	buffer []byte
-	offset int
+	buffer     []byte
+	dataLength int
+	offset     int
 }
 
-//NewBuffer creates a buffer instance with given initial size
+// NewBuffer creates a itemBuffer instance with given initial size
 func NewBuffer(size int) *Buffer {
 	return &Buffer{
 		buffer: make([]byte, size),
 	}
 }
 
-//WriteString add string to the buffer
-func (b *Buffer) WriteString(value string) {
-	if len(value)+b.offset > len(b.buffer) {
-		b.buffer = append(b.buffer[:b.offset], []byte(value)...)
-		b.offset = len(b.buffer)
+// writeString add string to the itemBuffer
+func (b *Buffer) writeString(value string) {
+	if len(value)+b.dataLength > len(b.buffer) {
+		b.buffer = append(b.buffer[:b.dataLength], []byte(value)...)
+		b.dataLength = len(b.buffer)
 		return
 	}
 
-	b.offset += copy(b.buffer[b.offset:], value)
+	b.dataLength += copy(b.buffer[b.dataLength:], value)
 }
 
-//Len returns actual buffer len
-func (b *Buffer) Len() int {
-	return b.offset
+// len returns actual itemBuffer dataLength
+func (b *Buffer) len() int {
+	return b.dataLength
 }
 
-//Reset sets actual buffer len to 0
-func (b *Buffer) Reset() {
+// reset sets actual itemBuffer dataLength and offset to 0
+func (b *Buffer) reset() {
+	b.dataLength = 0
 	b.offset = 0
 }
 
-//Read tries to read actual buffer to dest, resets actual buffer size if succeed
-func (b *Buffer) Read(dest []byte) (int, bool) {
-	if b.offset == 0 {
-		return 0, true
-	}
+// Read reads current item itemBuffer to dest
+func (b *Buffer) Read(dest []byte) (int, error) {
 
-	if len(dest) < b.offset {
-		return 0, false
-	}
+	n := copy(dest, b.buffer[b.offset:b.dataLength])
+	b.offset += n
 
-	offset := copy(dest, b.buffer[:b.offset])
-	b.Reset()
-	return offset, true
+	if b.offset == b.dataLength {
+		return n, io.EOF
+	} else {
+		return n, nil
+	}
 }

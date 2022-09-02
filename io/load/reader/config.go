@@ -7,4 +7,10 @@ type Config struct {
 	EncloseBy       string
 	EscapeBy        string
 	NullValue       string
+	Stringify       StringifyConfig
+}
+
+type StringifyConfig struct {
+	IgnoreObjetSeparator bool
+	IgnoreEncloseBy      bool
 }

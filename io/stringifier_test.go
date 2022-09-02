@@ -15,7 +15,7 @@ func TestTypeStringifier(t *testing.T) {
 
 	type Foo struct {
 		ID      int
-		Name    string `sqlx:"nullify=true"`
+		Name    string `sqlx:"nullifyEmpty=true"`
 		Comment string
 	}
 
@@ -28,7 +28,7 @@ func TestTypeStringifier(t *testing.T) {
 		wasStrings    []bool
 	}{
 		{
-			description: "without nullify tag",
+			description: "without nullifyEmpty tag",
 			rType:       reflect.TypeOf(Boo{}),
 			exampleObject: &Boo{
 				ID:      25,
@@ -37,10 +37,10 @@ func TestTypeStringifier(t *testing.T) {
 			},
 			nullValue:  "null",
 			results:    []string{"25", "", "some comment"},
-			wasStrings: []bool{false, false, true},
+			wasStrings: []bool{false, true, true},
 		},
 		{
-			description: "with nullify tag",
+			description: "with nullifyEmpty tag",
 			rType:       reflect.TypeOf(Foo{}),
 			exampleObject: &Foo{
 				ID:      25,
@@ -53,7 +53,7 @@ func TestTypeStringifier(t *testing.T) {
 		},
 	}
 
-	for _, testCase := range testCases[1:] {
+	for _, testCase := range testCases {
 		stringify := TypeStringifier(testCase.rType, testCase.nullValue, true)
 		strings, bools := stringify(testCase.exampleObject)
 		for i := 0; i < len(strings); i++ {

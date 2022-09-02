@@ -16,7 +16,7 @@ func stringStringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue st
 	if wasPointer {
 		return func(pointer unsafe.Pointer) (string, bool) {
 			strPtr := field.StringPtr(pointer)
-			if strPtr == nil && nullifyZeroValue {
+			if strPtr == nil || (nullifyZeroValue && *strPtr == "") {
 				return nullValue, false
 			}
 			return *strPtr, true
@@ -36,7 +36,7 @@ func intStringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue strin
 	if wasPointer {
 		return func(pointer unsafe.Pointer) (string, bool) {
 			intPtr := field.IntPtr(pointer)
-			if intPtr == nil && nullifyZeroValue {
+			if intPtr == nil || (nullifyZeroValue && *intPtr == 0) {
 				return nullValue, false
 			}
 			return strconv.Itoa(*intPtr), false
@@ -56,7 +56,7 @@ func int8Stringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue stri
 	if wasPointer {
 		return func(pointer unsafe.Pointer) (string, bool) {
 			intPtr := field.Int8Ptr(pointer)
-			if intPtr == nil && nullifyZeroValue {
+			if intPtr == nil || (nullifyZeroValue && *intPtr == 0) {
 				return nullValue, false
 			}
 			return strconv.Itoa(int(*intPtr)), false
@@ -76,7 +76,7 @@ func int16Stringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue str
 	if wasPointer {
 		return func(pointer unsafe.Pointer) (string, bool) {
 			intPtr := field.Int16Ptr(pointer)
-			if intPtr == nil && nullifyZeroValue {
+			if intPtr == nil || (nullifyZeroValue && *intPtr == 0) {
 				return nullValue, false
 			}
 			return strconv.Itoa(int(*intPtr)), false
@@ -96,7 +96,7 @@ func int32Stringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue str
 	if wasPointer {
 		return func(pointer unsafe.Pointer) (string, bool) {
 			intPtr := field.Int32Ptr(pointer)
-			if intPtr == nil && nullifyZeroValue {
+			if intPtr == nil || (nullifyZeroValue && *intPtr == 0) {
 				return nullValue, false
 			}
 			return strconv.Itoa(int(*intPtr)), false
@@ -116,7 +116,7 @@ func int64Stringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue str
 	if wasPointer {
 		return func(pointer unsafe.Pointer) (string, bool) {
 			intPtr := field.Int64Ptr(pointer)
-			if intPtr == nil && nullifyZeroValue {
+			if intPtr == nil || (nullifyZeroValue && *intPtr == 0) {
 				return nullValue, false
 			}
 			return strconv.Itoa(int(*intPtr)), false
@@ -136,7 +136,7 @@ func uintStringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue stri
 	if wasPointer {
 		return func(pointer unsafe.Pointer) (string, bool) {
 			intPtr := field.UintPtr(pointer)
-			if intPtr == nil && nullifyZeroValue {
+			if intPtr == nil || (nullifyZeroValue && *intPtr == 0) {
 				return nullValue, false
 			}
 			return strconv.Itoa(int(*intPtr)), false
@@ -156,7 +156,7 @@ func uint8Stringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue str
 	if wasPointer {
 		return func(pointer unsafe.Pointer) (string, bool) {
 			intPtr := field.Uint8Ptr(pointer)
-			if intPtr == nil && nullifyZeroValue {
+			if intPtr == nil || (nullifyZeroValue && *intPtr == 0) {
 				return nullValue, false
 			}
 			return strconv.Itoa(int(*intPtr)), false
@@ -176,7 +176,7 @@ func uint16Stringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue st
 	if wasPointer {
 		return func(pointer unsafe.Pointer) (string, bool) {
 			intPtr := field.Uint16Ptr(pointer)
-			if intPtr == nil && nullifyZeroValue {
+			if intPtr == nil || (nullifyZeroValue && *intPtr == 0) {
 				return nullValue, false
 			}
 			return strconv.Itoa(int(*intPtr)), false
@@ -196,7 +196,7 @@ func uint32Stringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue st
 	if wasPointer {
 		return func(pointer unsafe.Pointer) (string, bool) {
 			intPtr := field.Uint32Ptr(pointer)
-			if intPtr == nil && nullifyZeroValue {
+			if intPtr == nil || (nullifyZeroValue && *intPtr == 0) {
 				return nullValue, false
 			}
 			return strconv.Itoa(int(*intPtr)), false
@@ -216,7 +216,7 @@ func uint64Stringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue st
 	if wasPointer {
 		return func(pointer unsafe.Pointer) (string, bool) {
 			intPtr := field.Uint64Ptr(pointer)
-			if intPtr == nil && nullifyZeroValue {
+			if intPtr == nil || (nullifyZeroValue && *intPtr == 0) {
 				return nullValue, false
 			}
 			return strconv.Itoa(int(*intPtr)), false
@@ -236,7 +236,7 @@ func boolStringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue stri
 	if wasPointer {
 		return func(pointer unsafe.Pointer) (string, bool) {
 			valuePtr := field.BoolPtr(pointer)
-			if valuePtr == nil && nullifyZeroValue {
+			if valuePtr == nil || (nullifyZeroValue && *valuePtr == false) {
 				return nullValue, false
 			}
 			return strconv.FormatBool(*valuePtr), false
@@ -257,7 +257,7 @@ func float64Stringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue s
 	if wasPointer {
 		return func(pointer unsafe.Pointer) (string, bool) {
 			valuePtr := field.Float64Ptr(pointer)
-			if valuePtr == nil && nullifyZeroValue {
+			if valuePtr == nil || (nullifyZeroValue && *valuePtr == 0) {
 				return nullValue, false
 			}
 			return strconv.FormatFloat(*valuePtr, 'f', 64, 64), false
@@ -278,7 +278,7 @@ func float32Stringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue s
 	if wasPointer {
 		return func(pointer unsafe.Pointer) (string, bool) {
 			valuePtr := field.Float32Ptr(pointer)
-			if valuePtr == nil && nullifyZeroValue {
+			if valuePtr == nil || (nullifyZeroValue && *valuePtr == 0) {
 				return nullValue, false
 			}
 			return strconv.FormatFloat(float64(*valuePtr), 'f', 64, 64), false
@@ -314,7 +314,7 @@ func defaultStringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue s
 	if field.Type == timePtrType {
 		return func(pointer unsafe.Pointer) (string, bool) {
 			ptr := field.TimePtr(pointer)
-			if ptr == nil && nullifyZeroValue {
+			if ptr == nil || (nullifyZeroValue && *ptr == time.Time{}) {
 				return nullValue, false
 			}
 			return ptr.Format(timeLayout), true

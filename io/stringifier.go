@@ -12,7 +12,7 @@ type ObjectStringifier = func(val interface{}) ([]string, []bool)
 type fieldStringifier = func(pointer unsafe.Pointer) (string, bool)
 
 //TypeStringifier returns ObjectStringifier for a given Type.
-//It will replace nil values with nullValue for properties with tag: "nullify" and omit (if specified) transient properties
+//It will replace nil values with nullValue for properties with tag: "nullifyEmpty" and omit (if specified) transient properties
 //results are shared, no new arrays are returned
 func TypeStringifier(rType reflect.Type, nullValue string, omitTransient bool) ObjectStringifier {
 	fieldLen := rType.NumField()
