@@ -296,23 +296,28 @@ func float32Stringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue s
 
 //TODO: Time format
 func defaultStringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue string) fieldStringifier {
+
+	timeLayout := field.Tag.Get("timeLayout")
+	if timeLayout == "" {
+		timeLayout = time.RFC3339
+	}
+
 	if field.Type == timeType {
 		return func(pointer unsafe.Pointer) (string, bool) {
 			value := field.Time(pointer)
 			if value.IsZero() && nullifyZeroValue {
 				return nullValue, false
 			}
-			return value.Format(time.RFC3339), true
+			return value.Format(timeLayout), true
 		}
 	}
-
 	if field.Type == timePtrType {
 		return func(pointer unsafe.Pointer) (string, bool) {
 			ptr := field.TimePtr(pointer)
 			if ptr == nil || (nullifyZeroValue && *ptr == time.Time{}) {
 				return nullValue, false
 			}
-			return ptr.Format(time.RFC3339), true
+			return ptr.Format(timeLayout), true
 		}
 	}
 

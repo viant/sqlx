@@ -17,23 +17,39 @@ var sqLite3 = database.Product{
 	Driver:    "SQLiteDriver",
 }
 
+var sqLite333 = database.Product{
+	Name:      product,
+	Major:     3,
+	Minor:     33,
+	DriverPkg: "sqlite3",
+	Driver:    "SQLiteDriver",
+}
+
 //SQLite3 return SQLite3 product
 func SQLite3() *database.Product {
 	return &sqLite3
 }
 
-func init() {
+func SQLiteMaj3Min33() *database.Product {
+	return &sqLite333
+}
 
+func init() {
+	registerProduct(sqLite333, "sqlite_master")
+	registerProduct(sqLite3, "sqlite_schema")
+}
+
+func registerProduct(product database.Product, schemaTable string) {
 	err := registry.Register(
-		info.NewQuery(info.KindVersion, "SELECT 'SQLite - ' || sqlite_version()", sqLite3),
+		info.NewQuery(info.KindVersion, "SELECT 'SQLite - ' || sqlite_version()", product),
 		info.NewQuery(info.KindSchemas, `SELECT 
 	name AS SCHEMA_NAME,
 	seq AS SCHEMA_POS,
 	file AS SCHEMA_FILE
-FROM pragma_database_list`, sqLite3,
+FROM pragma_database_list`, product,
 			info.NewCriterion(info.Catalog, ""),
 		),
-		info.NewQuery(info.KindSchema, "SELECT name FROM pragma_database_list", sqLite3,
+		info.NewQuery(info.KindSchema, "SELECT name FROM pragma_database_list", product,
 			info.NewCriterion(info.Catalog, ""),
 			info.NewCriterion(info.Schema, "name"),
 		),
@@ -41,7 +57,7 @@ FROM pragma_database_list`, sqLite3,
 type AS TABLE_TYPE,
 name AS TABLE_NAME,
 sql 
-FROM sqlite_schema WHERE type='table' AND name NOT IN('sqlite_sequence')`, sqLite3,
+FROM `+schemaTable+` WHERE type='table' AND name NOT IN('sqlite_sequence')`, product,
 			info.NewCriterion(info.Catalog, ""),
 			info.NewCriterion(info.Schema, ""),
 		),
@@ -52,9 +68,9 @@ FROM sqlite_schema WHERE type='table' AND name NOT IN('sqlite_sequence')`, sqLit
   t.type AS DATA_TYPE, 
   COALESCE(t.dflt_value,'') AS COLUMN_DEFAULT, 
   CASE WHEN t.pk = 1 THEN 'PRI' ELSE '' END AS COLUMN_KEY
-FROM sqlite_schema AS m,
+FROM `+schemaTable+` AS m,
 pragma_table_info(m.name) AS t
-`, sqLite3,
+`, product,
 			info.NewCriterion(info.Catalog, ""),
 			info.NewCriterion(info.Schema, ""),
 			info.NewCriterion(info.Table, "m.name"),
@@ -66,13 +82,13 @@ t.name AS INDEX_NAME,
 t.origin AS INDEX_ORIGIN,
 t.partial AS INDEX_PARTIAL,
 group_concat(i.NAME) AS INDEX_COLUMNS
-FROM sqlite_schema AS m,
+FROM `+schemaTable+` AS m,
 pragma_index_list(m.name) AS t,
 pragma_index_info(t.name) i
 $WHERE
 GROUP BY 1, 2, 3, 4, 5, 6
 
-`, sqLite3,
+`, product,
 			info.NewCriterion(info.Catalog, ""),
 			info.NewCriterion(info.Schema, ""),
 			info.NewCriterion(info.Table, "m.name"),
@@ -86,11 +102,11 @@ i.cid AS ORDINAL_POSITION,
 i.name AS COLUMN_NAME,
 i.coll AS COLLATION,
 i.key AS COLUMN_KEY
-FROM sqlite_schema AS m,
+FROM `+schemaTable+` AS m,
 pragma_index_list(m.name) AS t,
 pragma_index_xinfo(t.name) i
 WHERE i.name IS NOT NULL
-`, sqLite3,
+`, product,
 			info.NewCriterion(info.Catalog, ""),
 			info.NewCriterion(info.Schema, ""),
 			info.NewCriterion(info.Table, "m.name"),
@@ -98,7 +114,7 @@ WHERE i.name IS NOT NULL
 		),
 		info.NewQuery(info.KindSequences, `SELECT name AS SEQUENCE_NAME,  seq AS SEQUENCE_VALUE  
 FROM SQLITE_SEQUENCE`,
-			sqLite3,
+			product,
 			info.NewCriterion(info.Catalog, ""),
 			info.NewCriterion(info.Schema, ""),
 			info.NewCriterion(info.Sequence, "name"),
@@ -110,10 +126,10 @@ FROM SQLITE_SEQUENCE`,
 		m.name AS TABLE_NAME,
 		t.name AS COLUMN_NAME,
 		t.cid AS ORDINAL_POSITION
-	FROM sqlite_schema AS m,
+	FROM `+schemaTable+` AS m,
 	pragma_table_info(m.name) AS t
 	WHERE t.pk = 1 `,
-			sqLite3,
+			product,
 			info.NewCriterion(info.Catalog, ""),
 			info.NewCriterion(info.Schema, ""),
 			info.NewCriterion(info.Table, "m.name		"),
@@ -130,10 +146,10 @@ FROM SQLITE_SEQUENCE`,
 			"t.`on_update` AS ON_UPDATE, "+
 			"t.`on_delete` AS ON_DELETE, "+
 			"t.`match` AS ON_MATCH\n"+
-			` FROM  sqlite_schema AS m,
+			` FROM  `+schemaTable+` AS m,
 pragma_foreign_key_list(m.name) t
 `,
-			sqLite3,
+			product,
 			info.NewCriterion(info.Catalog, ""),
 			info.NewCriterion(info.Schema, ""),
 			info.NewCriterion(info.Table, "m.name"),
@@ -148,7 +164,7 @@ t.enc AS CHARACTER_SET_NAME,
 CASE WHEN t.builtin = 1 THEN 'NATIVE' ELSE '' END AS ROUTINE_TYPE,
 CASE WHEN t.flags & 0x800 !=0 THEN 'YES' ELSE 'NO' END AS IS_DETERMINISTIC
 FROM pragma_function_list t`,
-			sqLite3,
+			product,
 			info.NewCriterion(info.Catalog, ""),
 			info.NewCriterion(info.Schema, ""),
 			info.NewCriterion(info.Function, "t.name"),
@@ -161,16 +177,16 @@ FROM pragma_function_list t`,
 	    name AS SCHEMA_NAME,
 		'' AS APP_NAME
 FROM pragma_database_list
-`, sqLite3),
+`, product),
 
 		info.NewQuery(info.KindForeignKeysCheckOn, `PRAGMA foreign_keys = true`,
-			sqLite3,
+			product,
 			info.NewCriterion(info.Catalog, ""),
 			info.NewCriterion(info.Schema, ""),
 			info.NewCriterion(info.Table, ""),
 		),
 		info.NewQuery(info.KindForeignKeysCheckOff, `PRAGMA foreign_keys = false`,
-			sqLite3,
+			product,
 			info.NewCriterion(info.Catalog, ""),
 			info.NewCriterion(info.Schema, ""),
 			info.NewCriterion(info.Table, ""),
@@ -182,7 +198,7 @@ FROM pragma_database_list
 	}
 
 	registry.RegisterDialect(&info.Dialect{
-		Product:          sqLite3,
+		Product:          product,
 		Placeholder:      "?",
 		Transactional:    true,
 		QuoteCharacter:   '\'',
