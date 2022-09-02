@@ -66,9 +66,9 @@ func ParseTag(tagString string) *Tag {
 					tag.PrimaryKey = true
 					tag.Generator = ""
 				}
-			case "nullify":
-				nullify := strings.TrimSpace(nv[1])
-				tag.NullifyEmpty = nullify == "true" || nullify == ""
+			case "nullifyempty":
+				nullifyEmpty := strings.TrimSpace(nv[1])
+				tag.NullifyEmpty = nullifyEmpty == "true" || nullifyEmpty == ""
 			}
 			continue
 		}
