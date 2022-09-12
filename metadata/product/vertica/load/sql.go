@@ -2,12 +2,12 @@ package load
 
 import (
 	"github.com/viant/sqlx/io"
-	"github.com/viant/sqlx/io/load/reader"
+	"github.com/viant/sqlx/io/load/reader/csv"
 	"strings"
 )
 
 //BuildSQL builds "COPY FROM" statement
-func BuildSQL(config *reader.Config, tableName string, columns []io.Column) string {
+func BuildSQL(config *csv.Config, tableName string, columns []io.Column) string {
 	sb := strings.Builder{}
 	sb.WriteString("COPY ")
 	sb.WriteString(tableName)

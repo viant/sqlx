@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	vcontext "github.com/vertica/vertica-sql-go"
 	"github.com/viant/sqlx/io"
-	"github.com/viant/sqlx/io/load/reader"
+	"github.com/viant/sqlx/io/load/reader/csv"
 	"github.com/viant/sqlx/metadata/info"
 	"github.com/viant/sqlx/option"
 )
@@ -13,7 +13,7 @@ import (
 // To specify the ObjectSeparator (RECORD TERMINATOR) as non-printing characters,
 // use either the extended string syntax or Unicode string literals.
 // Examples for line feed: E'\n' or U&'\000a'
-var verticaLoadConfig = &reader.Config{
+var verticaLoadConfig = &csv.Config{
 	FieldSeparator:  `,`,
 	ObjectSeparator: `#`,
 	EncloseBy:       `*`,
@@ -37,7 +37,7 @@ func NewSession(dialect *info.Dialect) io.Session {
 
 //Exec inserts given data to database using "COPY FROM STDIN "
 func (s *Session) Exec(ctx context.Context, data interface{}, db *sql.DB, tableName string, options ...option.Option) (sql.Result, error) {
-	dataReader, dataType, err := reader.NewReader(data, verticaLoadConfig)
+	dataReader, dataType, err := csv.NewReader(data, verticaLoadConfig)
 	if err != nil {
 		return nil, err
 	}

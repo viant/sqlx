@@ -2,12 +2,12 @@ package load
 
 import (
 	"github.com/viant/sqlx/io"
-	"github.com/viant/sqlx/io/load/reader"
+	"github.com/viant/sqlx/io/load/reader/csv"
 	"strings"
 )
 
 //BuildSQL builds "LOAD DATA" statement
-func BuildSQL(config *reader.Config, readerID, tableName string, columns []io.Column) string {
+func BuildSQL(config *csv.Config, readerID, tableName string, columns []io.Column) string {
 	sb := strings.Builder{}
 	sb.WriteString("LOAD DATA LOCAL INFILE 'Reader::")
 	sb.WriteString(readerID)

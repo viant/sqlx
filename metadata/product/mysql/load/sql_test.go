@@ -3,7 +3,7 @@ package load
 import (
 	"github.com/stretchr/testify/assert"
 	"github.com/viant/sqlx/io"
-	"github.com/viant/sqlx/io/load/reader"
+	"github.com/viant/sqlx/io/load/reader/csv"
 	"testing"
 )
 
@@ -35,7 +35,7 @@ func TestBuildSQL(t *testing.T) {
 	}
 
 	for _, testCase := range testCases {
-		sql := BuildSQL(&reader.Config{
+		sql := BuildSQL(&csv.Config{
 			FieldSeparator:  testCase.fieldSeparator,
 			ObjectSeparator: testCase.objectSeparator,
 			EncloseBy:       testCase.encloseBy,

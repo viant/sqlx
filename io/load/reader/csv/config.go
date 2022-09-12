@@ -1,4 +1,4 @@
-package reader
+package csv
 
 //Config represents reader config
 type Config struct {
