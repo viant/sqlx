@@ -1,10 +1,10 @@
 package io
 
+//NormalizeKey converts non nil numeric value to int or return nil
 func NormalizeKey(key interface{}) interface{} {
 	if key == nil {
 		return nil
 	}
-
 	switch actual := key.(type) {
 	case *int64:
 		if actual == nil {
@@ -16,13 +16,21 @@ func NormalizeKey(key interface{}) interface{} {
 			return nil
 		}
 		return int(*actual)
-
+	case *float64:
+		if actual == nil {
+			return nil
+		}
+		return int(*actual)
+	case *float32:
+		if actual == nil {
+			return nil
+		}
+		return int(*actual)
 	case *int16:
 		if actual == nil {
 			return nil
 		}
 		return int(*actual)
-
 	case int32:
 		return int(actual)
 	case int64:
@@ -33,7 +41,7 @@ func NormalizeKey(key interface{}) interface{} {
 		if actual == nil {
 			return nil
 		}
-		return int(*actual)
+		return *actual
 	case *string:
 		if actual == nil {
 			return nil
