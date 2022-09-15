@@ -42,7 +42,6 @@ func (b *Buffer) reset() {
 
 // Read reads current item itemBuffer to dest
 func (b *Buffer) Read(dest []byte) (int, error) {
-
 	n := copy(dest, b.buffer[b.offset:b.dataLength])
 	b.offset += n
 

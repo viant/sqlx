@@ -54,7 +54,11 @@ func TestTypeStringifier(t *testing.T) {
 	}
 
 	for _, testCase := range testCases {
-		stringify := TypeStringifier(testCase.rType, testCase.nullValue, true)
+		stringify, err := TypeStringifier(testCase.rType, testCase.nullValue, true).Stringifier()
+		if !assert.Nil(t, err, testCase.description) {
+			continue
+		}
+
 		strings, bools := stringify(testCase.exampleObject)
 		for i := 0; i < len(strings); i++ {
 			assert.Equal(t, testCase.results[i], strings[i], testCase.description)
