@@ -1,23 +1,124 @@
 package io
 
 import (
+	"fmt"
 	"github.com/viant/sqlx/option"
+	"github.com/viant/toolbox/format"
 	"github.com/viant/xunsafe"
 	"reflect"
 	"unsafe"
 )
 
-//ObjectStringifier returns stringified object properties values and information if value was string before
-type ObjectStringifier = func(val interface{}) ([]string, []bool)
-type fieldStringifier = func(pointer unsafe.Pointer) (string, bool)
+type (
+	ObjectStringifier struct {
+		fields   []*fieldStringifier
+		index    map[string]int
+		parallel bool
+	}
+
+	//ObjectStringifierFn returns stringified object properties values and information if value was string before
+	ObjectStringifierFn func(val interface{}) ([]string, []bool)
+	fieldStringifier    struct {
+		stringify fieldStringifierFn
+		fieldName string
+	}
+
+	fieldStringifierFn = func(pointer unsafe.Pointer) (string, bool)
+	StringifierConfig  struct {
+		Fields     []string
+		CaseFormat format.Case
+	}
+
+	Parallel bool
+)
+
+func (s *ObjectStringifier) Has(fieldName string) bool {
+	_, ok := s.index[fieldName]
+	return ok
+}
+
+func (s *ObjectStringifier) Stringifier(options ...interface{}) (ObjectStringifierFn, error) {
+	stringifierConfig := s.readOptions(options)
+
+	if len(stringifierConfig.Fields) == 0 && stringifierConfig.CaseFormat == format.CaseUpperCamel && !s.parallel {
+		stringifiersLen := len(s.fields)
+		strings := make([]string, stringifiersLen)
+		wasStrings := make([]bool, stringifiersLen)
+
+		return func(val interface{}) ([]string, []bool) {
+			ptr := xunsafe.AsPointer(val)
+			for i := 0; i < stringifiersLen; i++ {
+				strings[i], wasStrings[i] = s.fields[i].stringify(ptr)
+			}
+
+			return strings, wasStrings
+		}, nil
+	}
+
+	actualFieldsIndex := make([]int, 0, len(stringifierConfig.Fields))
+	for _, field := range stringifierConfig.Fields {
+		fieldIndex, ok := s.index[field]
+		if !ok {
+			return nil, fmt.Errorf("not found field %v at index %v", field, s.fields)
+		}
+
+		actualFieldsIndex = append(actualFieldsIndex, fieldIndex)
+	}
+
+	stringifiersLen := len(actualFieldsIndex)
+	strings := make([]string, stringifiersLen)
+	wasStrings := make([]bool, stringifiersLen)
+
+	return func(val interface{}) ([]string, []bool) {
+		ptr := xunsafe.AsPointer(val)
+		for i := 0; i < stringifiersLen; i++ {
+			strings[i], wasStrings[i] = s.fields[actualFieldsIndex[i]].stringify(ptr)
+		}
+
+		return strings, wasStrings
+	}, nil
+}
+
+func (s *ObjectStringifier) readOptions(options []interface{}) *StringifierConfig {
+	config := &StringifierConfig{
+		CaseFormat: format.CaseUpperCamel,
+	}
+
+	for _, anOption := range options {
+		switch actual := anOption.(type) {
+		case *StringifierConfig:
+			config = actual
+		case StringifierConfig:
+			config = &actual
+		}
+	}
+
+	return config
+}
+
+func (s *ObjectStringifier) FieldNames() []string {
+	fieldNames := make([]string, 0, len(s.fields))
+	for _, field := range s.fields {
+		fieldNames = append(fieldNames, field.fieldName)
+	}
+
+	return fieldNames
+}
 
 //TypeStringifier returns ObjectStringifier for a given Type.
 //It will replace nil values with nullValue for properties with tag: "nullifyEmpty" and omit (if specified) transient properties
-//results are shared, no new arrays are returned
-func TypeStringifier(rType reflect.Type, nullValue string, omitTransient bool) ObjectStringifier {
+//By default, results are shared, no new arrays are returned unless Parallel(true) is provided as an option.
+func TypeStringifier(rType reflect.Type, nullValue string, omitTransient bool, options ...interface{}) *ObjectStringifier {
 	fieldLen := rType.NumField()
+	parallel := false
+	for _, anOption := range options {
+		switch actual := anOption.(type) {
+		case Parallel:
+			parallel = bool(actual)
+		}
+	}
 
-	stringifiers := make([]fieldStringifier, 0)
+	stringifiers := make([]*fieldStringifier, 0)
 
 	for i := 0; i < fieldLen; i++ {
 		field := rType.Field(i)
@@ -25,30 +126,35 @@ func TypeStringifier(rType reflect.Type, nullValue string, omitTransient bool) O
 		if tag.Transient && omitTransient {
 			continue
 		}
-		stringifiers = append(stringifiers, stringifier(xunsafe.NewField(field), tag.NullifyEmpty, nullValue))
+
+		stringifiers = append(stringifiers, &fieldStringifier{
+			stringify: stringifier(xunsafe.NewField(field), tag.NullifyEmpty, nullValue),
+			fieldName: field.Name,
+		})
 	}
 
-	stringifiersLen := len(stringifiers)
-	strings := make([]string, stringifiersLen)
-	wasStrings := make([]bool, stringifiersLen)
-	return func(val interface{}) ([]string, []bool) {
-		ptr := xunsafe.AsPointer(val)
-		for i := 0; i < stringifiersLen; i++ {
-			strings[i], wasStrings[i] = stringifiers[i](ptr)
-		}
-
-		return strings, wasStrings
+	fieldsIndex := map[string]int{}
+	for i, aStringifier := range stringifiers {
+		fieldsIndex[aStringifier.fieldName] = i
 	}
+
+	o := &ObjectStringifier{
+		fields:   stringifiers,
+		index:    fieldsIndex,
+		parallel: parallel,
+	}
+
+	return o
 }
 
-func stringifier(xField *xunsafe.Field, nullifyEmpty bool, nullValue string) fieldStringifier {
+func stringifier(xField *xunsafe.Field, nullifyEmpty bool, nullValue string) fieldStringifierFn {
 	preparedStringifier := prepareStringifier(xField, nullifyEmpty, nullValue)
 	return func(val unsafe.Pointer) (value string, wasString bool) {
 		return preparedStringifier(val)
 	}
 }
 
-func prepareStringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue string) fieldStringifier {
+func prepareStringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue string) fieldStringifierFn {
 	wasPointer := field.Type.Kind() == reflect.Ptr
 	var rType reflect.Type
 	if wasPointer {

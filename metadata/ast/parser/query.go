@@ -15,7 +15,7 @@ func ParseQuery(SQL string) (*query.Select, error) {
 	cursor := parsly.NewCursor("", []byte(SQL), 0)
 	err := parseQuery(cursor, result)
 	if err != nil {
-		return result, fmt.Errorf("%w, %s", SQL)
+		return result, fmt.Errorf("%s", SQL)
 	}
 	return result, err
 }

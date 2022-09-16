@@ -2,6 +2,8 @@ package csv
 
 import (
 	"github.com/stretchr/testify/assert"
+	"github.com/viant/sqlx/io"
+	"github.com/viant/toolbox/format"
 	goIo "io"
 	"log"
 	"testing"
@@ -818,6 +820,7 @@ func TestReader_Read(t *testing.T) {
 		data         func() interface{}
 		expectedRead string
 		bufferSizes  []int
+		options      []interface{}
 	}{
 		{
 			description: "ensure Read function properly serves any positive buffer size",
@@ -852,13 +855,55 @@ func TestReader_Read(t *testing.T) {
 			expectedRead: `'\\','\\\,'#'\\\'','\\\'\#'`,            // len(expectedRead) == 27
 			bufferSizes:  []int{1, 2, 3, 13, 14, 27, 28, 54, 1000}, // from 1 to more than len(expectedRead)
 		},
+		{
+			description: "specified fields with header",
+			config: &Config{
+				FieldSeparator:  `,`,
+				ObjectSeparator: "\n",
+				EncloseBy:       `'`,
+				EscapeBy:        `\`,
+				NullValue:       "null",
+				Stringify: StringifyConfig{
+					IgnoreObjetSeparator: false,
+					IgnoreEncloseBy:      false,
+				},
+			},
+			data: func() interface{} {
+				type Foo struct {
+					ID      string
+					Comment string
+				}
+
+				return []*Foo{
+					{
+						ID:      `id - 1`,
+						Comment: `comment - 1`,
+					},
+					{
+						ID:      `id - 2`,
+						Comment: `comment - 2`,
+					},
+				}
+			},
+			options: []interface{}{
+				io.StringifierConfig{
+					CaseFormat: format.CaseLowerUnderscore,
+					Fields:     []string{"Comment"},
+				},
+			},
+			expectedRead: `'comment'
+'comment - 1'
+'comment - 2'`,
+			bufferSizes: []int{1, 2, 3, 13, 14, 27, 28, 54, 1000}, // from 1 to more than len(expectedRead)
+		},
 	}
 
+	//for _, testCase := range testCases[len(testCases)-1:] {
 	for _, testCase := range testCases {
 		testData := testCase.data()
 
 		for _, buffSize := range testCase.bufferSizes {
-			reader, _, err := NewReader(testData, testCase.config)
+			reader, _, err := NewReader(testData, testCase.config, testCase.options...)
 			assert.Nil(t, err, testCase.description)
 
 			if buffSize < 1 {
