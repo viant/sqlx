@@ -55,6 +55,21 @@ func (s *ObjectStringifier) Stringifier(options ...interface{}) (ObjectStringifi
 		}, nil
 	}
 
+	if len(stringifierConfig.Fields) == 0 {
+		stringifiersLen := len(s.fields)
+		return func(val interface{}) ([]string, []bool) {
+			ptr := xunsafe.AsPointer(val)
+			strings := make([]string, stringifiersLen)
+			wasStrings := make([]bool, stringifiersLen)
+
+			for i := 0; i < stringifiersLen; i++ {
+				strings[i], wasStrings[i] = s.fields[i].stringify(ptr)
+			}
+
+			return strings, wasStrings
+		}, nil
+	}
+
 	actualFieldsIndex := make([]int, 0, len(stringifierConfig.Fields))
 	for _, field := range stringifierConfig.Fields {
 		fieldIndex, ok := s.index[field]
@@ -66,11 +81,12 @@ func (s *ObjectStringifier) Stringifier(options ...interface{}) (ObjectStringifi
 	}
 
 	stringifiersLen := len(actualFieldsIndex)
-	strings := make([]string, stringifiersLen)
-	wasStrings := make([]bool, stringifiersLen)
 
 	return func(val interface{}) ([]string, []bool) {
+		strings := make([]string, stringifiersLen)
+		wasStrings := make([]bool, stringifiersLen)
 		ptr := xunsafe.AsPointer(val)
+
 		for i := 0; i < stringifiersLen; i++ {
 			strings[i], wasStrings[i] = s.fields[actualFieldsIndex[i]].stringify(ptr)
 		}
