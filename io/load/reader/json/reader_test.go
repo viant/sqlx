@@ -62,7 +62,7 @@ func TestReader_Read(t *testing.T) {
 			iterationCounter := 0
 
 			for {
-				iterationCounter += 1
+				iterationCounter++
 				n, err := reader.Read(buf)
 				jsonData = append(jsonData, buf[:n]...)
 

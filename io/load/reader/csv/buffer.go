@@ -47,7 +47,6 @@ func (b *Buffer) Read(dest []byte) (int, error) {
 
 	if b.offset == b.dataLength {
 		return n, io.EOF
-	} else {
-		return n, nil
 	}
+	return n, nil
 }

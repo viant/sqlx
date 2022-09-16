@@ -57,7 +57,7 @@ func (r *Reader) Read(buffer []byte) (n int, err error) {
 				return r.offsetOfCurrentRead, nil
 			}
 			r.fillItemBuffer(r.index)
-			r.index += 1
+			r.index++
 		}
 	}
 }
@@ -176,6 +176,7 @@ func readOptions(options []interface{}) (*io.ObjectStringifier, *io.StringifierC
 	return stringifier, stringifierConfig
 }
 
+// ItemCount returns count of items inside itemBuffer
 func (r *Reader) ItemCount() int {
 	return r.itemCount
 }
