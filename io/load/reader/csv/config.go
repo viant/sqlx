@@ -10,7 +10,9 @@ type Config struct {
 	Stringify       StringifyConfig
 }
 
+// StringifyConfig "extends" Config with ignore flags
 type StringifyConfig struct {
-	IgnoreObjetSeparator bool
-	IgnoreEncloseBy      bool
+	IgnoreFieldSeparator  bool
+	IgnoreObjectSeparator bool
+	IgnoreEncloseBy       bool
 }

@@ -24,6 +24,12 @@ type Option interface{}
 //Options represents generic options
 type Options []Option
 
+// LoadFormat represents the format of data loaded
+type LoadFormat string
+
+// LoadHint represents the bigquery.JobConfigurationLoad in json format
+type LoadHint string
+
 //Tag returns annotation tag, default sqlx
 func (o Options) Tag() string {
 	if len(o) == 0 {
@@ -158,4 +164,24 @@ func (o Options) Columns() Columns {
 		}
 	}
 	return nil
+}
+
+// LoadFormat returns LoadFormat
+func (o Options) LoadFormat() string {
+	for _, candidate := range o {
+		if val, ok := candidate.(LoadFormat); ok {
+			return string(val)
+		}
+	}
+	return "JSON"
+}
+
+// LoadHint return LoadHint
+func (o Options) LoadHint() string {
+	for _, candidate := range o {
+		if val, ok := candidate.(LoadHint); ok {
+			return string(val)
+		}
+	}
+	return ""
 }

@@ -19,7 +19,7 @@ func MatchProduct(db *sql.DB) *database.Product {
 	for name, candidate := range Products() {
 		if strings.Contains(driverPkg, name) ||
 			(candidate.DriverPkg != "" && strings.Contains(driverPkg, candidate.DriverPkg)) ||
-			(candidate.Driver != "" && strings.Contains(candidate.Driver, driverName)) {
+			(candidate.Driver != "" && strings.Contains(candidate.Driver, driverName) && driverName != "Driver") { // CONDITION WAS MET FOR VERTICA AND BIGQUERY WHEN driverName == "Driver"
 			product = candidate
 			product.DriverPkg = driverPkg
 			product.Driver = driverName

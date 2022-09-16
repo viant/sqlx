@@ -25,8 +25,8 @@ func TestReader(t *testing.T) {
 			EscapeBy:        `\`,
 			NullValue:       "null",
 			Stringify: StringifyConfig{
-				IgnoreObjetSeparator: false,
-				IgnoreEncloseBy:      false,
+				IgnoreObjectSeparator: false,
+				IgnoreEncloseBy:       false,
 			},
 		},
 		data: func() interface{} {
@@ -57,8 +57,8 @@ func TestReader(t *testing.T) {
 				EscapeBy:        `\`,
 				NullValue:       "null",
 				Stringify: StringifyConfig{
-					IgnoreObjetSeparator: true,
-					IgnoreEncloseBy:      true,
+					IgnoreObjectSeparator: true,
+					IgnoreEncloseBy:       true,
 				},
 			},
 			data: func() interface{} {
@@ -81,6 +81,39 @@ func TestReader(t *testing.T) {
 			expectedRead: `'\\','\\\,'#'\\'','\\'#'`,
 		},
 		{
+			description: "ensure values are properly escaped while ignoring ObjectSeparator and EncloseBy and FieldSeparator",
+			config: &Config{
+				FieldSeparator:  `,`,
+				ObjectSeparator: `#`,
+				EncloseBy:       `'`,
+				EscapeBy:        `\`,
+				NullValue:       "null",
+				Stringify: StringifyConfig{
+					IgnoreFieldSeparator:  true,
+					IgnoreObjectSeparator: true,
+					IgnoreEncloseBy:       true,
+				},
+			},
+			data: func() interface{} {
+				type Foo struct {
+					ID      string
+					Comment string
+				}
+
+				return []*Foo{
+					{
+						ID:      `\`,
+						Comment: `\,`,
+					},
+					{
+						ID:      `\'`,
+						Comment: `\'#`,
+					},
+				}
+			},
+			expectedRead: `'\\','\\,'#'\\'','\\'#'`,
+		},
+		{
 			description: "ensure values are properly nullified - string type",
 			config: &Config{
 				FieldSeparator:  `,`,
@@ -89,8 +122,8 @@ func TestReader(t *testing.T) {
 				EscapeBy:        `\`,
 				NullValue:       "null",
 				Stringify: StringifyConfig{
-					IgnoreObjetSeparator: false,
-					IgnoreEncloseBy:      false,
+					IgnoreObjectSeparator: false,
+					IgnoreEncloseBy:       false,
 				},
 			},
 			data: func() interface{} {
@@ -137,8 +170,8 @@ func TestReader(t *testing.T) {
 				EscapeBy:        `\`,
 				NullValue:       "null",
 				Stringify: StringifyConfig{
-					IgnoreObjetSeparator: false,
-					IgnoreEncloseBy:      false,
+					IgnoreObjectSeparator: false,
+					IgnoreEncloseBy:       false,
 				},
 			},
 			data: func() interface{} {
@@ -185,8 +218,8 @@ func TestReader(t *testing.T) {
 				EscapeBy:        `\`,
 				NullValue:       "null",
 				Stringify: StringifyConfig{
-					IgnoreObjetSeparator: false,
-					IgnoreEncloseBy:      false,
+					IgnoreObjectSeparator: false,
+					IgnoreEncloseBy:       false,
 				},
 			},
 			data: func() interface{} {
@@ -233,8 +266,8 @@ func TestReader(t *testing.T) {
 				EscapeBy:        `\`,
 				NullValue:       "null",
 				Stringify: StringifyConfig{
-					IgnoreObjetSeparator: false,
-					IgnoreEncloseBy:      false,
+					IgnoreObjectSeparator: false,
+					IgnoreEncloseBy:       false,
 				},
 			},
 			data: func() interface{} {
@@ -281,8 +314,8 @@ func TestReader(t *testing.T) {
 				EscapeBy:        `\`,
 				NullValue:       "null",
 				Stringify: StringifyConfig{
-					IgnoreObjetSeparator: false,
-					IgnoreEncloseBy:      false,
+					IgnoreObjectSeparator: false,
+					IgnoreEncloseBy:       false,
 				},
 			},
 			data: func() interface{} {
@@ -329,8 +362,8 @@ func TestReader(t *testing.T) {
 				EscapeBy:        `\`,
 				NullValue:       "null",
 				Stringify: StringifyConfig{
-					IgnoreObjetSeparator: false,
-					IgnoreEncloseBy:      false,
+					IgnoreObjectSeparator: false,
+					IgnoreEncloseBy:       false,
 				},
 			},
 			data: func() interface{} {
@@ -377,8 +410,8 @@ func TestReader(t *testing.T) {
 				EscapeBy:        `\`,
 				NullValue:       "null",
 				Stringify: StringifyConfig{
-					IgnoreObjetSeparator: false,
-					IgnoreEncloseBy:      false,
+					IgnoreObjectSeparator: false,
+					IgnoreEncloseBy:       false,
 				},
 			},
 			data: func() interface{} {
@@ -425,8 +458,8 @@ func TestReader(t *testing.T) {
 				EscapeBy:        `\`,
 				NullValue:       "null",
 				Stringify: StringifyConfig{
-					IgnoreObjetSeparator: false,
-					IgnoreEncloseBy:      false,
+					IgnoreObjectSeparator: false,
+					IgnoreEncloseBy:       false,
 				},
 			},
 			data: func() interface{} {
@@ -473,8 +506,8 @@ func TestReader(t *testing.T) {
 				EscapeBy:        `\`,
 				NullValue:       "null",
 				Stringify: StringifyConfig{
-					IgnoreObjetSeparator: false,
-					IgnoreEncloseBy:      false,
+					IgnoreObjectSeparator: false,
+					IgnoreEncloseBy:       false,
 				},
 			},
 			data: func() interface{} {
@@ -521,8 +554,8 @@ func TestReader(t *testing.T) {
 				EscapeBy:        `\`,
 				NullValue:       "null",
 				Stringify: StringifyConfig{
-					IgnoreObjetSeparator: false,
-					IgnoreEncloseBy:      false,
+					IgnoreObjectSeparator: false,
+					IgnoreEncloseBy:       false,
 				},
 			},
 			data: func() interface{} {
@@ -569,8 +602,8 @@ func TestReader(t *testing.T) {
 				EscapeBy:        `\`,
 				NullValue:       "null",
 				Stringify: StringifyConfig{
-					IgnoreObjetSeparator: false,
-					IgnoreEncloseBy:      false,
+					IgnoreObjectSeparator: false,
+					IgnoreEncloseBy:       false,
 				},
 			},
 			data: func() interface{} {
@@ -617,8 +650,8 @@ func TestReader(t *testing.T) {
 				EscapeBy:        `\`,
 				NullValue:       "null",
 				Stringify: StringifyConfig{
-					IgnoreObjetSeparator: false,
-					IgnoreEncloseBy:      false,
+					IgnoreObjectSeparator: false,
+					IgnoreEncloseBy:       false,
 				},
 			},
 			data: func() interface{} {
@@ -665,8 +698,8 @@ func TestReader(t *testing.T) {
 				EscapeBy:        `\`,
 				NullValue:       "null",
 				Stringify: StringifyConfig{
-					IgnoreObjetSeparator: false,
-					IgnoreEncloseBy:      false,
+					IgnoreObjectSeparator: false,
+					IgnoreEncloseBy:       false,
 				},
 			},
 			data: func() interface{} {
@@ -713,8 +746,8 @@ func TestReader(t *testing.T) {
 				EscapeBy:        `\`,
 				NullValue:       "null",
 				Stringify: StringifyConfig{
-					IgnoreObjetSeparator: false,
-					IgnoreEncloseBy:      false,
+					IgnoreObjectSeparator: false,
+					IgnoreEncloseBy:       false,
 				},
 			},
 			data: func() interface{} {
@@ -761,8 +794,8 @@ func TestReader(t *testing.T) {
 				EscapeBy:        `\`,
 				NullValue:       "null",
 				Stringify: StringifyConfig{
-					IgnoreObjetSeparator: false,
-					IgnoreEncloseBy:      false,
+					IgnoreObjectSeparator: false,
+					IgnoreEncloseBy:       false,
 				},
 			},
 			data: func() interface{} {
@@ -831,8 +864,8 @@ func TestReader_Read(t *testing.T) {
 				EscapeBy:        `\`,
 				NullValue:       "null",
 				Stringify: StringifyConfig{
-					IgnoreObjetSeparator: false,
-					IgnoreEncloseBy:      false,
+					IgnoreObjectSeparator: false,
+					IgnoreEncloseBy:       false,
 				},
 			},
 			data: func() interface{} {
@@ -864,8 +897,8 @@ func TestReader_Read(t *testing.T) {
 				EscapeBy:        `\`,
 				NullValue:       "null",
 				Stringify: StringifyConfig{
-					IgnoreObjetSeparator: false,
-					IgnoreEncloseBy:      false,
+					IgnoreObjectSeparator: false,
+					IgnoreEncloseBy:       false,
 				},
 			},
 			data: func() interface{} {
@@ -905,8 +938,8 @@ func TestReader_Read(t *testing.T) {
 				EscapeBy:        `\`,
 				NullValue:       "null",
 				Stringify: StringifyConfig{
-					IgnoreObjetSeparator: false,
-					IgnoreEncloseBy:      false,
+					IgnoreObjectSeparator: false,
+					IgnoreEncloseBy:       false,
 				},
 			},
 			data: func() interface{} {
@@ -956,7 +989,7 @@ func TestReader_Read(t *testing.T) {
 			iterationCounter := 0
 
 			for {
-				iterationCounter += 1
+				iterationCounter++
 				n, err := reader.Read(buf)
 				all = append(all, buf[:n]...)
 

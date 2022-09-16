@@ -57,7 +57,7 @@ func (r *Reader) Read(buffer []byte) (n int, err error) {
 				return r.offsetOfCurrentRead, nil
 			}
 			r.fillItemBuffer(r.index)
-			r.index += 1
+			r.index++
 		}
 	}
 }
@@ -110,8 +110,11 @@ func (r *Reader) writeObject(stringifiedFieldValues []string, wasString []bool) 
 
 func (r *Reader) escapeSpecialChars(value string) string {
 	value = strings.ReplaceAll(value, r.config.EscapeBy, r.config.EscapeBy+r.config.EscapeBy)
-	value = strings.ReplaceAll(value, r.config.FieldSeparator, r.config.EscapeBy+r.config.FieldSeparator)
-	if !r.config.Stringify.IgnoreObjetSeparator {
+
+	if !r.config.Stringify.IgnoreFieldSeparator {
+		value = strings.ReplaceAll(value, r.config.FieldSeparator, r.config.EscapeBy+r.config.FieldSeparator)
+	}
+	if !r.config.Stringify.IgnoreObjectSeparator {
 		value = strings.ReplaceAll(value, r.config.ObjectSeparator, r.config.EscapeBy+r.config.ObjectSeparator)
 	}
 	if !r.config.Stringify.IgnoreEncloseBy {
@@ -173,6 +176,7 @@ func readOptions(options []interface{}) (*io.ObjectStringifier, *io.StringifierC
 	return stringifier, stringifierConfig
 }
 
+// ItemCount returns count of items inside itemBuffer
 func (r *Reader) ItemCount() int {
 	return r.itemCount
 }

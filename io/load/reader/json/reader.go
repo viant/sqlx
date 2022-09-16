@@ -4,11 +4,11 @@ import (
 	"bytes"
 	"encoding/json"
 	"github.com/viant/sqlx/io"
-	sio "io"
+	goIo "io"
 )
 
-// NewReader returns Reader instance and actual data struct type.
-func NewReader(any interface{}) (sio.Reader, error) {
+// NewReader returns Reader instance which supports json format
+func NewReader(any interface{}) (goIo.Reader, error) {
 	valueAt, size, err := io.Values(any)
 	if err != nil {
 		return nil, err
@@ -16,9 +16,6 @@ func NewReader(any interface{}) (sio.Reader, error) {
 	buffer := new(bytes.Buffer)
 	enc := json.NewEncoder(buffer)
 	for i := 0; i < size; i++ {
-		if i > 0 {
-			buffer.WriteByte('\n')
-		}
 		if err = enc.Encode(valueAt(i)); err != nil {
 			return nil, err
 		}

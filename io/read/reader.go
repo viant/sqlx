@@ -151,10 +151,10 @@ func (r *Reader) readAll(ctx context.Context, emit func(row interface{}) error, 
 
 	if err == nil || errors.Is(err, goIo.EOF) {
 		return source.Close(ctx)
-	} else {
-		_ = source.Rollback(ctx)
-		return err
 	}
+
+	_ = source.Rollback(ctx)
+	return err
 }
 
 func (r *Reader) getCacheEntry(options []option.Option) *cache.Entry {
