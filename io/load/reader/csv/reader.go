@@ -110,8 +110,11 @@ func (r *Reader) writeObject(stringifiedFieldValues []string, wasString []bool) 
 
 func (r *Reader) escapeSpecialChars(value string) string {
 	value = strings.ReplaceAll(value, r.config.EscapeBy, r.config.EscapeBy+r.config.EscapeBy)
-	value = strings.ReplaceAll(value, r.config.FieldSeparator, r.config.EscapeBy+r.config.FieldSeparator)
-	if !r.config.Stringify.IgnoreObjetSeparator {
+
+	if !r.config.Stringify.IgnoreFieldSeparator {
+		value = strings.ReplaceAll(value, r.config.FieldSeparator, r.config.EscapeBy+r.config.FieldSeparator)
+	}
+	if !r.config.Stringify.IgnoreObjectSeparator {
 		value = strings.ReplaceAll(value, r.config.ObjectSeparator, r.config.EscapeBy+r.config.ObjectSeparator)
 	}
 	if !r.config.Stringify.IgnoreEncloseBy {

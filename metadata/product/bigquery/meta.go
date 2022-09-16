@@ -9,9 +9,16 @@ import (
 )
 
 const product = "BigQuery"
+const driver = "Driver"
+const driverPkg = "bigquery"
 
 var bigQuery = database.Product{
-	Name: product,
+	Name:      product,
+	DriverPkg: driverPkg,
+	Driver:    driver,
+	//Major:     int,
+	//Minor:     int,
+	//Release:   int
 }
 
 //BigQuery return BigQuery product
@@ -21,7 +28,7 @@ func BigQuery() *database.Product {
 
 func init() {
 	err := registry.Register(
-		info.NewQuery(info.KindVersion, "SELECT 'bigquery'", bigQuery),
+		info.NewQuery(info.KindVersion, "SELECT 'BigQuery 0.0.0'", bigQuery), // Parsing the version gives an error if the version number doesn't exist
 		info.NewQuery(info.KindSchemas, `SELECT
 CATALOG_NAME, 
 SCHEMA_NAME,

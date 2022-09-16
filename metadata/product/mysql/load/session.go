@@ -23,10 +23,8 @@ var mysqlLoadConfig = &csv.Config{
 //Session represents MySQL session
 type Session struct {
 	*io.Transaction
-	dialect  *info.Dialect
-	readerID string
-	reader   goIo.Reader
-	columns  io.Columns
+	dialect *info.Dialect
+	columns io.Columns
 }
 
 //NewSession returns new MySQL session
@@ -53,14 +51,14 @@ func (s *Session) Exec(ctx context.Context, data interface{}, db *sql.DB, tableN
 		return dataReader
 	}
 
-	s.readerID = uuid.New().String()
-	mysql.RegisterReaderHandler(s.readerID, readerResolver)
-	defer mysql.DeregisterReaderHandler(s.readerID)
+	readerID := uuid.New().String()
+	mysql.RegisterReaderHandler(readerID, readerResolver)
+	defer mysql.DeregisterReaderHandler(readerID)
 	if err = s.begin(ctx, db, options); err != nil {
 		return nil, err
 	}
 
-	SQL := BuildSQL(mysqlLoadConfig, s.readerID, tableName, columns)
+	SQL := BuildSQL(mysqlLoadConfig, readerID, tableName, columns)
 
 	result := &io.QueryResult{}
 	if s.Transaction != nil {

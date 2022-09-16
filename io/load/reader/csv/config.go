@@ -11,6 +11,7 @@ type Config struct {
 }
 
 type StringifyConfig struct {
-	IgnoreObjetSeparator bool
-	IgnoreEncloseBy      bool
+	IgnoreFieldSeparator  bool
+	IgnoreObjectSeparator bool
+	IgnoreEncloseBy       bool
 }

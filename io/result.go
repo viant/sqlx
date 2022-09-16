@@ -4,9 +4,10 @@ import "database/sql"
 
 type QueryResult struct {
 	sql.Result
-	Rows int64
+	Rows  int64
+	Error error
 }
 
 func (r *QueryResult) RowsAffected() (int64, error) {
-	return r.Rows, nil
+	return r.Rows, r.Error
 }
