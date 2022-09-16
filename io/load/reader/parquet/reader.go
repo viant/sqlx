@@ -15,7 +15,10 @@ func NewReader(any interface{}) (goIo.Reader, error) {
 	}
 
 	buf := new(bytes.Buffer)
-	writer := aParquet.NewWriter(buf)
+	writerConfig := aParquet.WriterConfig{
+		Compression: &aParquet.Zstd,
+	}
+	writer := aParquet.NewWriter(buf, &writerConfig)
 
 	for i := 0; i < size; i++ {
 		err = writer.Write(valueAt(i)) // func Write adds '\n'
