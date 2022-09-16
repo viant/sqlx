@@ -896,6 +896,46 @@ func TestReader_Read(t *testing.T) {
 'comment - 2'`,
 			bufferSizes: []int{1, 2, 3, 13, 14, 27, 28, 54, 1000}, // from 1 to more than len(expectedRead)
 		},
+		{
+			description: "specified case format without fields",
+			config: &Config{
+				FieldSeparator:  `,`,
+				ObjectSeparator: "\n",
+				EncloseBy:       `'`,
+				EscapeBy:        `\`,
+				NullValue:       "null",
+				Stringify: StringifyConfig{
+					IgnoreObjetSeparator: false,
+					IgnoreEncloseBy:      false,
+				},
+			},
+			data: func() interface{} {
+				type Foo struct {
+					ID      string
+					Comment string
+				}
+
+				return []*Foo{
+					{
+						ID:      `id - 1`,
+						Comment: `comment - 1`,
+					},
+					{
+						ID:      `id - 2`,
+						Comment: `comment - 2`,
+					},
+				}
+			},
+			options: []interface{}{
+				io.StringifierConfig{
+					CaseFormat: format.CaseLowerUnderscore,
+				},
+			},
+			expectedRead: `'i_d','comment'
+'id - 1','comment - 1'
+'id - 2','comment - 2'`,
+			bufferSizes: []int{1, 2, 3, 13, 14, 27, 28, 54, 1000}, // from 1 to more than len(expectedRead)
+		},
 	}
 
 	//for _, testCase := range testCases[len(testCases)-1:] {
