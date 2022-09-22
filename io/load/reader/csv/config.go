@@ -1,18 +1,22 @@
 package csv
 
-//Config represents reader config
-type Config struct {
-	FieldSeparator  string
-	ObjectSeparator string
-	EncloseBy       string
-	EscapeBy        string
-	NullValue       string
-	Stringify       StringifyConfig
-}
+type (
+	//Config represents reader config
+	Config struct {
+		FieldSeparator  string
+		ObjectSeparator string
+		EncloseBy       string
+		EscapeBy        string
+		NullValue       string
+		Stringify       StringifyConfig
+		UniqueFields    []string
+		References      []*Reference // parent -> children. Foo.ID -> Boo.FooId
+	}
 
-// StringifyConfig "extends" Config with ignore flags
-type StringifyConfig struct {
-	IgnoreFieldSeparator  bool
-	IgnoreObjectSeparator bool
-	IgnoreEncloseBy       bool
-}
+	// StringifyConfig "extends" Config with ignore flags
+	StringifyConfig struct {
+		IgnoreFieldSeparator  bool
+		IgnoreObjectSeparator bool
+		IgnoreEncloseBy       bool
+	}
+)

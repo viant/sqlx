@@ -535,7 +535,7 @@ func (a *Cache) columnValueURL(column string, columnValueMarshal []byte, URL str
 		return URL
 	}
 
-	return column + "#" + strconv.Quote(string(columnValueMarshal)) + "#" + URL
+	return strings.ToLower(column) + "#" + strconv.Quote(string(columnValueMarshal)) + "#" + URL
 }
 
 func (a *Cache) writePolicy() *as.WritePolicy {
@@ -555,7 +555,7 @@ func (a *Cache) putColumnMarker(URL string, column string, bin as.BinMap) error 
 }
 
 func (a *Cache) columnURL(URL string, column string) string {
-	return column + "#" + URL
+	return strings.ToLower(column) + "#" + URL
 }
 
 func (a *Cache) updateFullMatchEntry(ctx context.Context, anEntry *cache.Entry, match *RecordMatched, SQL string, argsMarshal []byte) error {
