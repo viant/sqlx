@@ -50,9 +50,14 @@ func (p *Placeholders) ColumnValue() (interface{}, bool) {
 	}
 
 	if value != nil {
+		switch actual := value.(type) {
+		case []byte:
+			return string(actual), true
+		case string, uint, int, float64, int64, uint64, int32, uint32, int16, uint16, bool, float32:
+			return actual, true
+		}
 		of := reflect.TypeOf(value)
 		dest := reflect.New(of).Elem().Interface()
-
 		xunsafe.Copy(xunsafe.AsPointer(dest), xunsafe.AsPointer(value), int(of.Size()))
 		return dest, true
 	}
