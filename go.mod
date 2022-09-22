@@ -8,15 +8,18 @@ require (
 	github.com/go-sql-driver/mysql v1.6.0
 	github.com/google/uuid v1.3.0
 	github.com/lib/pq v1.10.6
-	github.com/mattn/go-sqlite3 v1.14.13
+	github.com/mattn/go-sqlite3 v2.0.2+incompatible
+	github.com/pkg/errors v0.9.1
 	github.com/segmentio/parquet-go v0.0.0-20220902005228-5bd5f6114638
 	github.com/stretchr/testify v1.8.0
 	github.com/vertica/vertica-sql-go v1.2.2
-	github.com/viant/afs v1.16.1-0.20220601210902-dc23d64dda15
+	github.com/viant/afs v1.16.1-0.20220708154004-5cc767a16d95
+	github.com/viant/assertly v0.9.1-0.20220620174148-bab013f93a60
 	github.com/viant/bigquery v0.2.1-0.20220914154037-307a294f2482
+	github.com/viant/datly v0.2.14
 	github.com/viant/parsly v0.0.0-20220907184615-a27c125714a1
-	github.com/viant/toolbox v0.34.5
-	github.com/viant/xunsafe v0.8.1-0.20220609224231-1d3e1fcf7bb6
+	github.com/viant/toolbox v0.34.6-0.20220630003140-fb2bf82657c1
+	github.com/viant/xunsafe v0.8.1-0.20220829223316-aae47a6fbb1f
 	google.golang.org/api v0.84.0
 )
 
@@ -30,13 +33,9 @@ require (
 	github.com/googleapis/enterprise-certificate-proxy v0.0.0-20220520183353-fd19c99a87aa // indirect
 	github.com/googleapis/gax-go/v2 v2.4.0 // indirect
 	github.com/klauspost/compress v1.15.5 // indirect
-	github.com/kr/text v0.2.0 // indirect
 	github.com/mattn/go-runewidth v0.0.9 // indirect
 	github.com/olekukonko/tablewriter v0.0.5 // indirect
-	github.com/onsi/ginkgo v1.16.5 // indirect
-	github.com/onsi/gomega v1.20.0 // indirect
 	github.com/pierrec/lz4/v4 v4.1.9 // indirect
-	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/segmentio/encoding v0.3.5 // indirect
 	github.com/yuin/gopher-lua v0.0.0-20220504180219-658193537a64 // indirect
