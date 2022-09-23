@@ -101,7 +101,13 @@ func (a *Cache) IndexBy(ctx context.Context, db *sql.DB, column, SQL string, arg
 	fieldsStringified := string(fieldMarshal)
 
 	for value := range values {
-		metaBin := a.metaBin(SQL, argsStringified, fieldsStringified, column)
+		var metaBin as.BinMap
+		if column == "" {
+			metaBin = a.metaBin(SQL, argsStringified, fieldsStringified, column)
+		} else {
+			metaBin = as.BinMap{}
+		}
+
 		errors.Add(a.writeIndexData(value, URL, column, metaBin))
 	}
 
@@ -109,7 +115,11 @@ func (a *Cache) IndexBy(ctx context.Context, db *sql.DB, column, SQL string, arg
 		return err
 	}
 
-	return a.putColumnMarker(URL, column, a.metaBin(SQL, argsStringified, fieldsStringified, column))
+	if column != "" {
+		return a.putColumnMarker(URL, column, a.metaBin(SQL, argsStringified, fieldsStringified, column))
+	}
+
+	return nil
 }
 
 func tryOrderedSQL(SQL string, column string) (string, bool) {
@@ -676,10 +686,6 @@ func (a *Cache) newReader(matcher *cache.Index, columnValue interface{}) (*Reade
 		return nil, nil
 	} else if err != nil {
 		return nil, err
-	}
-
-	if !a.recordMatches(record, matcher.SQL, args) {
-		return nil, fmt.Errorf("cache record doesn't match actual struct")
 	}
 
 	return a.reader(aKey, record)
