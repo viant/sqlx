@@ -5,7 +5,6 @@ import (
 	"encoding/csv"
 	"fmt"
 	"github.com/pkg/errors"
-	"github.com/viant/datly/shared"
 	"github.com/viant/xunsafe"
 	"io"
 	"reflect"
@@ -74,7 +73,7 @@ func (m *Marshaller) indexByPath(parentType reflect.Type, path string, depth int
 		field := parentType.Field(i)
 		fieldPath := m.fieldPositionKey(path, field)
 
-		elemType := shared.Elem(field.Type)
+		elemType := Elem(field.Type)
 		if elemType.Kind() == reflect.Struct {
 			m.indexByPath(elemType, fieldPath, depth+1, xunsafe.NewField(field))
 			continue
@@ -203,4 +202,12 @@ func (m *Marshaller) ReadHeaders(b []byte) ([]string, error) {
 	}
 
 	return result, nil
+}
+
+func Elem(rType reflect.Type) reflect.Type {
+	switch rType.Kind() {
+	case reflect.Ptr, reflect.Slice:
+		return Elem(rType.Elem())
+	}
+	return rType
 }

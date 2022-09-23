@@ -8,6 +8,7 @@ import (
 type Indexed struct {
 	ColumnValue interface{}
 	Data        *bytes.Buffer
+	Column      string
 }
 
 func NewIndexed(columnValue interface{}) *Indexed {

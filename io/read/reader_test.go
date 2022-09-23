@@ -432,40 +432,6 @@ func TestReader_ReadAll(t *testing.T) {
 			},
 		},
 		{
-			description: "Aerospike smart cache read with pagination",
-			driver:      "sqlite3",
-			dsn:         "/tmp/sqllite.db",
-			initSQL: []string{
-				"CREATE TABLE IF NOT EXISTS t10 (foo_id INTEGER PRIMARY KEY, foo_name TEXT, desc TEXT, unk TEXT)",
-				"delete from t10",
-				"insert into t10 values(0, \"John - 0\", \"desc0\", \"100\")",
-				"insert into t10 values(1, \"John\", \"desc1\", \"101\")",
-				"insert into t10 values(2, \"Bruce\", \"desc2\", \"102\")",
-			},
-			query: "SELECT foo_id , foo_name, desc,  unk  FROM t10 ORDER BY 1 DESC",
-			newRow: func() interface{} {
-				return &case3Wrapper{}
-			},
-			resolver:        io.NewResolver(),
-			expectedScanned: `[[1,"John","desc1","101"]]`,
-			cacheConfig: &cacheConfig{
-				cacheType: "aerospike",
-			},
-			expect:         `[{"Id":1,"Desc":"desc1","Name":"John"}]`,
-			expectResolved: `["101"]`,
-			cacheWarmup: &cacheWarmup{
-				column: "foo_id",
-				SQL:    "SELECT * FROM t10 ORDER BY 1 DESC",
-			},
-			matcher: &cache.Index{
-				SQL:   "SELECT * FROM t10 ORDER BY 1 DESC",
-				Args:  []interface{}{},
-				By:    "foo_id",
-				In:    []interface{}{1},
-				Limit: 1,
-			},
-		},
-		{
 			description: "Aerospike cache with record pagination",
 			driver:      "sqlite3",
 			dsn:         "/tmp/sqllite.db",
@@ -655,6 +621,40 @@ func TestReader_ReadAll(t *testing.T) {
 				In:     []interface{}{"101", "102"},
 				Offset: 0,
 				Limit:  2,
+			},
+		},
+		{
+			description: "Aerospike smart cache read with pagination",
+			driver:      "sqlite3",
+			dsn:         "/tmp/sqllite.db",
+			initSQL: []string{
+				"CREATE TABLE IF NOT EXISTS t15 (foo_id INTEGER PRIMARY KEY, foo_name TEXT, desc TEXT, unk TEXT)",
+				"delete from t15",
+				"insert into t15 values(0, \"John - 0\", \"desc0\", \"100\")",
+				"insert into t15 values(1, \"John\", \"desc1\", \"101\")",
+				"insert into t15 values(2, \"Bruce\", \"desc2\", \"102\")",
+			},
+			query: "SELECT foo_id , foo_name, desc,  unk  FROM t15 ORDER BY 1 DESC",
+			newRow: func() interface{} {
+				return &case3Wrapper{}
+			},
+			resolver:        io.NewResolver(),
+			expectedScanned: `[[1,"John","desc1","101"]]`,
+			cacheConfig: &cacheConfig{
+				cacheType: "aerospike",
+			},
+			expect:         `[{"Id":1,"Desc":"desc1","Name":"John"}]`,
+			expectResolved: `["101"]`,
+			cacheWarmup: &cacheWarmup{
+				column: "foo_id",
+				SQL:    "SELECT * FROM t15 ORDER BY 1 DESC",
+			},
+			matcher: &cache.Index{
+				SQL:   "SELECT * FROM t15 ORDER BY 1 DESC",
+				Args:  []interface{}{},
+				By:    "foo_id",
+				In:    []interface{}{1},
+				Limit: 1,
 			},
 		},
 	}

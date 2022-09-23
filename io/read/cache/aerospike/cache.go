@@ -469,7 +469,7 @@ func (a *Cache) updateEntryFields(record *as.Record, entry *cache.Entry) error {
 }
 
 func (a *Cache) writeIndexData(args *cache.Indexed, URL string, column string, metaBin as.BinMap) error {
-	if args.ColumnValue == nil {
+	if args.ColumnValue == nil && args.Column != "" {
 		return nil
 	}
 
@@ -782,6 +782,7 @@ func (a *Cache) fetchAndIndexValues(fields []*cache.Field, column string, rows *
 		}
 
 		indexed := indexSource.Index(columnValue)
+		indexed.Column = column
 
 		if err = indexed.StringifyData(placeholders.Values()); err != nil {
 			return err

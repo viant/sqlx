@@ -107,7 +107,7 @@ func newDecoderFn(dataType reflect.Type, data []byte) DecoderFn {
 	actualDataType := dataType
 
 	wasPtr := false
-	if dataType.Kind() == reflect.Ptr {
+	for dataType.Kind() == reflect.Ptr {
 		wasPtr = true
 		dataType = dataType.Elem()
 	}
