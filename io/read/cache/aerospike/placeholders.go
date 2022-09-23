@@ -93,8 +93,19 @@ func (p *Placeholders) ColumnValue() (interface{}, bool) {
 		}
 
 		of := reflect.TypeOf(value)
-		dest := reflect.New(of).Elem().Interface()
+		wasPtr := false
 
+		if of.Kind() == reflect.Ptr {
+			of = of.Elem()
+			wasPtr = true
+		}
+
+		destValue := reflect.New(of)
+		if !wasPtr {
+			destValue = destValue.Elem()
+		}
+
+		dest := destValue.Interface()
 		xunsafe.Copy(xunsafe.AsPointer(dest), xunsafe.AsPointer(value), int(of.Size()))
 		return dest, value != nil
 	}
