@@ -9,6 +9,25 @@ type (
 	}
 )
 
+func ParentOf(objects []*Object) (*Object, bool) {
+	nodes := make([]Node, 0, len(objects))
+	for i, _ := range objects {
+		nodes = append(nodes, objects[i])
+	}
+
+	parents := BuildTree(nodes)
+	for _, parent := range parents {
+		if parent.ID() == "" {
+			asObj, ok := parent.(*Object)
+			if ok {
+				return asObj, true
+			}
+		}
+	}
+
+	return nil, false
+}
+
 func (i NodeIndex) Get(id interface{}) map[interface{}]bool {
 	index, ok := i[id]
 	if !ok {

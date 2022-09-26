@@ -2,6 +2,7 @@ package csv
 
 import (
 	"github.com/viant/sqlx/converter"
+	"github.com/viant/sqlx/io"
 	"github.com/viant/xunsafe"
 	"reflect"
 	"unsafe"
@@ -20,6 +21,7 @@ type Object struct {
 	children     []*Object
 	xField       *xunsafe.Field
 	xSlice       *xunsafe.Slice
+	stringifier  *io.ObjectStringifier
 }
 
 func (o *Object) ID() interface{} {
@@ -48,12 +50,12 @@ func (o *Object) AddHolder(field *Field, holder *string) {
 	o.fields = append(o.fields, field)
 }
 
-func (o *Object) Build() error {
-	_, err := o.build()
+func (o *Object) Umarshal() error {
+	_, err := o.unmarshal()
 	return err
 }
 
-func (o *Object) build() (interface{}, error) {
+func (o *Object) unmarshal() (interface{}, error) {
 	indexed, ok := o.CheckIndexed()
 	if ok {
 		return indexed, nil
@@ -74,7 +76,7 @@ func (o *Object) build() (interface{}, error) {
 		field.xField.SetValue(valuePtr, converted)
 	}
 
-	if err := o.buildChildren(xunsafe.AsPointer(value), o.children); err != nil {
+	if err := o.unmarshalChildren(xunsafe.AsPointer(value), o.children); err != nil {
 		return nil, err
 	}
 
@@ -97,9 +99,9 @@ func (o *Object) CheckIndexed() (interface{}, bool) {
 	return nil, false
 }
 
-func (o *Object) buildChildren(parent unsafe.Pointer, children []*Object) error {
+func (o *Object) unmarshalChildren(parent unsafe.Pointer, children []*Object) error {
 	for _, child := range children {
-		childValue, err := child.build()
+		childValue, err := child.unmarshal()
 		if err != nil {
 			return err
 		}
@@ -109,7 +111,7 @@ func (o *Object) buildChildren(parent unsafe.Pointer, children []*Object) error 
 		}
 
 		child.merge(parent, childValue)
-		if err = child.buildChildren(xunsafe.AsPointer(childValue), child.children); err != nil {
+		if err = child.unmarshalChildren(xunsafe.AsPointer(childValue), child.children); err != nil {
 			return err
 		}
 	}
@@ -138,4 +140,28 @@ func (o *Object) objectAppender(parent unsafe.Pointer) *xunsafe.Appender {
 	}
 
 	return appender
+}
+
+func (o *Object) Accessor(accessorIndex int, config *Config) *Accessor {
+	children := make([]*Accessor, 0, len(o.children))
+	for i, child := range o.children {
+		children = append(children, child.Accessor(i, config))
+	}
+
+	accessor := &Accessor{
+		cache:               map[unsafe.Pointer]*stringified{},
+		path:                o.path,
+		config:              config,
+		fields:              o.fields,
+		field:               o.xField,
+		children:            children,
+		slice:               o.xSlice,
+		parentAccessorIndex: accessorIndex,
+	}
+
+	for _, child := range children {
+		child._parent = accessor
+	}
+
+	return accessor
 }

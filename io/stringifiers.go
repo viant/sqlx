@@ -12,7 +12,7 @@ import (
 var timeType = reflect.TypeOf(time.Time{})
 var timePtrType = reflect.TypeOf(&time.Time{})
 
-func stringStringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue string, wasPointer bool) fieldStringifierFn {
+func stringStringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue string, wasPointer bool) FieldStringifierFn {
 	if wasPointer {
 		return func(pointer unsafe.Pointer) (string, bool) {
 			strPtr := field.StringPtr(pointer)
@@ -32,7 +32,7 @@ func stringStringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue st
 	}
 }
 
-func intStringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue string, wasPointer bool) fieldStringifierFn {
+func intStringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue string, wasPointer bool) FieldStringifierFn {
 	if wasPointer {
 		return func(pointer unsafe.Pointer) (string, bool) {
 			intPtr := field.IntPtr(pointer)
@@ -52,7 +52,7 @@ func intStringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue strin
 	}
 }
 
-func int8Stringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue string, wasPointer bool) fieldStringifierFn {
+func int8Stringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue string, wasPointer bool) FieldStringifierFn {
 	if wasPointer {
 		return func(pointer unsafe.Pointer) (string, bool) {
 			intPtr := field.Int8Ptr(pointer)
@@ -72,7 +72,7 @@ func int8Stringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue stri
 	}
 }
 
-func int16Stringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue string, wasPointer bool) fieldStringifierFn {
+func int16Stringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue string, wasPointer bool) FieldStringifierFn {
 	if wasPointer {
 		return func(pointer unsafe.Pointer) (string, bool) {
 			intPtr := field.Int16Ptr(pointer)
@@ -92,7 +92,7 @@ func int16Stringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue str
 	}
 }
 
-func int32Stringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue string, wasPointer bool) fieldStringifierFn {
+func int32Stringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue string, wasPointer bool) FieldStringifierFn {
 	if wasPointer {
 		return func(pointer unsafe.Pointer) (string, bool) {
 			intPtr := field.Int32Ptr(pointer)
@@ -112,7 +112,7 @@ func int32Stringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue str
 	}
 }
 
-func int64Stringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue string, wasPointer bool) fieldStringifierFn {
+func int64Stringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue string, wasPointer bool) FieldStringifierFn {
 	if wasPointer {
 		return func(pointer unsafe.Pointer) (string, bool) {
 			intPtr := field.Int64Ptr(pointer)
@@ -132,7 +132,7 @@ func int64Stringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue str
 	}
 }
 
-func uintStringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue string, wasPointer bool) fieldStringifierFn {
+func uintStringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue string, wasPointer bool) FieldStringifierFn {
 	if wasPointer {
 		return func(pointer unsafe.Pointer) (string, bool) {
 			intPtr := field.UintPtr(pointer)
@@ -152,7 +152,7 @@ func uintStringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue stri
 	}
 }
 
-func uint8Stringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue string, wasPointer bool) fieldStringifierFn {
+func uint8Stringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue string, wasPointer bool) FieldStringifierFn {
 	if wasPointer {
 		return func(pointer unsafe.Pointer) (string, bool) {
 			intPtr := field.Uint8Ptr(pointer)
@@ -172,7 +172,7 @@ func uint8Stringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue str
 	}
 }
 
-func uint16Stringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue string, wasPointer bool) fieldStringifierFn {
+func uint16Stringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue string, wasPointer bool) FieldStringifierFn {
 	if wasPointer {
 		return func(pointer unsafe.Pointer) (string, bool) {
 			intPtr := field.Uint16Ptr(pointer)
@@ -192,7 +192,7 @@ func uint16Stringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue st
 	}
 }
 
-func uint32Stringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue string, wasPointer bool) fieldStringifierFn {
+func uint32Stringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue string, wasPointer bool) FieldStringifierFn {
 	if wasPointer {
 		return func(pointer unsafe.Pointer) (string, bool) {
 			intPtr := field.Uint32Ptr(pointer)
@@ -212,7 +212,7 @@ func uint32Stringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue st
 	}
 }
 
-func uint64Stringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue string, wasPointer bool) fieldStringifierFn {
+func uint64Stringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue string, wasPointer bool) FieldStringifierFn {
 	if wasPointer {
 		return func(pointer unsafe.Pointer) (string, bool) {
 			intPtr := field.Uint64Ptr(pointer)
@@ -232,7 +232,7 @@ func uint64Stringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue st
 	}
 }
 
-func boolStringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue string, wasPointer bool) fieldStringifierFn {
+func boolStringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue string, wasPointer bool) FieldStringifierFn {
 	if wasPointer {
 		return func(pointer unsafe.Pointer) (string, bool) {
 			valuePtr := field.BoolPtr(pointer)
@@ -253,7 +253,7 @@ func boolStringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue stri
 }
 
 //TODO: Float precision
-func float64Stringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue string, wasPointer bool) fieldStringifierFn {
+func float64Stringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue string, wasPointer bool) FieldStringifierFn {
 	if wasPointer {
 		return func(pointer unsafe.Pointer) (string, bool) {
 			valuePtr := field.Float64Ptr(pointer)
@@ -274,7 +274,7 @@ func float64Stringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue s
 }
 
 //TODO: Float precision
-func float32Stringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue string, wasPointer bool) fieldStringifierFn {
+func float32Stringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue string, wasPointer bool) FieldStringifierFn {
 	if wasPointer {
 		return func(pointer unsafe.Pointer) (string, bool) {
 			valuePtr := field.Float32Ptr(pointer)
@@ -295,7 +295,7 @@ func float32Stringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue s
 }
 
 //TODO: Time format
-func defaultStringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue string) fieldStringifierFn {
+func defaultStringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue string) FieldStringifierFn {
 
 	timeLayout := field.Tag.Get("timeLayout")
 	if timeLayout == "" {
