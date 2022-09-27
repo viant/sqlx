@@ -180,8 +180,22 @@ func prepareSQL(query *info.Query, placeholderGetter func() string, argsOpt *opt
 
 	SQL := query.SQL
 
+	var expanded = make([]bool, len(args))
+	for i, item := range args {
+		if text, ok := item.(string); ok {
+			expr := fmt.Sprintf("$Args[%v]", i)
+			if strings.Contains(SQL, expr) {
+				expanded[i] = true
+				SQL = strings.ReplaceAll(SQL, expr, text)
+			}
+		}
+	}
+
 	var criteriaValues = make([]string, 0)
 	for i := range args {
+		if expanded[i] {
+			continue
+		}
 		if column := query.Criteria[i].Column; column != "" {
 			switch column {
 			case "%":
