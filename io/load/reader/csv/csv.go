@@ -9,7 +9,11 @@ import (
 	"github.com/viant/xunsafe"
 	"io"
 	"reflect"
+	"time"
 )
+
+var timeType = reflect.TypeOf(time.Now())
+var timeTypePtr = reflect.PtrTo(timeType)
 
 type (
 	Marshaller struct {
@@ -107,13 +111,17 @@ func (m *Marshaller) indexByPath(parentType reflect.Type, path string, excluded 
 	m.pathAccessors[path] = parentAccessor
 	for i := 0; i < numField; i++ {
 		field := elemParentType.Field(i)
+		if field.PkgPath != "" {
+			continue
+		}
+
 		fieldPath, fieldName := m.asKeys(path, field)
 		if excluded[fieldPath] {
 			continue
 		}
 
 		elemType := Elem(field.Type)
-		if elemType.Kind() == reflect.Struct {
+		if elemType.Kind() == reflect.Struct && elemType != timeType {
 			m.indexByPath(elemType, fieldPath, excluded, fieldName, xunsafe.NewField(field))
 			continue
 		}

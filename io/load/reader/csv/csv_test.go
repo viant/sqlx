@@ -7,6 +7,7 @@ import (
 	"github.com/viant/toolbox"
 	"reflect"
 	"testing"
+	"time"
 )
 
 func TestCsv_Unmarshal(t *testing.T) {
@@ -140,6 +141,12 @@ func TestCsv_Marshal(t *testing.T) {
 		Name      string
 		BooSlices []*BooSlice
 		Boo       *Boo
+	}
+
+	type FooWithTime struct {
+		ID      int
+		Time    time.Time
+		TimePtr *time.Time
 	}
 
 	testCases := []struct {
@@ -386,6 +393,24 @@ func TestCsv_Marshal(t *testing.T) {
 				},
 			},
 		},
+		{
+			description: "times",
+			input: []*FooWithTime{
+				{
+					ID:      1,
+					Time:    newTime("2019-01-02"),
+					TimePtr: newTimePtr("2020-01-02"),
+				},
+				{
+					ID:   2,
+					Time: newTime("2020-04-04"),
+				},
+			},
+			rType: reflect.TypeOf(&FooWithTime{}),
+			expected: `"ID","Time","TimePtr"
+1,"2019-01-02T00:00:00Z","2020-01-02T00:00:00Z"
+2,"2020-04-04T00:00:00Z",null`,
+		},
 	}
 
 	//for _, testCase := range testCases[len(testCases)-1:] {
@@ -408,4 +433,17 @@ func TestCsv_Marshal(t *testing.T) {
 			fmt.Println(string(marshal))
 		}
 	}
+}
+
+func newTime(date string) time.Time {
+	parse, err := time.Parse("2006-01-02", date)
+	if err != nil {
+		panic(err)
+	}
+	return parse
+}
+
+func newTimePtr(date string) *time.Time {
+	aTime := newTime(date)
+	return &aTime
 }
