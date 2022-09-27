@@ -143,11 +143,12 @@ func TestCsv_Marshal(t *testing.T) {
 	}
 
 	testCases := []struct {
-		description string
-		rType       reflect.Type
-		input       interface{}
-		expected    string
-		config      *Config
+		description   string
+		rType         reflect.Type
+		input         interface{}
+		expected      string
+		config        *Config
+		depthsConfigs []*Config
 	}{
 		{
 			description: "basic",
@@ -336,6 +337,55 @@ func TestCsv_Marshal(t *testing.T) {
 2,"multiSlice without foos",null,null,null,5,"Boo slice - name",6,"Foo under Boo slice - 1",567.0000000000000000000000000000000000000000000000000000000000000000,4,"Boo - name",null,null,null
 2,"multiSlice without foos",null,null,null,5,"Boo slice - name",7,"Foo under Boo slice - 2",567.0000000000000000000000000000000000000000000000000000000000000000,4,"Boo - name",null,null,null`,
 		},
+		{
+			description: "depth configs",
+			input: []*BooSlice{
+				{
+					ID:   1,
+					Name: "Boo",
+					Foos: []*Foo{
+						{
+							ID:    2,
+							Name:  "Foo - 1",
+							Price: 125,
+						},
+						{
+							ID:    3,
+							Name:  "Foo - 2",
+							Price: 250,
+						},
+					},
+				},
+				{
+					ID:   4,
+					Name: "Boo - 4",
+					Foos: []*Foo{
+						{
+							ID:    5,
+							Name:  "Foo - 5",
+							Price: 125,
+						},
+						{
+							ID:    6,
+							Name:  "Foo - 6",
+							Price: 250,
+						},
+					},
+				},
+			},
+			rType: reflect.TypeOf(&BooSlice{}),
+			expected: `"ID","Name","Foos"
+1,"Boo",'Foos.ID'#'Foos.Name'#'Foos.Price'|2#'Foo - 1'#125.0000000000000000000000000000000000000000000000000000000000000000|3#'Foo - 2'#250.0000000000000000000000000000000000000000000000000000000000000000
+4,"Boo - 4",'Foos.ID'#'Foos.Name'#'Foos.Price'|5#'Foo - 5'#125.0000000000000000000000000000000000000000000000000000000000000000|6#'Foo - 6'#250.0000000000000000000000000000000000000000000000000000000000000000`,
+			depthsConfigs: []*Config{
+				{
+					ObjectSeparator: "|",
+					EscapeBy:        "/",
+					FieldSeparator:  "#",
+					EncloseBy:       "'",
+				},
+			},
+		},
 	}
 
 	//for _, testCase := range testCases[len(testCases)-1:] {
@@ -345,7 +395,7 @@ func TestCsv_Marshal(t *testing.T) {
 			continue
 		}
 
-		marshal, err := marshaller.Marshal(testCase.input)
+		marshal, err := marshaller.Marshal(testCase.input, testCase.depthsConfigs)
 		if !assert.Nil(t, err, testCase.description) {
 			continue
 		}

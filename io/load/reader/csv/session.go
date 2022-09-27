@@ -83,6 +83,7 @@ func (s *UnmarshalSession) getOrCreateObject(field *Field, refs map[string][]str
 		},
 		xField: xField,
 		xSlice: slice,
+		holder: field.holder,
 	}
 
 	s.objects = append(s.objects, object)

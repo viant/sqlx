@@ -1,6 +1,7 @@
 package csv
 
 import (
+	io2 "github.com/viant/sqlx/io"
 	"github.com/viant/xunsafe"
 	"unsafe"
 )
@@ -20,8 +21,10 @@ type (
 		slicePtr       unsafe.Pointer
 		slice          *xunsafe.Slice
 
-		ptr   unsafe.Pointer // refering to a single object
-		field *xunsafe.Field // used to get value from parent pointer
+		ptr    unsafe.Pointer // refering to a single object
+		field  *xunsafe.Field // used to get value from parent pointer
+		holder string
+		xType  *xunsafe.Type
 	}
 
 	stringified struct {
@@ -31,9 +34,9 @@ type (
 )
 
 func (a *Accessor) Reset() {
-	a.Set(nil)
 	a.emitedFirst = false
 	a.cache = map[unsafe.Pointer]*stringified{}
+	a.currSliceIndex = 0
 }
 
 func (a *Accessor) Has() bool {
@@ -102,35 +105,45 @@ func (a *Accessor) getChildValue(pointer unsafe.Pointer, child *Accessor) (value
 	return xunsafe.AsPointer(at), valuePointer
 }
 
-func (a *Accessor) Stringify() ([]string, []bool) {
-	result, wasStrings := a.stringifyFields()
-	for _, child := range a.children {
-		childValues, childWasStrings := child.Stringify()
-		result = append(result, childValues...)
-		wasStrings = append(wasStrings, childWasStrings...)
-	}
-
-	return result, wasStrings
+func (a *Accessor) Stringify(writer *writer) {
+	result, wasStrings := a.stringifyFields(writer)
+	writer.writeObject(result, wasStrings)
+	a.appendChildren(writer, a.children)
 }
 
-func (a *Accessor) Headers() ([]string, []bool) {
+func (a *Accessor) appendChildren(writer *writer, children []*Accessor) {
+	for _, child := range children {
+		if child.config == nil {
+			fields, bools := child.stringifyFields(writer)
+			writer.appendObject(fields, bools)
+			child.appendChildren(writer, child.children)
+		} else {
+			values, size := child.values()
+			newWriter(child, child.config, writer.buffer, nil, values, size, a.config.FieldSeparator).writeObjects(child.Headers())
+			child.Reset()
+		}
+	}
+}
+
+func (a *Accessor) Headers() []string {
 	headers := make([]string, 0, len(a.fields))
-	wasStrings := make([]bool, 0, len(a.fields))
 	for _, field := range a.fields {
 		headers = append(headers, field.header)
-		wasStrings = append(wasStrings, true)
 	}
 
 	for _, child := range a.children {
-		childHeaders, childWasStrings := child.Headers()
-		headers = append(headers, childHeaders...)
-		wasStrings = append(wasStrings, childWasStrings...)
+		if child.config == nil {
+			childHeaders := child.Headers()
+			headers = append(headers, childHeaders...)
+		} else {
+			headers = append(headers, child.holder)
+		}
 	}
 
-	return headers, wasStrings
+	return headers
 }
 
-func (a *Accessor) stringifyFields() ([]string, []bool) {
+func (a *Accessor) stringifyFields(writer *writer) ([]string, []bool) {
 	if value, ok := a.cache[a.ptr]; ok {
 		return value.values, value.wasStrings
 	}
@@ -138,7 +151,7 @@ func (a *Accessor) stringifyFields() ([]string, []bool) {
 	if a.ptr == nil {
 		strings := make([]string, len(a.fields))
 		for i := range strings {
-			strings[i] = a.config.NullValue
+			strings[i] = writer.config.NullValue
 		}
 
 		return strings, make([]bool, len(a.fields))
@@ -161,6 +174,10 @@ func (a *Accessor) stringifyFields() ([]string, []bool) {
 //next returns true if record was not exhausted and first not ehausted Accessor
 func (a *Accessor) next() (*Accessor, bool) {
 	for _, child := range a.children {
+		if child.config != nil {
+			continue
+		}
+
 		if accessor, ok := child.next(); ok {
 			return accessor, true
 		}
@@ -179,4 +196,41 @@ func (a *Accessor) next() (*Accessor, bool) {
 	}
 
 	return nil, false
+}
+
+func (a *Accessor) values() (io2.ValueAccessor, int) {
+	if a.ptr == nil {
+		return func(index int) interface{} {
+			return nil
+		}, 0
+	}
+
+	if a.slice != nil {
+		if a.slicePtr == nil {
+			return func(index int) interface{} {
+				return nil
+			}, 0
+		}
+
+		return func(index int) interface{} {
+			if index >= a.slice.Len(a.slicePtr) {
+				return nil
+			}
+
+			return a.slice.ValuePointerAt(a.slicePtr, index)
+		}, 1
+	}
+
+	interfacer := a.Interfacer()
+	return func(index int) interface{} {
+		return interfacer.Interface(a.ptr)
+	}, 1
+}
+
+func (a *Accessor) Interfacer() *xunsafe.Type {
+	if a.xType == nil {
+		a.xType = xunsafe.NewType(a.field.Type)
+	}
+
+	return a.xType
 }

@@ -31,9 +31,9 @@ type (
 		path       string
 		name       string
 		header     string
+		holder     string
 
 		xField      *xunsafe.Field
-		depth       int
 		unique      bool
 		stringifier io2.FieldStringifierFn
 	}
@@ -69,6 +69,11 @@ func NewMarshaller(rType reflect.Type, config *Config) (*Marshaller, error) {
 		config.NullValue = "null"
 	}
 
+	excluded := map[string]bool{}
+	for _, path := range config.ExcludedPaths {
+		excluded[path] = true
+	}
+
 	elemType := Elem(rType)
 	marshaller := &Marshaller{
 		config:          config,
@@ -80,48 +85,52 @@ func NewMarshaller(rType reflect.Type, config *Config) (*Marshaller, error) {
 		xType:           xunsafe.NewType(elemType),
 	}
 
-	if err := marshaller.init(config); err != nil {
+	if err := marshaller.init(config, excluded); err != nil {
 		return nil, err
 	}
 
 	return marshaller, nil
 }
 
-func (m *Marshaller) init(config *Config) error {
+func (m *Marshaller) init(config *Config, excluded map[string]bool) error {
 	m.initConfig(config)
 
 	m.xSlice = xunsafe.NewSlice(reflect.SliceOf(m.elemType))
-	m.indexByPath(m.elemType, "", 0, nil)
+	m.indexByPath(m.elemType, "", excluded, "", nil)
 
 	return nil
 }
 
-func (m *Marshaller) indexByPath(parentType reflect.Type, path string, depth int, parentAccessor *xunsafe.Field) {
+func (m *Marshaller) indexByPath(parentType reflect.Type, path string, excluded map[string]bool, holder string, parentAccessor *xunsafe.Field) {
 	elemParentType := Elem(parentType)
 	numField := elemParentType.NumField()
 	m.pathAccessors[path] = parentAccessor
 	for i := 0; i < numField; i++ {
 		field := elemParentType.Field(i)
-		fieldPath := m.fieldPositionKey(path, field)
-
-		elemType := Elem(field.Type)
-		if elemType.Kind() == reflect.Struct {
-			m.indexByPath(elemType, fieldPath, depth+1, xunsafe.NewField(field))
+		fieldPath, fieldName := m.asKeys(path, field)
+		if excluded[fieldPath] {
 			continue
 		}
 
-		m.fieldsPositions[fieldPath] = len(m.fields)
-		m.fields = append(m.fields, m.newField(path, field, depth, parentType, fieldPath))
+		elemType := Elem(field.Type)
+		if elemType.Kind() == reflect.Struct {
+			m.indexByPath(elemType, fieldPath, excluded, fieldName, xunsafe.NewField(field))
+			continue
+		}
+
+		m.fieldsPositions[fieldName] = len(m.fields)
+		m.fields = append(m.fields, m.newField(path, holder, field, parentType, fieldPath))
 	}
 }
 
-func (m *Marshaller) fieldPositionKey(path string, field reflect.StructField) string {
+func (m *Marshaller) asKeys(path string, field reflect.StructField) (pathKey string, positionsKey string) {
 	name := field.Tag.Get(TagName)
 	if name != "" {
-		return name
+		return m.combine(path, name), name
 	}
 
-	return m.combine(path, field.Name)
+	asFullPath := m.combine(path, field.Name)
+	return asFullPath, asFullPath
 }
 
 func (m *Marshaller) combine(path, name string) string {
@@ -165,15 +174,15 @@ func (m *Marshaller) Unmarshal(b []byte, dest interface{}) error {
 	}
 }
 
-func (m *Marshaller) newField(path string, field reflect.StructField, depth int, parentType reflect.Type, fieldPath string) *Field {
+func (m *Marshaller) newField(path string, holder string, field reflect.StructField, parentType reflect.Type, fieldPath string) *Field {
 	xField := xunsafe.NewField(field)
 	return &Field{
 		path:        path,
 		xField:      xField,
-		depth:       depth,
 		parentType:  parentType,
 		name:        field.Name,
 		header:      fieldPath,
+		holder:      holder,
 		stringifier: io2.Stringifier(xField, false, m.config.NullValue),
 	}
 }
@@ -256,7 +265,8 @@ func (m *Marshaller) Marshal(val interface{}, options ...interface{}) ([]byte, e
 		return nil, err
 	}
 
-	buffer, err := m.marshalBuffer(values, size, session.parentNode)
+	configs := m.marshalOptions(options)
+	buffer, err := m.marshalBuffer(values, size, session.parentNode, configs)
 	if err != nil {
 		return nil, err
 	}
@@ -264,45 +274,28 @@ func (m *Marshaller) Marshal(val interface{}, options ...interface{}) ([]byte, e
 	return io.ReadAll(buffer)
 }
 
-func (m *Marshaller) marshalBuffer(valueAt io2.ValueAccessor, size int, object *Object) (*Buffer, error) {
-	buffer := NewBuffer(1024)
-	accessor := object.Accessor(0, m.config)
-	headers, bools := accessor.Headers()
-	WriteObject(buffer, m.config, headers, bools)
-
-	var xType *xunsafe.Type
-	for i := 0; i < size; i++ {
-		if i != 0 {
-			accessor.Reset()
-		}
-
-		at := valueAt(i)
-		if i == 0 {
-			if reflect.TypeOf(at).Kind() == reflect.Ptr {
-				xType = m.xType
-			}
-		}
-
-		if xType != nil {
-			at = xType.Deref(at)
-		}
-
-		accessor.Set(xunsafe.AsPointer(at))
-		for accessor.Has() {
-			headers, bools = accessor.Stringify()
-			m.writeObject(buffer, headers, bools)
+func (m *Marshaller) marshalOptions(options []interface{}) []*Config {
+	var depthConfigs []*Config
+	for _, option := range options {
+		switch actual := option.(type) {
+		case []*Config:
+			depthConfigs = actual
 		}
 	}
-
-	return buffer, nil
+	return depthConfigs
 }
 
-func (m *Marshaller) writeObject(buffer *Buffer, headers []string, bools []bool) {
-	if buffer.len() > 0 {
-		buffer.writeString(m.config.ObjectSeparator)
+func (m *Marshaller) marshalBuffer(valueAt io2.ValueAccessor, size int, object *Object, configs []*Config) (*Buffer, error) {
+	buffer := NewBuffer(1024)
+
+	accessor, err := object.Accessor(0, m.config, 0, configs)
+	if err != nil {
+		return nil, err
 	}
 
-	WriteObject(buffer, m.config, headers, bools)
+	newWriter(accessor, m.config, buffer, m.xType, valueAt, size, "").writeObjects(accessor.Headers())
+
+	return buffer, nil
 }
 
 func Elem(rType reflect.Type) reflect.Type {
@@ -314,5 +307,4 @@ func Elem(rType reflect.Type) reflect.Type {
 			return rType
 		}
 	}
-
 }

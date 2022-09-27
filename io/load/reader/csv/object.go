@@ -1,6 +1,7 @@
 package csv
 
 import (
+	"fmt"
 	"github.com/viant/sqlx/converter"
 	"github.com/viant/sqlx/io"
 	"github.com/viant/xunsafe"
@@ -9,6 +10,7 @@ import (
 )
 
 type Object struct {
+	holder       string
 	dest         interface{}
 	appender     *xunsafe.Appender
 	values       []*string
@@ -142,10 +144,20 @@ func (o *Object) objectAppender(parent unsafe.Pointer) *xunsafe.Appender {
 	return appender
 }
 
-func (o *Object) Accessor(accessorIndex int, config *Config) *Accessor {
+func (o *Object) Accessor(accessorIndex int, mainConfig *Config, depth int, configs []*Config) (*Accessor, error) {
 	children := make([]*Accessor, 0, len(o.children))
 	for i, child := range o.children {
-		children = append(children, child.Accessor(i, config))
+		childAccessor, err := child.Accessor(i, mainConfig, depth+1, configs)
+		if err != nil {
+			return nil, err
+		}
+
+		children = append(children, childAccessor)
+	}
+
+	config, err := o.depthConfig(configs, mainConfig, depth)
+	if err != nil {
+		return nil, err
 	}
 
 	accessor := &Accessor{
@@ -157,11 +169,28 @@ func (o *Object) Accessor(accessorIndex int, config *Config) *Accessor {
 		children:            children,
 		slice:               o.xSlice,
 		parentAccessorIndex: accessorIndex,
+		holder:              o.holder,
 	}
 
 	for _, child := range children {
 		child._parent = accessor
 	}
 
-	return accessor
+	return accessor, nil
+}
+
+func (o *Object) depthConfig(configs []*Config, mainConfig *Config, depth int) (*Config, error) {
+	if depth == 0 {
+		return mainConfig, nil
+	}
+
+	if len(configs) == 0 {
+		return nil, nil
+	}
+
+	if len(configs) > depth-1 {
+		return configs[depth-1], nil
+	}
+
+	return nil, fmt.Errorf("not specified config for the %v depth", depth-1)
 }
