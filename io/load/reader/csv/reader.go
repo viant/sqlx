@@ -93,32 +93,36 @@ func (r *Reader) writeObject(stringifiedFieldValues []string, wasString []bool) 
 		r.writeObjectSeparator()
 	}
 
-	for j := 0; j < len(stringifiedFieldValues); j++ {
-		if j != 0 {
-			r.itemBuffer.writeString(r.config.FieldSeparator)
-		}
-
-		stringifiedFieldValues[j] = r.escapeSpecialChars(stringifiedFieldValues[j])
-		if wasString[j] {
-			stringifiedFieldValues[j] = r.config.EncloseBy + stringifiedFieldValues[j] + r.config.EncloseBy
-		}
-		r.itemBuffer.writeString(stringifiedFieldValues[j])
-	}
-
+	WriteObject(r.itemBuffer, r.config, stringifiedFieldValues, wasString)
 	r.objectWritten = true
 }
 
-func (r *Reader) escapeSpecialChars(value string) string {
-	value = strings.ReplaceAll(value, r.config.EscapeBy, r.config.EscapeBy+r.config.EscapeBy)
+func WriteObject(writer *Buffer, config *Config, values []string, wasString []bool) {
+	for j := 0; j < len(values); j++ {
+		if j != 0 {
+			writer.writeString(config.FieldSeparator)
+		}
 
-	if !r.config.Stringify.IgnoreFieldSeparator {
-		value = strings.ReplaceAll(value, r.config.FieldSeparator, r.config.EscapeBy+r.config.FieldSeparator)
+		asString := EscapeSpecialChars(values[j], config)
+		if wasString[j] {
+			asString = config.EncloseBy + asString + config.EncloseBy
+		}
+
+		writer.writeString(asString)
 	}
-	if !r.config.Stringify.IgnoreObjectSeparator {
-		value = strings.ReplaceAll(value, r.config.ObjectSeparator, r.config.EscapeBy+r.config.ObjectSeparator)
+}
+
+func EscapeSpecialChars(value string, config *Config) string {
+	value = strings.ReplaceAll(value, config.EscapeBy, config.EscapeBy+config.EscapeBy)
+
+	if !config.Stringify.IgnoreFieldSeparator {
+		value = strings.ReplaceAll(value, config.FieldSeparator, config.EscapeBy+config.FieldSeparator)
 	}
-	if !r.config.Stringify.IgnoreEncloseBy {
-		value = strings.ReplaceAll(value, r.config.EncloseBy, r.config.EscapeBy+r.config.EncloseBy)
+	if !config.Stringify.IgnoreObjectSeparator {
+		value = strings.ReplaceAll(value, config.ObjectSeparator, config.EscapeBy+config.ObjectSeparator)
+	}
+	if !config.Stringify.IgnoreEncloseBy {
+		value = strings.ReplaceAll(value, config.EncloseBy, config.EscapeBy+config.EncloseBy)
 	}
 	return value
 }

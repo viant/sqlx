@@ -1,13 +1,16 @@
 package csv
 
 import (
+	"fmt"
 	"github.com/viant/sqlx/converter"
+	"github.com/viant/sqlx/io"
 	"github.com/viant/xunsafe"
 	"reflect"
 	"unsafe"
 )
 
 type Object struct {
+	holder       string
 	dest         interface{}
 	appender     *xunsafe.Appender
 	values       []*string
@@ -20,6 +23,7 @@ type Object struct {
 	children     []*Object
 	xField       *xunsafe.Field
 	xSlice       *xunsafe.Slice
+	stringifier  *io.ObjectStringifier
 }
 
 func (o *Object) ID() interface{} {
@@ -48,12 +52,12 @@ func (o *Object) AddHolder(field *Field, holder *string) {
 	o.fields = append(o.fields, field)
 }
 
-func (o *Object) Build() error {
-	_, err := o.build()
+func (o *Object) Umarshal() error {
+	_, err := o.unmarshal()
 	return err
 }
 
-func (o *Object) build() (interface{}, error) {
+func (o *Object) unmarshal() (interface{}, error) {
 	indexed, ok := o.CheckIndexed()
 	if ok {
 		return indexed, nil
@@ -74,7 +78,7 @@ func (o *Object) build() (interface{}, error) {
 		field.xField.SetValue(valuePtr, converted)
 	}
 
-	if err := o.buildChildren(xunsafe.AsPointer(value), o.children); err != nil {
+	if err := o.unmarshalChildren(xunsafe.AsPointer(value), o.children); err != nil {
 		return nil, err
 	}
 
@@ -97,9 +101,9 @@ func (o *Object) CheckIndexed() (interface{}, bool) {
 	return nil, false
 }
 
-func (o *Object) buildChildren(parent unsafe.Pointer, children []*Object) error {
+func (o *Object) unmarshalChildren(parent unsafe.Pointer, children []*Object) error {
 	for _, child := range children {
-		childValue, err := child.build()
+		childValue, err := child.unmarshal()
 		if err != nil {
 			return err
 		}
@@ -109,7 +113,7 @@ func (o *Object) buildChildren(parent unsafe.Pointer, children []*Object) error 
 		}
 
 		child.merge(parent, childValue)
-		if err = child.buildChildren(xunsafe.AsPointer(childValue), child.children); err != nil {
+		if err = child.unmarshalChildren(xunsafe.AsPointer(childValue), child.children); err != nil {
 			return err
 		}
 	}
@@ -138,4 +142,55 @@ func (o *Object) objectAppender(parent unsafe.Pointer) *xunsafe.Appender {
 	}
 
 	return appender
+}
+
+func (o *Object) Accessor(accessorIndex int, mainConfig *Config, depth int, configs []*Config) (*Accessor, error) {
+	children := make([]*Accessor, 0, len(o.children))
+	for i, child := range o.children {
+		childAccessor, err := child.Accessor(i, mainConfig, depth+1, configs)
+		if err != nil {
+			return nil, err
+		}
+
+		children = append(children, childAccessor)
+	}
+
+	config, err := o.depthConfig(configs, mainConfig, depth)
+	if err != nil {
+		return nil, err
+	}
+
+	accessor := &Accessor{
+		cache:               map[unsafe.Pointer]*stringified{},
+		path:                o.path,
+		config:              config,
+		fields:              o.fields,
+		field:               o.xField,
+		children:            children,
+		slice:               o.xSlice,
+		parentAccessorIndex: accessorIndex,
+		holder:              o.holder,
+	}
+
+	for _, child := range children {
+		child._parent = accessor
+	}
+
+	return accessor, nil
+}
+
+func (o *Object) depthConfig(configs []*Config, mainConfig *Config, depth int) (*Config, error) {
+	if depth == 0 {
+		return mainConfig, nil
+	}
+
+	if len(configs) == 0 {
+		return nil, nil
+	}
+
+	if len(configs) > depth-1 {
+		return configs[depth-1], nil
+	}
+
+	return nil, fmt.Errorf("not specified config for the %v depth", depth-1)
 }

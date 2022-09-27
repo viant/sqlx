@@ -2,13 +2,14 @@ package csv
 
 import (
 	"fmt"
+	"github.com/viant/sqlx/io"
 	"github.com/viant/xunsafe"
 	"reflect"
 	"strings"
 	"unsafe"
 )
 
-type Session struct {
+type UnmarshalSession struct {
 	buffer     []string
 	objects    []*Object
 	pathIndex  map[string]int
@@ -17,11 +18,11 @@ type Session struct {
 	destPtr    unsafe.Pointer
 }
 
-func (s *Session) init(fields []*Field, refs map[string][]string, accessors map[string]*xunsafe.Field) error {
+func (s *UnmarshalSession) init(fields []*Field, refs map[string][]string, accessors map[string]*xunsafe.Field, stringifiers map[reflect.Type]*io.ObjectStringifier) error {
 	s.destPtr = xunsafe.AsPointer(s.dest)
 	s.buffer = make([]string, len(fields))
 	for i, field := range fields {
-		object := s.getOrCreatePathIndex(field, refs, accessors)
+		object := s.getOrCreateObject(field, refs, accessors, stringifiers)
 		object.AddHolder(field, &s.buffer[i])
 	}
 
@@ -39,7 +40,7 @@ func (s *Session) init(fields []*Field, refs map[string][]string, accessors map[
 	return nil
 }
 
-func (s *Session) getOrCreatePathIndex(field *Field, refs map[string][]string, accessors map[string]*xunsafe.Field) *Object {
+func (s *UnmarshalSession) getOrCreateObject(field *Field, refs map[string][]string, accessors map[string]*xunsafe.Field, stringifiers map[reflect.Type]*io.ObjectStringifier) *Object {
 	index, ok := s.pathIndex[field.path]
 	if ok {
 		return s.objects[index]
@@ -60,12 +61,20 @@ func (s *Session) getOrCreatePathIndex(field *Field, refs map[string][]string, a
 		parentID = ""
 	}
 
+	var derefs []*xunsafe.Type
+	rType := field.parentType
+	for rType.Kind() == reflect.Ptr {
+		rType = rType.Elem()
+		derefs = append(derefs, xunsafe.NewType(rType))
+	}
+
 	object := &Object{
-		objType:  field.parentType,
-		path:     field.path,
-		parentID: asInterface(field.path, parentID),
-		dest:     dest,
-		appender: appender,
+		stringifier: stringifiers[field.parentType],
+		objType:     field.parentType,
+		path:        field.path,
+		parentID:    asInterface(field.path, parentID),
+		dest:        dest,
+		appender:    appender,
 		index: &Index{
 			positionInSlice: map[interface{}]int{},
 			data:            nil,
@@ -74,6 +83,7 @@ func (s *Session) getOrCreatePathIndex(field *Field, refs map[string][]string, a
 		},
 		xField: xField,
 		xSlice: slice,
+		holder: field.holder,
 	}
 
 	s.objects = append(s.objects, object)
@@ -88,12 +98,12 @@ func asInterface(fieldPath string, parentID string) interface{} {
 	return parentID
 }
 
-func (s *Session) addRecord(record []string) error {
+func (s *UnmarshalSession) addRecord(record []string) error {
 	copy(s.buffer, record)
-	return s.parentNode.Build()
+	return s.parentNode.Umarshal()
 }
 
-func (s *Session) buildParentNode() (Node, bool) {
+func (s *UnmarshalSession) buildParentNode() (Node, bool) {
 	nodes := make([]Node, 0, len(s.objects))
 	for i, _ := range s.objects {
 		nodes = append(nodes, s.objects[i])
@@ -109,11 +119,15 @@ func (s *Session) buildParentNode() (Node, bool) {
 	return nil, false
 }
 
-func (s *Session) destWithAppender(field *Field) (interface{}, *xunsafe.Appender) {
+func (s *UnmarshalSession) destWithAppender(field *Field) (interface{}, *xunsafe.Appender) {
 	if field.path == "" {
 		dest := s.dest
-		slice := xunsafe.NewSlice(reflect.TypeOf(dest).Elem())
-		return dest, slice.Appender(xunsafe.AsPointer(dest))
+		var appender *xunsafe.Appender
+		if dest != nil {
+			slice := xunsafe.NewSlice(reflect.TypeOf(dest).Elem())
+			appender = slice.Appender(xunsafe.AsPointer(dest))
+		}
+		return dest, appender
 	}
 
 	parentType := field.parentType

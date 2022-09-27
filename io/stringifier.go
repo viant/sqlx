@@ -19,11 +19,11 @@ type (
 	//ObjectStringifierFn returns stringified object properties values and information if value was string before
 	ObjectStringifierFn func(val interface{}) ([]string, []bool)
 	fieldStringifier    struct {
-		stringify fieldStringifierFn
+		stringify FieldStringifierFn
 		fieldName string
 	}
 
-	fieldStringifierFn = func(pointer unsafe.Pointer) (string, bool)
+	FieldStringifierFn = func(pointer unsafe.Pointer) (string, bool)
 	StringifierConfig  struct {
 		Fields     []string
 		CaseFormat format.Case
@@ -144,7 +144,7 @@ func TypeStringifier(rType reflect.Type, nullValue string, omitTransient bool, o
 		}
 
 		stringifiers = append(stringifiers, &fieldStringifier{
-			stringify: stringifier(xunsafe.NewField(field), tag.NullifyEmpty, nullValue),
+			stringify: stringifierEnclosured(xunsafe.NewField(field), tag.NullifyEmpty, nullValue),
 			fieldName: field.Name,
 		})
 	}
@@ -163,14 +163,14 @@ func TypeStringifier(rType reflect.Type, nullValue string, omitTransient bool, o
 	return o
 }
 
-func stringifier(xField *xunsafe.Field, nullifyEmpty bool, nullValue string) fieldStringifierFn {
-	preparedStringifier := prepareStringifier(xField, nullifyEmpty, nullValue)
+func stringifierEnclosured(xField *xunsafe.Field, nullifyEmpty bool, nullValue string) FieldStringifierFn {
+	preparedStringifier := Stringifier(xField, nullifyEmpty, nullValue)
 	return func(val unsafe.Pointer) (value string, wasString bool) {
 		return preparedStringifier(val)
 	}
 }
 
-func prepareStringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue string) fieldStringifierFn {
+func Stringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue string) FieldStringifierFn {
 	wasPointer := field.Type.Kind() == reflect.Ptr
 	var rType reflect.Type
 	if wasPointer {

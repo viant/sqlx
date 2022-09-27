@@ -5,6 +5,7 @@ import (
 	"encoding/csv"
 	"fmt"
 	"github.com/pkg/errors"
+	io2 "github.com/viant/sqlx/io"
 	"github.com/viant/xunsafe"
 	"io"
 	"reflect"
@@ -12,6 +13,7 @@ import (
 
 type (
 	Marshaller struct {
+		xType           *xunsafe.Type
 		elemType        reflect.Type
 		xSlice          *xunsafe.Slice
 		fieldsPositions map[string]int
@@ -20,15 +22,20 @@ type (
 		uniquesFields   map[string]bool
 		references      map[string][]string
 		pathAccessors   map[string]*xunsafe.Field
+		stringifiers    map[reflect.Type]*io2.ObjectStringifier
+		config          *Config
 	}
 
 	Field struct {
 		parentType reflect.Type
 		path       string
-		xField     *xunsafe.Field
-		depth      int
-		unique     bool
 		name       string
+		header     string
+		holder     string
+
+		xField      *xunsafe.Field
+		unique      bool
+		stringifier io2.FieldStringifierFn
 	}
 
 	Reference struct {
@@ -42,55 +49,88 @@ func NewMarshaller(rType reflect.Type, config *Config) (*Marshaller, error) {
 		config = &Config{}
 	}
 
+	if config.EncloseBy == "" {
+		config.EncloseBy = `"`
+	}
+
+	if config.EscapeBy == "" {
+		config.EscapeBy = `\`
+	}
+
+	if config.FieldSeparator == "" {
+		config.FieldSeparator = `,`
+	}
+
+	if config.ObjectSeparator == "" {
+		config.ObjectSeparator = "\n"
+	}
+
+	if config.NullValue == "" {
+		config.NullValue = "null"
+	}
+
+	excluded := map[string]bool{}
+	for _, path := range config.ExcludedPaths {
+		excluded[path] = true
+	}
+
+	elemType := Elem(rType)
 	marshaller := &Marshaller{
-		elemType:        rType,
+		config:          config,
+		elemType:        elemType,
 		fieldsPositions: map[string]int{},
 		uniquesFields:   map[string]bool{},
 		references:      map[string][]string{},
 		pathAccessors:   map[string]*xunsafe.Field{},
+		xType:           xunsafe.NewType(elemType),
 	}
 
-	if err := marshaller.init(config); err != nil {
+	if err := marshaller.init(config, excluded); err != nil {
 		return nil, err
 	}
 
 	return marshaller, nil
 }
 
-func (m *Marshaller) init(config *Config) error {
+func (m *Marshaller) init(config *Config, excluded map[string]bool) error {
 	m.initConfig(config)
 
 	m.xSlice = xunsafe.NewSlice(reflect.SliceOf(m.elemType))
-	m.indexByPath(m.elemType, "", 0, nil)
+	m.indexByPath(m.elemType, "", excluded, "", nil)
 
 	return nil
 }
 
-func (m *Marshaller) indexByPath(parentType reflect.Type, path string, depth int, parentAccessor *xunsafe.Field) {
-	numField := parentType.NumField()
+func (m *Marshaller) indexByPath(parentType reflect.Type, path string, excluded map[string]bool, holder string, parentAccessor *xunsafe.Field) {
+	elemParentType := Elem(parentType)
+	numField := elemParentType.NumField()
 	m.pathAccessors[path] = parentAccessor
 	for i := 0; i < numField; i++ {
-		field := parentType.Field(i)
-		fieldPath := m.fieldPositionKey(path, field)
-
-		elemType := Elem(field.Type)
-		if elemType.Kind() == reflect.Struct {
-			m.indexByPath(elemType, fieldPath, depth+1, xunsafe.NewField(field))
+		field := elemParentType.Field(i)
+		fieldPath, fieldName := m.asKeys(path, field)
+		if excluded[fieldPath] {
 			continue
 		}
 
-		m.fieldsPositions[fieldPath] = len(m.fields)
-		m.fields = append(m.fields, m.newField(path, field, depth, parentType))
+		elemType := Elem(field.Type)
+		if elemType.Kind() == reflect.Struct {
+			m.indexByPath(elemType, fieldPath, excluded, fieldName, xunsafe.NewField(field))
+			continue
+		}
+
+		m.fieldsPositions[fieldName] = len(m.fields)
+		m.fields = append(m.fields, m.newField(path, holder, field, parentType, fieldPath))
 	}
 }
 
-func (m *Marshaller) fieldPositionKey(path string, field reflect.StructField) string {
+func (m *Marshaller) asKeys(path string, field reflect.StructField) (pathKey string, positionsKey string) {
 	name := field.Tag.Get(TagName)
 	if name != "" {
-		return name
+		return m.combine(path, name), name
 	}
 
-	return m.combine(path, field.Name)
+	asFullPath := m.combine(path, field.Name)
+	return asFullPath, asFullPath
 }
 
 func (m *Marshaller) combine(path, name string) string {
@@ -108,7 +148,12 @@ func (m *Marshaller) Unmarshal(b []byte, dest interface{}) error {
 		return m.asReadError(err)
 	}
 
-	session, fields, err := m.session(headers, dest)
+	fields, err := m.fieldsByName(headers)
+	if err != nil {
+		return err
+	}
+
+	session, err := m.session(fields, dest)
 	if err != nil {
 		return err
 	}
@@ -129,13 +174,16 @@ func (m *Marshaller) Unmarshal(b []byte, dest interface{}) error {
 	}
 }
 
-func (m *Marshaller) newField(path string, field reflect.StructField, depth int, parentType reflect.Type) *Field {
+func (m *Marshaller) newField(path string, holder string, field reflect.StructField, parentType reflect.Type, fieldPath string) *Field {
+	xField := xunsafe.NewField(field)
 	return &Field{
-		path:       path,
-		xField:     xunsafe.NewField(field),
-		depth:      depth,
-		parentType: parentType,
-		name:       field.Name,
+		path:        path,
+		xField:      xField,
+		parentType:  parentType,
+		name:        field.Name,
+		header:      fieldPath,
+		holder:      holder,
+		stringifier: io2.Stringifier(xField, false, m.config.NullValue),
 	}
 }
 
@@ -157,18 +205,13 @@ func (m *Marshaller) initConfig(config *Config) {
 	}
 }
 
-func (m *Marshaller) session(headers []string, dest interface{}) (*Session, []*Field, error) {
-	fields, err := m.fieldsByName(headers)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	s := &Session{
+func (m *Marshaller) session(fields []*Field, dest interface{}) (*UnmarshalSession, error) {
+	s := &UnmarshalSession{
 		pathIndex: map[string]int{},
 		dest:      dest,
 	}
 
-	return s, fields, s.init(fields, m.references, m.pathAccessors)
+	return s, s.init(fields, m.references, m.pathAccessors, m.stringifiers)
 }
 
 func (m *Marshaller) fieldsByName(names []string) ([]*Field, error) {
@@ -204,10 +247,64 @@ func (m *Marshaller) ReadHeaders(b []byte) ([]string, error) {
 	return result, nil
 }
 
-func Elem(rType reflect.Type) reflect.Type {
-	switch rType.Kind() {
-	case reflect.Ptr, reflect.Slice:
-		return Elem(rType.Elem())
+func (m *Marshaller) Marshal(val interface{}, options ...interface{}) ([]byte, error) {
+	valueType := reflect.TypeOf(val)
+	if Elem(valueType) != m.elemType {
+		return nil, fmt.Errorf("can't marshal %T with %v marshaller", val, m.elemType.String())
 	}
-	return rType
+
+	values, size, err := io2.Values(val)
+	if err != nil {
+		return nil, err
+	}
+
+	options = append(options, io2.Parallel(true))
+
+	session, err := m.session(m.fields, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	configs := m.marshalOptions(options)
+	buffer, err := m.marshalBuffer(values, size, session.parentNode, configs)
+	if err != nil {
+		return nil, err
+	}
+
+	return io.ReadAll(buffer)
+}
+
+func (m *Marshaller) marshalOptions(options []interface{}) []*Config {
+	var depthConfigs []*Config
+	for _, option := range options {
+		switch actual := option.(type) {
+		case []*Config:
+			depthConfigs = actual
+		}
+	}
+	return depthConfigs
+}
+
+func (m *Marshaller) marshalBuffer(valueAt io2.ValueAccessor, size int, object *Object, configs []*Config) (*Buffer, error) {
+	buffer := NewBuffer(1024)
+
+	accessor, err := object.Accessor(0, m.config, 0, configs)
+	if err != nil {
+		return nil, err
+	}
+
+	newWriter(accessor, m.config, buffer, m.xType, valueAt, size, "").writeObjects(accessor.Headers())
+
+	return buffer, nil
+}
+
+func Elem(rType reflect.Type) reflect.Type {
+	for {
+		switch rType.Kind() {
+		case reflect.Ptr, reflect.Slice:
+			rType = rType.Elem()
+		default:
+			return rType
+		}
+	}
 }

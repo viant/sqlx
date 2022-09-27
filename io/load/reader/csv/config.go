@@ -11,6 +11,7 @@ type (
 		Stringify       StringifyConfig
 		UniqueFields    []string
 		References      []*Reference // parent -> children. Foo.ID -> Boo.FooId
+		ExcludedPaths   []string
 	}
 
 	// StringifyConfig "extends" Config with ignore flags
