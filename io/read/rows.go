@@ -26,7 +26,11 @@ type Rows struct {
 
 func (c *Rows) Rollback(ctx context.Context) error {
 	if c.cache != nil && c.entry != nil {
-		return c.cache.Rollback(ctx, c.entry)
+		_ = c.cache.Rollback(ctx, c.entry)
+	}
+
+	if c.rows != nil {
+		return c.rows.Close()
 	}
 
 	return nil
