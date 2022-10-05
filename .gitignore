@@ -3,4 +3,5 @@ vendor
 go.sum
 *.db
 *.iml
+local_test.go
 .DS_Store

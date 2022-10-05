@@ -1,6 +1,8 @@
 package info
 
 import (
+	"context"
+	"database/sql"
 	"fmt"
 	"github.com/viant/sqlx/metadata/database"
 )
@@ -13,7 +15,11 @@ type (
 		SQL      string
 		Criteria Criteria
 		database.Product
+		PostHandlers []Handler
 	}
+
+	Handler func(ctx context.Context, db *sql.DB, target interface{}, argsOpt interface{}) error
+
 	//Criterion represents query criterion
 	Criterion struct {
 		Name   string
@@ -26,6 +32,11 @@ type (
 	//Queries represents querties
 	Queries []*Query
 )
+
+func (q *Query) OnPost(auxiliaries ...Handler) *Query {
+	q.PostHandlers = auxiliaries
+	return q
+}
 
 //NewQuery creates a new query
 func NewQuery(kind Kind, SQL string, info database.Product, criteria ...*Criterion) *Query {

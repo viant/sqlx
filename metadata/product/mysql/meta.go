@@ -4,6 +4,7 @@ import (
 	"github.com/viant/sqlx/metadata/database"
 	"github.com/viant/sqlx/metadata/info"
 	"github.com/viant/sqlx/metadata/info/dialect"
+	"github.com/viant/sqlx/metadata/product/mysql/sequence"
 	"github.com/viant/sqlx/metadata/registry"
 	"log"
 )
@@ -124,6 +125,8 @@ FROM
 			info.NewCriterion(info.Catalog, "t.TABLE_CATALOG"),
 			info.NewCriterion(info.Schema, "t.TABLE_SCHEMA"),
 			info.NewCriterion(info.Sequence, "t.TABLE_NAME"),
+		).OnPost(
+			sequence.UpdateSequence,
 		),
 
 		info.NewQuery(info.KindIndexes, `SELECT 
