@@ -72,6 +72,10 @@ func (s *Service) Info(ctx context.Context, db *sql.DB, kind info.Kind, sink Sin
 			return err
 		}
 	}
+
+	args := &option.Args{}
+	option.Assign(options, &args)
+
 	queries := registry.Lookup(product.Name, kind)
 	if len(queries) == 0 {
 		return fmt.Errorf("unsupported kind: %s for: %s", kind, product.Name)
@@ -80,7 +84,15 @@ func (s *Service) Info(ctx context.Context, db *sql.DB, kind info.Kind, sink Sin
 	if query == nil {
 		return fmt.Errorf("unsupported kind: %s, for: %sv%v", kind, product.Name, product.Major)
 	}
-	return s.runQuery(ctx, db, query, sink, options...)
+	if err = s.runQuery(ctx, db, query, sink, options...); err != nil || len(query.PostHandlers) == 0 {
+		return err
+	}
+	for _, handler := range query.PostHandlers {
+		if err = handler(ctx, db, sink, args); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *Service) matchProduct(ctx context.Context, db *sql.DB) (*database.Product, error) {
