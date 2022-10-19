@@ -49,7 +49,7 @@ func parseSelectListItem(cursor *parsly.Cursor, list *query.List) error {
 	return nil
 }
 
-func parseOrderByListItem(cursor *parsly.Cursor, list *query.List) error {
+func parseGroupOrOrderByListItem(cursor *parsly.Cursor, list *query.List) error {
 
 	operand, err := expectOperand(cursor)
 	if operand == nil {
@@ -66,7 +66,7 @@ func parseOrderByListItem(cursor *parsly.Cursor, list *query.List) error {
 		item.Comments = match.Text(cursor)
 		match = cursor.MatchAfterOptional(whitespaceMatcher, nextMatcher)
 		if match.Code == nextCode {
-			return parseOrderByListItem(cursor, list)
+			return parseGroupOrOrderByListItem(cursor, list)
 		}
 	case logicalOperator, binaryOperator:
 		cursor.Pos -= match.Size
@@ -82,7 +82,7 @@ func parseOrderByListItem(cursor *parsly.Cursor, list *query.List) error {
 		}
 		fallthrough
 	case nextCode:
-		return parseOrderByListItem(cursor, list)
+		return parseGroupOrOrderByListItem(cursor, list)
 	}
 	return nil
 }

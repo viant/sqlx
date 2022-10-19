@@ -52,6 +52,7 @@ const (
 	rangeOperator
 	windowTokenCode
 	literalCode
+	unionKeyword
 )
 
 var whitespaceMatcher = parsly.NewToken(whitespaceCode, "whitespace", matcher.NewWhiteSpace())
@@ -81,6 +82,11 @@ var joinToken = parsly.NewToken(joinTokenCode, "LEFT OUTER JOIN|LEFT JOIN|JOIN",
 	"left join",
 	"inner join",
 	"join",
+}, &option.Case{}))
+
+var unionMatcher = parsly.NewToken(unionKeyword, "UNION|UNION ALL", matcher.NewSpacedSet([]string{
+	"union all",
+	"union",
 }, &option.Case{}))
 
 var onKeywordMatcher = parsly.NewToken(onKeyword, "ON", matcher.NewFragment("on", &option.Case{}))

@@ -18,9 +18,19 @@ func TestParseSelect(t *testing.T) {
 		}{
 
 			{
-				description: "comments",
-				SQL:         `SELECT user.* FROM user u -- extra comments `,
-				expect:      `SELECT user.* FROM user u`,
+				description: "group by",
+				SQL:         `SELECT ID, SUM(amount) FROM product u GROUP BY 1`,
+				expect:      `SELECT ID, SUM(amount) FROM product u GROUP BY 1`,
+			},
+			{
+				description: "group by, having",
+				SQL:         `SELECT ID, SUM(amount) FROM product u GROUP BY 1 HAVING COUNT(DISTINCT zz) > 2`,
+				expect:      `SELECT ID, SUM(amount) FROM product u GROUP BY 1 HAVING COUNT(DISTINCT zz) > 2`,
+			},
+			{
+				description: "union all",
+				SQL:         `SELECT user.* FROM user1 u UNION ALL SELECT user.* FROM user2 u`,
+				expect:      `SELECT user.* FROM user1 u UNION ALL SELECT user.* FROM user2 u`,
 			},
 			{
 				description: "expr with comments",

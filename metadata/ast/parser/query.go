@@ -15,7 +15,7 @@ func ParseQuery(SQL string) (*query.Select, error) {
 	cursor := parsly.NewCursor("", []byte(SQL), 0)
 	err := parseQuery(cursor, result)
 	if err != nil {
-		return result, fmt.Errorf("%s", SQL)
+		return result, fmt.Errorf("%w, %s, ", err, SQL)
 	}
 	return result, err
 }
@@ -67,13 +67,13 @@ func parseQuery(cursor *parsly.Cursor, dest *query.Select) error {
 
 			dest.Joins = make([]*query.Join, 0)
 
-			match = cursor.MatchAfterOptional(whitespaceMatcher, joinToken, whereKeywordMatcher, groupByMatcher, havingKeywordMatcher, orderByKeywordMatcher, windowMatcher)
+			match = cursor.MatchAfterOptional(whitespaceMatcher, joinToken, whereKeywordMatcher, groupByMatcher, havingKeywordMatcher, orderByKeywordMatcher, windowMatcher, unionMatcher)
 			if match.Code == parsly.EOF {
 				return nil
 			}
 			hasMatch, err := matchPostFrom(cursor, dest, match)
 			if !hasMatch && err == nil {
-				err = cursor.NewError(joinToken, whereKeywordMatcher, groupByMatcher, havingKeywordMatcher, orderByKeywordMatcher, windowMatcher)
+				err = cursor.NewError(joinToken, whereKeywordMatcher, groupByMatcher, havingKeywordMatcher, orderByKeywordMatcher, windowMatcher, unionMatcher)
 			}
 			if err != nil {
 				return err
@@ -84,6 +84,7 @@ func parseQuery(cursor *parsly.Cursor, dest *query.Select) error {
 }
 
 func matchPostFrom(cursor *parsly.Cursor, dest *query.Select, match *parsly.TokenMatch) (bool, error) {
+
 	switch match.Code {
 	case joinTokenCode:
 		if err := appendJoin(cursor, match, dest); err != nil {
@@ -95,14 +96,14 @@ func matchPostFrom(cursor *parsly.Cursor, dest *query.Select, match *parsly.Toke
 			return false, err
 		}
 
-		match = cursor.MatchAfterOptional(whitespaceMatcher, groupByMatcher, havingKeywordMatcher, orderByKeywordMatcher, windowMatcher)
+		match = cursor.MatchAfterOptional(whitespaceMatcher, groupByMatcher, havingKeywordMatcher, orderByKeywordMatcher, windowMatcher, unionMatcher)
 		return matchPostFrom(cursor, dest, match)
 
 	case groupByKeyword:
-		if err := expectIdentifiers(cursor, &dest.GroupBy); err != nil {
+		if err := parseGroupOrOrderByListItem(cursor, &dest.GroupBy); err != nil {
 			return false, err
 		}
-		match = cursor.MatchAfterOptional(whitespaceMatcher, havingKeywordMatcher, orderByKeywordMatcher, windowMatcher)
+		match = cursor.MatchAfterOptional(whitespaceMatcher, havingKeywordMatcher, orderByKeywordMatcher, windowMatcher, unionMatcher)
 		return matchPostFrom(cursor, dest, match)
 
 	case havingKeyword:
@@ -110,15 +111,23 @@ func matchPostFrom(cursor *parsly.Cursor, dest *query.Select, match *parsly.Toke
 		if err := ParseQualify(cursor, dest.Having); err != nil {
 			return false, err
 		}
-		match = cursor.MatchAfterOptional(whitespaceMatcher, orderByKeywordMatcher, windowMatcher)
+		match = cursor.MatchAfterOptional(whitespaceMatcher, orderByKeywordMatcher, windowMatcher, unionMatcher)
 		return matchPostFrom(cursor, dest, match)
 	case orderByKeyword:
-		if err := parseOrderByListItem(cursor, &dest.OrderBy); err != nil {
+		if err := parseGroupOrOrderByListItem(cursor, &dest.OrderBy); err != nil {
 			return false, err
 		}
-		match = cursor.MatchAfterOptional(whitespaceMatcher, windowMatcher)
-
+		match = cursor.MatchAfterOptional(whitespaceMatcher, windowMatcher, unionMatcher)
 		return matchPostFrom(cursor, dest, match)
+	case unionKeyword:
+		matchedText := match.Text(cursor)
+		union := &query.Union{X: &query.Select{}, Raw: matchedText}
+		if strings.Contains(strings.ToLower(matchedText), "all") {
+			union.Kind = "all"
+		}
+		dest.Union = union
+		err := parseQuery(cursor, union.X)
+		return err == nil, err
 	case windowTokenCode:
 		matchedText := match.Text(cursor)
 		dest.Window = expr.NewRaw(matchedText)
@@ -170,6 +179,27 @@ func expectIdentifiers(cursor *parsly.Cursor, expect *[]string) error {
 	match := cursor.MatchAfterOptional(whitespaceMatcher, identifierMatcher)
 	switch match.Code {
 	case identifierCode:
+		item := match.Text(cursor)
+		*expect = append(*expect, item)
+	default:
+		return nil
+	}
+
+	match = cursor.MatchAfterOptional(whitespaceMatcher, nextMatcher)
+	switch match.Code {
+	case nextCode:
+		return expectIdentifiers(cursor, expect)
+	}
+	return nil
+}
+
+func expectIdentifiersOrPosition(cursor *parsly.Cursor, expect *[]string) error {
+	match := cursor.MatchAfterOptional(whitespaceMatcher, identifierMatcher, numericLiteralMatcher)
+	switch match.Code {
+	case identifierCode:
+		item := match.Text(cursor)
+		*expect = append(*expect, item)
+	case numericLiteral:
 		item := match.Text(cursor)
 		*expect = append(*expect, item)
 	default:

@@ -9,11 +9,18 @@ type Select struct {
 	From    From
 	Joins   []*Join
 	Qualify *expr.Qualify
-	GroupBy []string
+	GroupBy List
 	Having  *expr.Qualify
 	OrderBy List
 	Window  *expr.Raw
 	Limit   *expr.Literal
 	Offset  *expr.Literal
 	Kind    string
+	Union   *Union
+}
+
+type Union struct {
+	Kind string
+	Raw  string
+	X    *Select
 }

@@ -9,14 +9,14 @@ import (
 
 func discoverAlias(cursor *parsly.Cursor) string {
 	pos := cursor.Pos
-	match := cursor.MatchAfterOptional(whitespaceMatcher, exceptKeywordMatcher, asKeywordMatcher, onKeywordMatcher, fromKeywordMatcher, joinToken, whereKeywordMatcher, groupByMatcher, havingKeywordMatcher, orderByKeywordMatcher, windowMatcher, identifierMatcher)
+	match := cursor.MatchAfterOptional(whitespaceMatcher, exceptKeywordMatcher, asKeywordMatcher, onKeywordMatcher, fromKeywordMatcher, joinToken, whereKeywordMatcher, groupByMatcher, havingKeywordMatcher, orderByKeywordMatcher, windowMatcher, unionMatcher, identifierMatcher)
 	switch match.Code {
 	case asKeyword:
 		match := cursor.MatchAfterOptional(whitespaceMatcher, identifierMatcher)
 		return match.Text(cursor)
 	case identifierCode:
 		return match.Text(cursor)
-	case exceptKeyword, fromKeyword, onKeyword, orderByKeyword, joinTokenCode, whereKeyword, groupByKeyword, havingKeyword, windowTokenCode:
+	case exceptKeyword, fromKeyword, onKeyword, orderByKeyword, joinTokenCode, whereKeyword, groupByKeyword, havingKeyword, windowTokenCode, unionKeyword:
 		cursor.Pos = pos
 	}
 	return ""
@@ -32,7 +32,7 @@ func expectOperand(cursor *parsly.Cursor) (node.Node, error) {
 		orderByKeywordMatcher,
 		asKeywordMatcher,
 		exceptKeywordMatcher,
-		onKeywordMatcher, fromKeywordMatcher, whereKeywordMatcher, joinToken, groupByMatcher, havingKeywordMatcher, windowMatcher, nextMatcher,
+		onKeywordMatcher, fromKeywordMatcher, whereKeywordMatcher, joinToken, groupByMatcher, havingKeywordMatcher, windowMatcher, unionMatcher, nextMatcher,
 		parenthesesMatcher,
 		caseBlockMatcher,
 		starTokenMatcher,
@@ -98,7 +98,7 @@ func expectOperand(cursor *parsly.Cursor) (node.Node, error) {
 		}
 		return unary, nil
 
-	case asKeyword, orderByKeyword, onKeyword, fromKeyword, whereKeyword, joinTokenCode, groupByKeyword, havingKeyword, windowTokenCode, nextCode, commentBlock:
+	case asKeyword, orderByKeyword, onKeyword, fromKeyword, whereKeyword, joinTokenCode, groupByKeyword, havingKeyword, windowTokenCode, unionKeyword, nextCode, commentBlock:
 		cursor.Pos -= pos
 	}
 	return nil, nil
