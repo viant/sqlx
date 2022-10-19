@@ -17,12 +17,12 @@ func TestParseSelect(t *testing.T) {
 			expect      string
 		}{
 
-			//{
-			//	description: "with syntax",
-			//	SQL:         `WITH p AS (SELECT * FROM product), v AS (SELECT * FROM vendor)
-			//	SELECT p.*, v.* FROM p JOIN v ON p.VENDOR_ID = v.ID`,
-			//	expect:      `SELECT p.*, v.* FROM (SELECT * FROM product) p JOIN (SELECT * FROM vendor) v ON p.VENDOR_ID = v.ID`,
-			//},
+			{
+				description: "with syntax",
+				SQL: `WITH p AS (SELECT * FROM product), v AS (SELECT * FROM vendor)
+				SELECT p.*, v.* FROM p JOIN v ON p.VENDOR_ID = v.ID`,
+				expect: `SELECT p.*, v.* FROM (SELECT * FROM product) p JOIN (SELECT * FROM vendor) v ON p.VENDOR_ID = v.ID`,
+			},
 
 			{
 				description: "group by",

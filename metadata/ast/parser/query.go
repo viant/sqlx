@@ -37,8 +37,43 @@ func removeSQLComments(SQL string) string {
 }
 
 func parseQuery(cursor *parsly.Cursor, dest *query.Select) error {
-	match := cursor.MatchAfterOptional(whitespaceMatcher, selectKeywordMatcher)
+	match := cursor.MatchAfterOptional(whitespaceMatcher, withKeywordMatcher, selectKeywordMatcher)
+
+beginMatch:
 	switch match.Code {
+	case withKeyword:
+		if len(dest.WithSelects) > 0 {
+			return cursor.NewError(asKeywordMatcher, selectorMatcher)
+		}
+	With:
+		withSelect := &query.WithSelect{X: &query.Select{}}
+		dest.WithSelects = append(dest.WithSelects, withSelect)
+		match = cursor.MatchAfterOptional(whitespaceMatcher, identifierMatcher)
+		if match.Code != identifierCode {
+			return cursor.NewError(identifierMatcher)
+		}
+		withSelect.Alias = match.Text(cursor)
+		pos := cursor.Pos
+		match = cursor.MatchAfterOptional(whitespaceMatcher, asKeywordMatcher, parenthesesMatcher)
+		if match.Code == asKeyword {
+			pos = cursor.Pos
+			match = cursor.MatchAfterOptional(whitespaceMatcher, parenthesesMatcher)
+		}
+		if match.Code != parenthesesCode {
+			return cursor.NewError(asKeywordMatcher, parenthesesMatcher)
+		}
+		withSelect.Raw = match.Text(cursor)
+		SQL := withSelect.Raw[1 : len(withSelect.Raw)-1]
+		subCursor := parsly.NewCursor(cursor.Path, []byte(SQL), pos)
+		if err := parseQuery(subCursor, withSelect.X); err != nil {
+			return err
+		}
+		match = cursor.MatchAfterOptional(whitespaceMatcher, nextMatcher)
+		if match.Code == nextCode {
+			goto With
+		}
+		match = cursor.MatchAfterOptional(whitespaceMatcher, withKeywordMatcher, selectKeywordMatcher)
+		goto beginMatch
 	case selectKeyword:
 		match = cursor.MatchAfterOptional(whitespaceMatcher, selectionKindMatcher)
 		if match.Code == selectionKind {
@@ -55,11 +90,20 @@ func parseQuery(cursor *parsly.Cursor, dest *query.Select) error {
 			match = cursor.MatchAfterOptional(whitespaceMatcher, selectorMatcher, parenthesesMatcher)
 			switch match.Code {
 			case selectorTokenCode:
-				dest.From.X = expr.NewSelector(match.Text(cursor))
+				identityOrAlias := match.Text(cursor)
+				withSelect := dest.WithSelects.Select(identityOrAlias)
+				if withSelect != nil {
+					dest.From.X = expr.NewParenthesis(withSelect.Raw)
+					dest.From.Alias = identityOrAlias
+				} else {
+					dest.From.X = expr.NewSelector(identityOrAlias)
+				}
 			case parenthesesCode:
 				dest.From.X = expr.NewRaw(match.Text(cursor))
 			}
-			dest.From.Alias = discoverAlias(cursor)
+			if dest.From.Alias == "" {
+				dest.From.Alias = discoverAlias(cursor)
+			}
 			match = cursor.MatchAfterOptional(whitespaceMatcher, commentBlockMatcher)
 			if match.Code == commentBlock {
 				dest.From.Comments = match.Text(cursor)

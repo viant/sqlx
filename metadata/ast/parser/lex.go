@@ -52,6 +52,7 @@ const (
 	rangeOperator
 	windowTokenCode
 	literalCode
+	withKeyword
 	unionKeyword
 )
 
@@ -88,6 +89,8 @@ var unionMatcher = parsly.NewToken(unionKeyword, "UNION|UNION ALL", matcher.NewS
 	"union all",
 	"union",
 }, &option.Case{}))
+
+var withKeywordMatcher = parsly.NewToken(withKeyword, "WITH", matcher.NewFragment("with", &option.Case{}))
 
 var onKeywordMatcher = parsly.NewToken(onKeyword, "ON", matcher.NewFragment("on", &option.Case{}))
 

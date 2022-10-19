@@ -12,11 +12,19 @@ func parseJoin(cursor *parsly.Cursor, join *query.Join, dest *query.Select) erro
 	case parenthesesCode:
 		join.With = expr.NewRaw(match.Text(cursor))
 	case selectorTokenCode:
-		join.With = expr.NewSelector(match.Text(cursor))
+		identityOrAlias := match.Text(cursor)
+		withSelect := dest.WithSelects.Select(identityOrAlias)
+		if withSelect != nil {
+			join.With = expr.NewParenthesis(withSelect.Raw)
+			join.Alias = identityOrAlias
+		} else {
+			join.With = expr.NewSelector(identityOrAlias)
+		}
 	}
 
-	join.Alias = discoverAlias(cursor)
-
+	if join.Alias == "" {
+		join.Alias = discoverAlias(cursor)
+	}
 	match = cursor.MatchAfterOptional(whitespaceMatcher, commentBlockMatcher, onKeywordMatcher)
 	if match.Code == commentBlock {
 		join.Comments = match.Text(cursor)

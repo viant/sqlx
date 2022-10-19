@@ -18,10 +18,12 @@ type (
 		Offset      *expr.Literal
 		Kind        string
 		Union       *Union
-		WithSelects []*WithSelect
+		WithSelects WithSelects
 	}
 
-	WithSelect struct {
+	WithSelects []*WithSelect
+	WithSelect  struct {
+		Raw   string
 		Alias string
 		X     *Select
 	}
@@ -32,3 +34,12 @@ type (
 		X    *Select
 	}
 )
+
+func (w WithSelects) Select(alias string) *WithSelect {
+	for _, candidate := range w {
+		if candidate.Alias == alias {
+			return candidate
+		}
+	}
+	return nil
+}

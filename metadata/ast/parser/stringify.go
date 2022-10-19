@@ -19,7 +19,7 @@ func Stringify(n node.Node) string {
 
 func stringify(n node.Node, builder *bytes.Buffer) {
 	if n == nil {
-		panic("node was nill")
+		panic("node was nil")
 	}
 	switch actual := n.(type) {
 	case *query.Select:
