@@ -2,7 +2,15 @@ package cache
 
 import "encoding/json"
 
+const (
+	TypeReadMulti  = "warmup"
+	TypeReadSingle = "lazy"
+	TypeWrite      = "write"
+	TypeNone       = "none"
+)
+
 type (
+	Type       string
 	AllowSmart bool
 
 	//Index abstraction to represent data optimisation with caching and custom pagination
@@ -19,7 +27,17 @@ type (
 		marshalArgs []byte
 		initialized bool
 	}
+
+	Stats struct {
+		Type           Type
+		RecordsCounter int
+	}
 )
+
+func (s *Stats) Init() {
+	s.Type = TypeNone
+	s.RecordsCounter = 0
+}
 
 func (m *Index) Init() {
 	if m.initialized {
