@@ -33,6 +33,7 @@ type (
 		matcher            *cache.Index
 		db                 *sql.DB
 		row                *bufferEntry
+		cacheStats         *cache.Stats
 	}
 
 	bufferEntry struct {
@@ -336,7 +337,7 @@ func (r *Reader) Stmt() *sql.Stmt {
 
 func (r *Reader) cacheEntry(ctx context.Context, sql string, args []interface{}) (*cache.Entry, error) {
 	if r.cache != nil {
-		entry, err := r.cache.Get(ctx, sql, args, r.matcher)
+		entry, err := r.cache.Get(ctx, sql, args, r.matcher, r.cacheStats)
 		return entry, err
 	}
 
@@ -416,6 +417,7 @@ func NewStmt(stmt *sql.Stmt, newRow func() interface{}, options ...option.Option
 	var disableMapperCache DisableMapperCache
 	var db *sql.DB
 	var columnsInMatcher *cache.Index
+	var stats *cache.Stats
 
 	for _, anOption := range options {
 		switch actual := anOption.(type) {
@@ -431,6 +433,8 @@ func NewStmt(stmt *sql.Stmt, newRow func() interface{}, options ...option.Option
 			columnsInMatcher = *actual
 		case *sql.DB:
 			db = actual
+		case *cache.Stats:
+			stats = actual
 		}
 	}
 
@@ -445,6 +449,7 @@ func NewStmt(stmt *sql.Stmt, newRow func() interface{}, options ...option.Option
 		disableMapperCache: disableMapperCache,
 		matcher:            columnsInMatcher,
 		db:                 db,
+		cacheStats:         stats,
 	}
 	return result
 }

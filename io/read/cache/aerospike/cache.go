@@ -199,12 +199,21 @@ func (a *Cache) AddValues(ctx context.Context, entry *cache.Entry, values []inte
 
 func (a *Cache) Get(ctx context.Context, SQL string, args []interface{}, options ...interface{}) (*cache.Entry, error) {
 	var columnsInMatcher *cache.Index
+	var cacheStats *cache.Stats
 	for _, option := range options {
 		switch actual := option.(type) {
 		case *cache.Index:
 			columnsInMatcher = actual
+		case *cache.Stats:
+			cacheStats = actual
 		}
 	}
+
+	if cacheStats == nil {
+		cacheStats = &cache.Stats{}
+	}
+
+	cacheStats.Init()
 
 	if columnsInMatcher != nil {
 		columnsInMatcher.Init()
@@ -233,11 +242,11 @@ func (a *Cache) Get(ctx context.Context, SQL string, args []interface{}, options
 		Id: a.entryId(fullMatch, columnsInMatch),
 	}
 
-	if err = a.updateFullMatchEntry(ctx, anEntry, fullMatch, SQL, argsMarshal); err != nil {
+	if err = a.updateFullMatchEntry(ctx, anEntry, fullMatch, SQL, argsMarshal, cacheStats); err != nil {
 		return nil, err
 	}
 
-	if err = a.updateColumnsInMatchEntry(anEntry, columnsInMatch, columnsInMatcher); err != nil {
+	if err = a.updateColumnsInMatchEntry(anEntry, columnsInMatch, columnsInMatcher, cacheStats); err != nil {
 		return nil, err
 	}
 
@@ -245,7 +254,7 @@ func (a *Cache) Get(ctx context.Context, SQL string, args []interface{}, options
 		return nil, err
 	}
 
-	return anEntry, a.updateWriter(anEntry, fullMatch, SQL, argsMarshal)
+	return anEntry, a.updateWriter(anEntry, fullMatch, SQL, argsMarshal, cacheStats)
 }
 
 func (a *Cache) readRecords(SQL string, args []interface{}, matcher *cache.Index) (fullMatch *RecordMatched, columnsInMatch *RecordMatched, errors []error) {
@@ -568,7 +577,7 @@ func (a *Cache) columnURL(URL string, column string) string {
 	return strings.ToLower(column) + "#" + URL
 }
 
-func (a *Cache) updateFullMatchEntry(ctx context.Context, anEntry *cache.Entry, match *RecordMatched, SQL string, argsMarshal []byte) error {
+func (a *Cache) updateFullMatchEntry(ctx context.Context, anEntry *cache.Entry, match *RecordMatched, SQL string, argsMarshal []byte, stats *cache.Stats) error {
 	if match == nil || !match.hasKey {
 		return nil
 	}
@@ -587,10 +596,13 @@ func (a *Cache) updateFullMatchEntry(ctx context.Context, anEntry *cache.Entry, 
 	}
 
 	anEntry.SetReader(reader, reader)
+
+	stats.Type = cache.TypeReadSingle
+	stats.RecordsCounter = 1
 	return nil
 }
 
-func (a *Cache) updateColumnsInMatchEntry(entry *cache.Entry, match *RecordMatched, matcher *cache.Index) error {
+func (a *Cache) updateColumnsInMatchEntry(entry *cache.Entry, match *RecordMatched, matcher *cache.Index, stats *cache.Stats) error {
 	if match == nil || entry.ReadCloser != nil || !match.hasKey {
 		return nil
 	}
@@ -634,10 +646,13 @@ func (a *Cache) updateColumnsInMatchEntry(entry *cache.Entry, match *RecordMatch
 	}
 
 	entry.SetReader(multiReader, multiReader)
+
+	stats.Type = cache.TypeReadMulti
+	stats.RecordsCounter = counter
 	return nil
 }
 
-func (a *Cache) updateWriter(anEntry *cache.Entry, fullMatch *RecordMatched, SQL string, argsMarshal []byte) error {
+func (a *Cache) updateWriter(anEntry *cache.Entry, fullMatch *RecordMatched, SQL string, argsMarshal []byte, stats *cache.Stats) error {
 	if anEntry.ReadCloser != nil {
 		return nil
 	}
@@ -646,6 +661,8 @@ func (a *Cache) updateWriter(anEntry *cache.Entry, fullMatch *RecordMatched, SQL
 	writer := a.newWriter(fullMatch.key, fullMatch.keyValue, SQL, argsMarshal)
 	anEntry.SetWriter(writer, writer)
 	writer.entry = anEntry
+
+	stats.Type = cache.TypeWrite
 	return nil
 }
 
