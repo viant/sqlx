@@ -737,7 +737,7 @@ func getCacheWithRecorder(db *sql.DB, testCase *usecase) (cache.Cache, *recorder
 
 	warmup := testCase.cacheWarmup
 	if warmup != nil {
-		if err = aCache.IndexBy(context.TODO(), db, warmup.column, warmup.SQL, warmup.args); err != nil {
+		if _, err = aCache.IndexBy(context.TODO(), db, warmup.column, warmup.SQL, warmup.args); err != nil {
 			return nil, nil, err
 		}
 	}
