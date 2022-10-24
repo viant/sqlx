@@ -49,7 +49,7 @@ type (
 	}
 )
 
-func (a *Cache) IndexBy(ctx context.Context, db *sql.DB, column, SQL string, args []interface{}) error {
+func (a *Cache) IndexBy(ctx context.Context, db *sql.DB, column, SQL string, args []interface{}) (int, error) {
 	if args == nil {
 		args = []interface{}{}
 	}
@@ -57,7 +57,7 @@ func (a *Cache) IndexBy(ctx context.Context, db *sql.DB, column, SQL string, arg
 	querySQL, isOrdered := tryOrderedSQL(SQL, column)
 	rows, err := db.Query(querySQL, args...)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	defer func() {
@@ -66,12 +66,12 @@ func (a *Cache) IndexBy(ctx context.Context, db *sql.DB, column, SQL string, arg
 
 	columnTypes, err := rows.ColumnTypes()
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	fields, err := cache.ColumnsToFields(io.TypesToColumns(columnTypes))
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	var values = make(chan *cache.Indexed, 512)
@@ -84,22 +84,23 @@ func (a *Cache) IndexBy(ctx context.Context, db *sql.DB, column, SQL string, arg
 
 	URL, err := hash.GenerateURL(SQL, "", "", args)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	argsMarshal, err := json.Marshal(args)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	fieldMarshal, err := json.Marshal(fields)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	argsStringified := string(argsMarshal)
 	fieldsStringified := string(fieldMarshal)
 
+	inserted := 0
 	for value := range values {
 		var metaBin as.BinMap
 		if column == "" {
@@ -109,20 +110,25 @@ func (a *Cache) IndexBy(ctx context.Context, db *sql.DB, column, SQL string, arg
 		}
 
 		errors.Add(a.writeIndexData(value, URL, column, metaBin))
+		inserted++
 	}
 
 	if err = errors.Err(); err != nil {
-		return err
+		return inserted, err
 	}
 
 	if column != "" {
-		return a.putColumnMarker(URL, column, a.metaBin(SQL, argsStringified, fieldsStringified, column))
+		return inserted + 1, a.putColumnMarker(URL, column, a.metaBin(SQL, argsStringified, fieldsStringified, column))
 	}
 
-	return nil
+	return inserted, nil
 }
 
 func tryOrderedSQL(SQL string, column string) (string, bool) {
+	if column == "" {
+		return SQL, false
+	}
+
 	lcSQL := strings.ToLower(SQL)
 	orderByIndex := strings.LastIndex(lcSQL, "order ")
 	if orderByIndex != -1 && !matcher.IsWhiteSpace(lcSQL[orderByIndex-1]) {
