@@ -599,6 +599,7 @@ func (a *Cache) updateFullMatchEntry(ctx context.Context, anEntry *cache.Entry, 
 
 	stats.Type = cache.TypeReadSingle
 	stats.RecordsCounter = 1
+	stats.Key = match.keyValue
 	return nil
 }
 
@@ -649,6 +650,7 @@ func (a *Cache) updateColumnsInMatchEntry(entry *cache.Entry, match *RecordMatch
 
 	stats.Type = cache.TypeReadMulti
 	stats.RecordsCounter = counter
+	stats.Key = match.keyValue
 	return nil
 }
 

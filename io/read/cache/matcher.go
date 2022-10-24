@@ -31,6 +31,7 @@ type (
 	Stats struct {
 		Type           Type
 		RecordsCounter int
+		Key            string
 	}
 )
 
