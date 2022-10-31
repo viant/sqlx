@@ -118,7 +118,7 @@ func (a *Cache) IndexBy(ctx context.Context, db *sql.DB, column, SQL string, arg
 	}
 
 	if column != "" {
-		return inserted + 1, a.putColumnMarker(URL, column, a.metaBin(SQL, argsStringified, fieldsStringified, column))
+		return inserted + 1, a.putRowMarker(URL, column, a.metaBin(SQL, argsStringified, fieldsStringified, column))
 	}
 
 	return inserted, nil
@@ -233,12 +233,20 @@ func (a *Cache) Get(ctx context.Context, SQL string, args []interface{}, options
 		columnsInMatcher.Init()
 	}
 
+	return a.get(ctx, SQL, args, columnsInMatcher, cacheStats, failureHandler)
+}
+
+func (a *Cache) get(ctx context.Context, SQL string, args []interface{}, columnsInMatcher *cache.Index, cacheStats *cache.Stats, failureHandler *FailureHandler) (*cache.Entry, error) {
 	fullMatch, columnsInMatch, errors := a.readRecords(SQL, args, columnsInMatcher)
 	a.updateCacheStats(fullMatch, columnsInMatch, cacheStats)
 
 	var err error
 	cacheStats.ErrorType, cacheStats.ErrorCode, err = a.findActualError(errors)
 	if cacheStats.ErrorCode != types.OK && !cacheStats.FoundAny() {
+		if err != nil {
+			failureHandler.HandleFailure()
+		}
+
 		return nil, err
 	}
 
@@ -296,7 +304,7 @@ func (a *Cache) findActualError(errors []error) (string, types.ResultCode, error
 		//Do nothing
 		case types.TIMEOUT, types.MAX_RETRIES_EXCEEDED:
 			return cache.ErrorTypeTimeout, actual, nil
-		case types.SERVER_NOT_AVAILABLE:
+		case types.SERVER_NOT_AVAILABLE, types.NO_AVAILABLE_CONNECTIONS_TO_NODE, types.INVALID_NODE_ERROR:
 			return cache.ErrorTypeServerUnavailable, actual, nil
 		default:
 			return cache.ErrorTypeServerGeneric, actual, err
@@ -620,7 +628,7 @@ func (a *Cache) writePolicy() *as.WritePolicy {
 	return policy
 }
 
-func (a *Cache) putColumnMarker(URL string, column string, bin as.BinMap) error {
+func (a *Cache) putRowMarker(URL string, column string, bin as.BinMap) error {
 	aKey, err := a.key(a.columnURL(URL, column))
 	if err != nil {
 		return err

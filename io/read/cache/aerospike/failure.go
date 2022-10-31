@@ -8,11 +8,12 @@ import (
 )
 
 type FailureHandler struct {
-	mux        sync.RWMutex
-	counter    int64
-	limit      int64
-	resetAfter time.Duration
-	cancelFn   func()
+	mux            sync.RWMutex
+	counter        int64
+	limit          int64
+	resetAfter     time.Duration
+	probingResetFn func()
+	isProbing      bool
 }
 
 func NewFailureHandler(limit int64, resetAfter time.Duration) *FailureHandler {
@@ -25,48 +26,60 @@ func NewFailureHandler(limit int64, resetAfter time.Duration) *FailureHandler {
 func (f *FailureHandler) HandleFailure() {
 	failed := atomic.AddInt64(&f.counter, 1)
 	if failed > f.limit && f.limit != 0 {
-		f.startReset()
+		f.startProbing()
 	}
+}
+
+func (f *FailureHandler) HandleSuccess() {
+	atomic.StoreInt64(&f.counter, 0)
 }
 
 func (f *FailureHandler) Close() error {
 	f.mux.Lock()
-	if f.cancelFn != nil {
-		f.cancelFn()
+	if f.probingResetFn != nil {
+		f.probingResetFn()
 	}
 
-	f.cancelFn = nil
+	f.probingResetFn = nil
 	f.mux.Unlock()
 	return nil
 }
 
-func (f *FailureHandler) startReset() {
+func (f *FailureHandler) startProbing() {
 	f.mux.Lock()
 	defer f.mux.Unlock()
-	if f.cancelFn != nil {
+	if f.isProbing {
 		return
 	}
 
+	f.isProbing = true
+	resetFn := f.startTimer(func() {
+		f.mux.Lock()
+		atomic.StoreInt64(&f.counter, 0)
+		f.probingResetFn()
+		f.probingResetFn = nil
+		f.mux.Unlock()
+	})
+
+	f.probingResetFn = resetFn
+}
+
+func (f *FailureHandler) startTimer(callback func()) context.CancelFunc {
 	ctx := context.Background()
 	actualCtx, cancelFunc := context.WithCancel(ctx)
+
 	go func() {
 		select {
 		case <-time.After(f.resetAfter):
-			f.mux.Lock()
-			atomic.StoreInt64(&f.counter, 0)
-			f.cancelFn()
-			f.cancelFn = nil
-			f.mux.Unlock()
+			callback()
 		case <-actualCtx.Done():
-			f.mux.Lock()
-			f.cancelFn = nil
-			f.mux.Unlock()
+			//Do nothing
 		}
 	}()
 
-	f.cancelFn = cancelFunc
+	return cancelFunc
 }
 
 func (f *FailureHandler) IsProbing() bool {
-	return f.cancelFn != nil
+	return f.isProbing
 }
