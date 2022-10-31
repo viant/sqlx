@@ -3,8 +3,8 @@ package csv
 import (
 	"bytes"
 	"encoding/csv"
+	"errors"
 	"fmt"
-	"github.com/pkg/errors"
 	io2 "github.com/viant/sqlx/io"
 	"github.com/viant/xunsafe"
 	"io"
