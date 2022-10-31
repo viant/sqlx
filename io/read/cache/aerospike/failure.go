@@ -11,12 +11,12 @@ type FailureHandler struct {
 	mux            sync.RWMutex
 	counter        int64
 	limit          int64
-	resetAfter     time.Duration
+	resetAfter     *time.Duration
 	probingResetFn func()
 	isProbing      bool
 }
 
-func NewFailureHandler(limit int64, resetAfter time.Duration) *FailureHandler {
+func NewFailureHandler(limit int64, resetAfter *time.Duration) *FailureHandler {
 	return &FailureHandler{
 		limit:      limit,
 		resetAfter: resetAfter,
@@ -25,7 +25,7 @@ func NewFailureHandler(limit int64, resetAfter time.Duration) *FailureHandler {
 
 func (f *FailureHandler) HandleFailure() {
 	failed := atomic.AddInt64(&f.counter, 1)
-	if failed > f.limit && f.limit != 0 {
+	if failed > f.limit && f.limit != 0 && f.resetAfter != nil {
 		f.startProbing()
 	}
 }
@@ -70,7 +70,7 @@ func (f *FailureHandler) startTimer(callback func()) context.CancelFunc {
 
 	go func() {
 		select {
-		case <-time.After(f.resetAfter):
+		case <-time.After(*f.resetAfter):
 			callback()
 		case <-actualCtx.Done():
 			//Do nothing

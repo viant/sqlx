@@ -10,7 +10,7 @@ import (
 type (
 	Reader struct {
 		namespace string
-		client    *as.Client
+		cache     *Cache
 		record    *as.Record
 		key       *as.Key
 
@@ -96,7 +96,8 @@ func (r *Reader) fetchChild(childKeyValue interface{}) error {
 		return err
 	}
 
-	r.record, err = r.client.Get(as.NewPolicy(), key, dataBin, childBin)
+	r.record, err = r.cache.getRecord(key, dataBin, childBin)
+
 	if err != nil {
 		return err
 	}

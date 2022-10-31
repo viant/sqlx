@@ -46,6 +46,7 @@ type (
 		allowSmart        bool
 		chanSize          int
 		timeoutConfig     *TimeoutConfig
+		failureHandler    *FailureHandler
 	}
 )
 
@@ -161,6 +162,8 @@ func New(namespace string, setName string, client *as.Client, expirationTimeInS 
 	var recorder cache.Recorder
 	var allowSmart bool
 	var timeoutConfig *TimeoutConfig
+	var globalFailureHandler *FailureHandler
+
 	for _, anOption := range options {
 		switch actual := anOption.(type) {
 		case cache.Recorder:
@@ -169,6 +172,8 @@ func New(namespace string, setName string, client *as.Client, expirationTimeInS 
 			allowSmart = bool(actual)
 		case *TimeoutConfig:
 			timeoutConfig = actual
+		case *FailureHandler:
+			globalFailureHandler = actual
 		}
 	}
 
@@ -180,6 +185,7 @@ func New(namespace string, setName string, client *as.Client, expirationTimeInS 
 		expirationTimeInS: expirationTimeInS,
 		allowSmart:        allowSmart,
 		timeoutConfig:     timeoutConfig,
+		failureHandler:    globalFailureHandler,
 	}, nil
 }
 
@@ -206,15 +212,12 @@ func (a *Cache) AddValues(ctx context.Context, entry *cache.Entry, values []inte
 func (a *Cache) Get(ctx context.Context, SQL string, args []interface{}, options ...interface{}) (*cache.Entry, error) {
 	var columnsInMatcher *cache.Index
 	var cacheStats *cache.Stats
-	var failureHandler *FailureHandler
 	for _, option := range options {
 		switch actual := option.(type) {
 		case *cache.Index:
 			columnsInMatcher = actual
 		case *cache.Stats:
 			cacheStats = actual
-		case *FailureHandler:
-			failureHandler = actual
 		}
 	}
 
@@ -224,7 +227,11 @@ func (a *Cache) Get(ctx context.Context, SQL string, args []interface{}, options
 
 	cacheStats.Init()
 
-	if failureHandler != nil && failureHandler.IsProbing() {
+	if columnsInMatcher != nil {
+		columnsInMatcher.Init()
+	}
+
+	if a.failureHandler != nil && a.failureHandler.IsProbing() {
 		cacheStats.ErrorType = cache.ErrorTypeCurrentlyNotAvailable
 		return nil, nil
 	}
@@ -233,19 +240,17 @@ func (a *Cache) Get(ctx context.Context, SQL string, args []interface{}, options
 		columnsInMatcher.Init()
 	}
 
-	return a.get(ctx, SQL, args, columnsInMatcher, cacheStats, failureHandler)
+	return a.get(ctx, SQL, args, columnsInMatcher, cacheStats)
 }
 
-func (a *Cache) get(ctx context.Context, SQL string, args []interface{}, columnsInMatcher *cache.Index, cacheStats *cache.Stats, failureHandler *FailureHandler) (*cache.Entry, error) {
+func (a *Cache) get(ctx context.Context, SQL string, args []interface{}, columnsInMatcher *cache.Index, cacheStats *cache.Stats) (*cache.Entry, error) {
 	fullMatch, columnsInMatch, errors := a.readRecords(SQL, args, columnsInMatcher)
 	a.updateCacheStats(fullMatch, columnsInMatch, cacheStats)
 
 	var err error
 	cacheStats.ErrorType, cacheStats.ErrorCode, err = a.findActualError(errors)
 	if cacheStats.ErrorCode != types.OK && !cacheStats.FoundAny() {
-		if err != nil {
-			failureHandler.HandleFailure()
-		}
+		a.handleResponseFailure(cacheStats.ErrorCode)
 
 		return nil, err
 	}
@@ -377,8 +382,7 @@ func (a *Cache) readRecord(SQL string, args []interface{}, argsMarshal []byte, k
 		return nil, err
 	}
 
-	policy := a.readPolicy()
-	record, err := a.client.Get(policy, fullMatchKey, cachedBins...)
+	record, err := a.getRecord(fullMatchKey, cachedBins...)
 
 	return &RecordMatched{
 		key:      fullMatchKey,
@@ -442,7 +446,7 @@ func (a *Cache) Delete(ctx context.Context, entry *cache.Entry) error {
 
 func (a *Cache) deleteCascade(key *as.Key) error {
 	var err error
-	aRecord, _ := a.client.Get(as.NewPolicy(), key, childBin)
+	aRecord, _ := a.getRecord(key, childBin)
 	var ok bool
 	for aRecord != nil {
 		if ok, err = a.client.Delete(a.writePolicy(), key); err != nil || !ok {
@@ -480,7 +484,6 @@ func (a *Cache) recordMatches(record *as.Record, SQL string, args []byte) bool {
 
 func (a *Cache) newWriter(key *as.Key, aKey string, SQL string, args []byte) *Writer {
 	return &Writer{
-		client:                  a.client,
 		expirationTimeInSeconds: a.expirationTimeInS,
 		mainKey:                 key,
 		buffers:                 []*bytes.Buffer{bytes.NewBuffer(nil)},
@@ -500,7 +503,7 @@ func (a *Cache) reader(key *as.Key, record *as.Record) (*Reader, error) {
 
 	return &Reader{
 		key:       key,
-		client:    a.client,
+		cache:     a,
 		namespace: a.namespace,
 		record:    record,
 		set:       a.set,
@@ -580,7 +583,7 @@ func (a *Cache) writeIndexData(args *cache.Indexed, URL string, column string, m
 		metaBin[dataBin] = string(data)
 	}
 
-	return a.client.Put(a.writePolicy(), key, metaBin)
+	return a.put(key, metaBin)
 }
 
 func compress(data []byte) ([]byte, bool) {
@@ -634,7 +637,7 @@ func (a *Cache) putRowMarker(URL string, column string, bin as.BinMap) error {
 		return err
 	}
 
-	return a.client.Put(a.writePolicy(), aKey, bin)
+	return a.put(aKey, bin)
 }
 
 func (a *Cache) columnURL(URL string, column string) string {
@@ -764,7 +767,7 @@ func (a *Cache) newReader(matcher *cache.Index, columnValue interface{}) (*Reade
 		return nil, err
 	}
 
-	record, err := a.client.Get(a.readPolicy(), aKey, cachedBins...)
+	record, err := a.getRecord(aKey, cachedBins...)
 	if a.isKeyNotFoundErr(err) {
 		return nil, nil
 	} else if err != nil {
@@ -878,4 +881,41 @@ func (a *Cache) fetchAndIndexValues(fields []*cache.Field, column string, rows *
 	}
 
 	return indexSource.Close()
+}
+
+func (a *Cache) handleResponseFailure(code types.ResultCode) {
+	if a.failureHandler == nil {
+		return
+	}
+
+	if code == types.OK {
+		a.failureHandler.HandleSuccess()
+	} else {
+		a.failureHandler.HandleFailure()
+	}
+}
+
+func (a *Cache) getRecord(key *as.Key, bins ...string) (*as.Record, error) {
+	record, err := a.client.Get(a.newBasePolicy(true), key, bins...)
+	if err != nil {
+		aerospikeErr, ok := asAerospikeErr(err)
+		if ok {
+			a.handleResponseFailure(aerospikeErr.ResultCode())
+		}
+
+		return nil, err
+	}
+
+	return record, nil
+}
+
+func (a *Cache) put(key *as.Key, binMap as.BinMap) error {
+	policy := a.writePolicy()
+	err := a.client.Put(policy, key, binMap)
+	aerospikeErr, ok := asAerospikeErr(err)
+	if ok {
+		a.handleResponseFailure(aerospikeErr.ResultCode())
+	}
+
+	return err
 }
