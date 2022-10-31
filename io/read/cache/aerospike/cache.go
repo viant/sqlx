@@ -46,6 +46,7 @@ type (
 		allowSmart        bool
 		chanSize          int
 		timeoutConfig     *TimeoutConfig
+		failureHandler    *FailureHandler
 	}
 )
 
@@ -118,7 +119,7 @@ func (a *Cache) IndexBy(ctx context.Context, db *sql.DB, column, SQL string, arg
 	}
 
 	if column != "" {
-		return inserted + 1, a.putColumnMarker(URL, column, a.metaBin(SQL, argsStringified, fieldsStringified, column))
+		return inserted + 1, a.putRowMarker(URL, column, a.metaBin(SQL, argsStringified, fieldsStringified, column))
 	}
 
 	return inserted, nil
@@ -161,6 +162,8 @@ func New(namespace string, setName string, client *as.Client, expirationTimeInS 
 	var recorder cache.Recorder
 	var allowSmart bool
 	var timeoutConfig *TimeoutConfig
+	var globalFailureHandler *FailureHandler
+
 	for _, anOption := range options {
 		switch actual := anOption.(type) {
 		case cache.Recorder:
@@ -169,6 +172,8 @@ func New(namespace string, setName string, client *as.Client, expirationTimeInS 
 			allowSmart = bool(actual)
 		case *TimeoutConfig:
 			timeoutConfig = actual
+		case *FailureHandler:
+			globalFailureHandler = actual
 		}
 	}
 
@@ -180,6 +185,7 @@ func New(namespace string, setName string, client *as.Client, expirationTimeInS 
 		expirationTimeInS: expirationTimeInS,
 		allowSmart:        allowSmart,
 		timeoutConfig:     timeoutConfig,
+		failureHandler:    globalFailureHandler,
 	}, nil
 }
 
@@ -225,13 +231,28 @@ func (a *Cache) Get(ctx context.Context, SQL string, args []interface{}, options
 		columnsInMatcher.Init()
 	}
 
+	if a.failureHandler != nil && a.failureHandler.IsProbing() {
+		cacheStats.ErrorType = cache.ErrorTypeCurrentlyNotAvailable
+		return nil, nil
+	}
+
+	if columnsInMatcher != nil {
+		columnsInMatcher.Init()
+	}
+
+	return a.get(ctx, SQL, args, columnsInMatcher, cacheStats)
+}
+
+func (a *Cache) get(ctx context.Context, SQL string, args []interface{}, columnsInMatcher *cache.Index, cacheStats *cache.Stats) (*cache.Entry, error) {
 	fullMatch, columnsInMatch, errors := a.readRecords(SQL, args, columnsInMatcher)
-	for _, err := range errors {
-		if a.isServerNotAvailableErr(err) {
-			return nil, nil
-		} else if err != nil {
-			return nil, err
-		}
+	a.updateCacheStats(fullMatch, columnsInMatch, cacheStats)
+
+	var err error
+	cacheStats.ErrorType, cacheStats.ErrorCode, err = a.findActualError(errors)
+	if cacheStats.ErrorCode != types.OK && !cacheStats.FoundAny() {
+		a.handleResponseFailure(cacheStats.ErrorCode)
+
+		return nil, err
 	}
 
 	argsMarshal, err := json.Marshal(args)
@@ -261,6 +282,41 @@ func (a *Cache) Get(ctx context.Context, SQL string, args []interface{}, options
 	}
 
 	return anEntry, a.updateWriter(anEntry, fullMatch, SQL, argsMarshal, cacheStats)
+}
+
+func (a *Cache) updateCacheStats(fullMatch *RecordMatched, columnsInMatch *RecordMatched, cacheStats *cache.Stats) {
+	if fullMatch.hasKey {
+		cacheStats.Key = fullMatch.keyValue
+	}
+
+	cacheStats.FoundLazy = fullMatch != nil && fullMatch.hasKey
+	cacheStats.FoundWarmup = columnsInMatch != nil && columnsInMatch.hasKey
+}
+
+func (a *Cache) findActualError(errors []error) (string, types.ResultCode, error) {
+	for _, err := range errors {
+		if err == nil {
+			continue
+		}
+
+		aerospikeErr, ok := asAerospikeErr(err)
+		if !ok {
+			continue
+		}
+
+		switch actual := aerospikeErr.ResultCode(); actual {
+		case types.OK, types.KEY_NOT_FOUND_ERROR:
+		//Do nothing
+		case types.TIMEOUT, types.MAX_RETRIES_EXCEEDED:
+			return cache.ErrorTypeTimeout, actual, nil
+		case types.SERVER_NOT_AVAILABLE, types.NO_AVAILABLE_CONNECTIONS_TO_NODE, types.INVALID_NODE_ERROR:
+			return cache.ErrorTypeServerUnavailable, actual, nil
+		default:
+			return cache.ErrorTypeServerGeneric, actual, err
+		}
+	}
+
+	return "", types.OK, nil
 }
 
 func (a *Cache) readRecords(SQL string, args []interface{}, matcher *cache.Index) (fullMatch *RecordMatched, columnsInMatch *RecordMatched, errors []error) {
@@ -326,8 +382,7 @@ func (a *Cache) readRecord(SQL string, args []interface{}, argsMarshal []byte, k
 		return nil, err
 	}
 
-	policy := a.readPolicy()
-	record, err := a.client.Get(policy, fullMatchKey, cachedBins...)
+	record, err := a.getRecord(fullMatchKey, cachedBins...)
 
 	return &RecordMatched{
 		key:      fullMatchKey,
@@ -338,9 +393,14 @@ func (a *Cache) readRecord(SQL string, args []interface{}, argsMarshal []byte, k
 }
 
 func (a *Cache) readPolicy() *as.BasePolicy {
+	policy := a.newBasePolicy(true)
+	return policy
+}
+
+func (a *Cache) newBasePolicy(idempotent bool) *as.BasePolicy {
 	policy := as.NewPolicy()
 	if a.timeoutConfig != nil {
-		if a.timeoutConfig.MaxRetries != 0 {
+		if a.timeoutConfig.MaxRetries != 0 && idempotent {
 			policy.MaxRetries = a.timeoutConfig.MaxRetries
 		}
 
@@ -386,10 +446,10 @@ func (a *Cache) Delete(ctx context.Context, entry *cache.Entry) error {
 
 func (a *Cache) deleteCascade(key *as.Key) error {
 	var err error
-	aRecord, _ := a.client.Get(as.NewPolicy(), key, childBin)
+	aRecord, _ := a.getRecord(key, childBin)
 	var ok bool
 	for aRecord != nil {
-		if ok, err = a.client.Delete(as.NewWritePolicy(0, a.expirationTimeInS), key); err != nil || !ok {
+		if ok, err = a.client.Delete(a.writePolicy(), key); err != nil || !ok {
 			return err
 		}
 
@@ -424,7 +484,6 @@ func (a *Cache) recordMatches(record *as.Record, SQL string, args []byte) bool {
 
 func (a *Cache) newWriter(key *as.Key, aKey string, SQL string, args []byte) *Writer {
 	return &Writer{
-		client:                  a.client,
 		expirationTimeInSeconds: a.expirationTimeInS,
 		mainKey:                 key,
 		buffers:                 []*bytes.Buffer{bytes.NewBuffer(nil)},
@@ -444,7 +503,7 @@ func (a *Cache) reader(key *as.Key, record *as.Record) (*Reader, error) {
 
 	return &Reader{
 		key:       key,
-		client:    a.client,
+		cache:     a,
 		namespace: a.namespace,
 		record:    record,
 		set:       a.set,
@@ -524,7 +583,7 @@ func (a *Cache) writeIndexData(args *cache.Indexed, URL string, column string, m
 		metaBin[dataBin] = string(data)
 	}
 
-	return a.client.Put(a.writePolicy(), key, metaBin)
+	return a.put(key, metaBin)
 }
 
 func compress(data []byte) ([]byte, bool) {
@@ -565,18 +624,20 @@ func (a *Cache) columnValueURL(column string, columnValueMarshal []byte, URL str
 
 func (a *Cache) writePolicy() *as.WritePolicy {
 	policy := as.NewWritePolicy(0, a.expirationTimeInS)
+	basePolicy := a.newBasePolicy(false)
+	policy.BasePolicy = *basePolicy
 	policy.SendKey = true
-	policy.MaxRetries = 3
+
 	return policy
 }
 
-func (a *Cache) putColumnMarker(URL string, column string, bin as.BinMap) error {
+func (a *Cache) putRowMarker(URL string, column string, bin as.BinMap) error {
 	aKey, err := a.key(a.columnURL(URL, column))
 	if err != nil {
 		return err
 	}
 
-	return a.client.Put(a.writePolicy(), aKey, bin)
+	return a.put(aKey, bin)
 }
 
 func (a *Cache) columnURL(URL string, column string) string {
@@ -706,7 +767,7 @@ func (a *Cache) newReader(matcher *cache.Index, columnValue interface{}) (*Reade
 		return nil, err
 	}
 
-	record, err := a.client.Get(a.readPolicy(), aKey, cachedBins...)
+	record, err := a.getRecord(aKey, cachedBins...)
 	if a.isKeyNotFoundErr(err) {
 		return nil, nil
 	} else if err != nil {
@@ -730,18 +791,17 @@ func (a *Cache) isKeyNotFoundErr(err error) bool {
 	return code == types.KEY_NOT_FOUND_ERROR
 }
 
-func (a *Cache) isServerNotAvailableErr(err error) bool {
+func asAerospikeErr(err error) (types.AerospikeError, bool) {
 	if err == nil {
-		return false
+		return types.AerospikeError{}, false
 	}
 
 	aeroErr, ok := err.(types.AerospikeError)
 	if !ok {
-		return false
+		return types.AerospikeError{}, false
 	}
 
-	code := aeroErr.ResultCode()
-	return code == types.TIMEOUT || code < 0
+	return aeroErr, true
 }
 
 func (a *Cache) entryId(fullMatch *RecordMatched, columnsInMatch *RecordMatched) string {
@@ -821,4 +881,41 @@ func (a *Cache) fetchAndIndexValues(fields []*cache.Field, column string, rows *
 	}
 
 	return indexSource.Close()
+}
+
+func (a *Cache) handleResponseFailure(code types.ResultCode) {
+	if a.failureHandler == nil {
+		return
+	}
+
+	if code == types.OK {
+		a.failureHandler.HandleSuccess()
+	} else {
+		a.failureHandler.HandleFailure()
+	}
+}
+
+func (a *Cache) getRecord(key *as.Key, bins ...string) (*as.Record, error) {
+	record, err := a.client.Get(a.newBasePolicy(true), key, bins...)
+	if err != nil {
+		aerospikeErr, ok := asAerospikeErr(err)
+		if ok {
+			a.handleResponseFailure(aerospikeErr.ResultCode())
+		}
+
+		return nil, err
+	}
+
+	return record, nil
+}
+
+func (a *Cache) put(key *as.Key, binMap as.BinMap) error {
+	policy := a.writePolicy()
+	err := a.client.Put(policy, key, binMap)
+	aerospikeErr, ok := asAerospikeErr(err)
+	if ok {
+		a.handleResponseFailure(aerospikeErr.ResultCode())
+	}
+
+	return err
 }
