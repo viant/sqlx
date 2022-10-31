@@ -58,6 +58,7 @@ func (f *FailureHandler) startProbing() {
 		atomic.StoreInt64(&f.counter, 0)
 		f.probingResetFn()
 		f.probingResetFn = nil
+		f.isProbing = false
 		f.mux.Unlock()
 	})
 
