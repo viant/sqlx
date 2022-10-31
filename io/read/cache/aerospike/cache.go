@@ -10,6 +10,7 @@ import (
 	as "github.com/aerospike/aerospike-client-go"
 	"github.com/aerospike/aerospike-client-go/types"
 	"github.com/google/uuid"
+	"github.com/pkg/errors"
 	"github.com/viant/parsly/matcher"
 	"github.com/viant/sqlx/io"
 	"github.com/viant/sqlx/io/read/cache"
@@ -209,10 +210,11 @@ func (a *Cache) get(ctx context.Context, SQL string, args []interface{}, columns
 	lazyMatch, warmupMatch, err := a.readRecords(SQL, args, columnsInMatcher)
 	a.updateCacheStats(lazyMatch, warmupMatch, cacheStats)
 	cacheStats.ErrorType, cacheStats.ErrorCode, err = a.findActualError(err)
-	if cacheStats.ErrorCode != types.OK && !cacheStats.FoundAny() {
+	if cacheStats.ErrorCode != types.OK && !cacheStats.FoundAny() || err != nil {
 		a.handleResponseFailure(cacheStats.ErrorCode)
 		return nil, err
 	}
+
 	jsonEncodedArgs, err := json.Marshal(args)
 	if err != nil {
 		return nil, err
@@ -257,6 +259,10 @@ func (a *Cache) findActualError(err error) (string, types.ResultCode, error) {
 	}
 	aerospikeErr, ok := asAerospikeErr(err)
 	if !ok {
+		if errors.Is(err, sio.EOF) {
+			return "", types.TIMEOUT, err
+		}
+
 		return "", types.OK, nil
 	}
 	switch actual := aerospikeErr.ResultCode(); actual {
