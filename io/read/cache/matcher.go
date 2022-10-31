@@ -23,8 +23,8 @@ type (
 	ErrorType  string
 	AllowSmart bool
 
-	//Index abstraction to represent data optimisation with caching and custom pagination
-	Index struct {
+	//ParmetrizedQuery abstraction to represent data optimisation with caching and custom pagination
+	ParmetrizedQuery struct {
 		By      string
 		SQL     string
 		Ordered bool //SQL uses order by indexby column
@@ -58,7 +58,7 @@ func (s *Stats) FoundAny() bool {
 	return s.FoundLazy || s.FoundWarmup
 }
 
-func (m *Index) Init() {
+func (m *ParmetrizedQuery) Init() {
 	if m.initialized {
 		return
 	}
@@ -69,7 +69,7 @@ func (m *Index) Init() {
 	}
 }
 
-func (m *Index) MarshalArgs() ([]byte, error) {
+func (m *ParmetrizedQuery) MarshalArgs() ([]byte, error) {
 	if m.marshalArgs != nil {
 		return m.marshalArgs, nil
 	}

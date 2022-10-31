@@ -158,37 +158,6 @@ func (a *Cache) Rollback(ctx context.Context, entry *cache.Entry) error {
 	return a.Delete(ctx, entry)
 }
 
-func New(namespace string, setName string, client *as.Client, expirationTimeInS uint32, options ...interface{}) (*Cache, error) {
-	var recorder cache.Recorder
-	var allowSmart bool
-	var timeoutConfig *TimeoutConfig
-	var globalFailureHandler *FailureHandler
-
-	for _, anOption := range options {
-		switch actual := anOption.(type) {
-		case cache.Recorder:
-			recorder = actual
-		case cache.AllowSmart:
-			allowSmart = bool(actual)
-		case *TimeoutConfig:
-			timeoutConfig = actual
-		case *FailureHandler:
-			globalFailureHandler = actual
-		}
-	}
-
-	return &Cache{
-		client:            client,
-		namespace:         namespace,
-		set:               setName,
-		recorder:          recorder,
-		expirationTimeInS: expirationTimeInS,
-		allowSmart:        allowSmart,
-		timeoutConfig:     timeoutConfig,
-		failureHandler:    globalFailureHandler,
-	}, nil
-}
-
 func (a *Cache) AsSource(ctx context.Context, entry *cache.Entry) (cache.Source, error) {
 	return &Source{
 		cache: a,
@@ -210,12 +179,12 @@ func (a *Cache) AddValues(ctx context.Context, entry *cache.Entry, values []inte
 }
 
 func (a *Cache) Get(ctx context.Context, SQL string, args []interface{}, options ...interface{}) (*cache.Entry, error) {
-	var columnsInMatcher *cache.Index
+	var query *cache.ParmetrizedQuery
 	var cacheStats *cache.Stats
 	for _, option := range options {
 		switch actual := option.(type) {
-		case *cache.Index:
-			columnsInMatcher = actual
+		case *cache.ParmetrizedQuery:
+			query = actual
 		case *cache.Stats:
 			cacheStats = actual
 		}
@@ -224,38 +193,27 @@ func (a *Cache) Get(ctx context.Context, SQL string, args []interface{}, options
 	if cacheStats == nil {
 		cacheStats = &cache.Stats{}
 	}
-
 	cacheStats.Init()
-
-	if columnsInMatcher != nil {
-		columnsInMatcher.Init()
+	if query != nil {
+		query.Init()
 	}
 
 	if a.failureHandler != nil && a.failureHandler.IsProbing() {
 		cacheStats.ErrorType = cache.ErrorTypeCurrentlyNotAvailable
 		return nil, nil
 	}
-
-	if columnsInMatcher != nil {
-		columnsInMatcher.Init()
-	}
-
-	return a.get(ctx, SQL, args, columnsInMatcher, cacheStats)
+	return a.get(ctx, SQL, args, query, cacheStats)
 }
 
-func (a *Cache) get(ctx context.Context, SQL string, args []interface{}, columnsInMatcher *cache.Index, cacheStats *cache.Stats) (*cache.Entry, error) {
-	fullMatch, columnsInMatch, errors := a.readRecords(SQL, args, columnsInMatcher)
-	a.updateCacheStats(fullMatch, columnsInMatch, cacheStats)
-
-	var err error
-	cacheStats.ErrorType, cacheStats.ErrorCode, err = a.findActualError(errors)
+func (a *Cache) get(ctx context.Context, SQL string, args []interface{}, columnsInMatcher *cache.ParmetrizedQuery, cacheStats *cache.Stats) (*cache.Entry, error) {
+	lazyMatch, warmupMatch, err := a.readRecords(SQL, args, columnsInMatcher)
+	a.updateCacheStats(lazyMatch, warmupMatch, cacheStats)
+	cacheStats.ErrorType, cacheStats.ErrorCode, err = a.findActualError(err)
 	if cacheStats.ErrorCode != types.OK && !cacheStats.FoundAny() {
 		a.handleResponseFailure(cacheStats.ErrorCode)
-
 		return nil, err
 	}
-
-	argsMarshal, err := json.Marshal(args)
+	jsonEncodedArgs, err := json.Marshal(args)
 	if err != nil {
 		return nil, err
 	}
@@ -263,107 +221,100 @@ func (a *Cache) get(ctx context.Context, SQL string, args []interface{}, columns
 	anEntry := &cache.Entry{
 		Meta: cache.Meta{
 			SQL:        SQL,
-			Args:       argsMarshal,
+			Args:       jsonEncodedArgs,
 			TimeToLive: int(time.Now().Add(time.Duration(a.expirationTimeInS)).UnixNano()),
 		},
-		Id: a.entryId(fullMatch, columnsInMatch),
+		Id: a.entryId(lazyMatch, warmupMatch),
 	}
 
-	if err = a.updateFullMatchEntry(ctx, anEntry, fullMatch, SQL, argsMarshal, cacheStats); err != nil {
+	if err = a.updateLazyMatchEntry(ctx, anEntry, lazyMatch, SQL, jsonEncodedArgs, cacheStats); err != nil {
 		return nil, err
 	}
 
-	if err = a.updateColumnsInMatchEntry(anEntry, columnsInMatch, columnsInMatcher, cacheStats); err != nil {
+	if err = a.updateColumnsInMatchEntry(anEntry, warmupMatch, columnsInMatcher, cacheStats); err != nil {
 		return nil, err
 	}
 
-	if err = a.updateMetaFields(anEntry, fullMatch, columnsInMatch); err != nil {
+	if err = a.updateMetaFields(anEntry, lazyMatch, warmupMatch); err != nil {
 		return nil, err
 	}
 
-	return anEntry, a.updateWriter(anEntry, fullMatch, SQL, argsMarshal, cacheStats)
+	return anEntry, a.updateWriter(anEntry, lazyMatch, SQL, jsonEncodedArgs, cacheStats)
 }
 
 func (a *Cache) updateCacheStats(fullMatch *RecordMatched, columnsInMatch *RecordMatched, cacheStats *cache.Stats) {
 	if fullMatch.hasKey {
 		cacheStats.Key = fullMatch.keyValue
 	}
-
 	cacheStats.FoundLazy = fullMatch != nil && fullMatch.hasKey
 	cacheStats.FoundWarmup = columnsInMatch != nil && columnsInMatch.hasKey
 }
 
-func (a *Cache) findActualError(errors []error) (string, types.ResultCode, error) {
-	for _, err := range errors {
-		if err == nil {
-			continue
-		}
-
-		aerospikeErr, ok := asAerospikeErr(err)
-		if !ok {
-			continue
-		}
-
-		switch actual := aerospikeErr.ResultCode(); actual {
-		case types.OK, types.KEY_NOT_FOUND_ERROR:
-		//Do nothing
-		case types.TIMEOUT, types.MAX_RETRIES_EXCEEDED:
-			return cache.ErrorTypeTimeout, actual, nil
-		case types.SERVER_NOT_AVAILABLE, types.NO_AVAILABLE_CONNECTIONS_TO_NODE, types.INVALID_NODE_ERROR:
-			return cache.ErrorTypeServerUnavailable, actual, nil
-		default:
-			return cache.ErrorTypeServerGeneric, actual, err
-		}
+//TODO mabe move to its own error type
+func (a *Cache) findActualError(err error) (string, types.ResultCode, error) {
+	if err == nil {
+		return "", types.OK, nil
 	}
-
+	aerospikeErr, ok := asAerospikeErr(err)
+	if !ok {
+		return "", types.OK, nil
+	}
+	switch actual := aerospikeErr.ResultCode(); actual {
+	case types.OK, types.KEY_NOT_FOUND_ERROR:
+	//Do nothing
+	case types.TIMEOUT, types.MAX_RETRIES_EXCEEDED:
+		return cache.ErrorTypeTimeout, actual, nil
+	case types.SERVER_NOT_AVAILABLE, types.NO_AVAILABLE_CONNECTIONS_TO_NODE, types.INVALID_NODE_ERROR:
+		return cache.ErrorTypeServerUnavailable, actual, nil
+	default:
+		return cache.ErrorTypeServerGeneric, actual, err
+	}
 	return "", types.OK, nil
 }
 
-func (a *Cache) readRecords(SQL string, args []interface{}, matcher *cache.Index) (fullMatch *RecordMatched, columnsInMatch *RecordMatched, errors []error) {
-	errors = make([]error, 2)
+func (a *Cache) readRecords(SQL string, args []interface{}, query *cache.ParmetrizedQuery) (lazyMatch *RecordMatched, warmupMatch *RecordMatched, err error) {
+	var errors = make([]error, 2)
 	wg := sync.WaitGroup{}
 
 	wg.Add(2)
 	go func(SQL string, args []interface{}, wg *sync.WaitGroup) {
 		defer wg.Done()
-		fullMatch, errors[0] = a.readRecord(SQL, args, nil)
+		lazyMatch, errors[0] = a.readRecord(SQL, args, nil)
 	}(SQL, args, &wg)
 
-	go func(matcher *cache.Index) {
+	go func(query *cache.ParmetrizedQuery) {
 		defer wg.Done()
-		if matcher == nil {
+		if query == nil {
 			return
 		}
-
-		argsMarshal, err := matcher.MarshalArgs()
-		if err != nil {
-			errors[1] = err
+		jsonEncodedArgs, e := query.MarshalArgs() //warmup args
+		if e != nil {
+			errors[1] = e
 			return
 		}
-
-		columnsInMatch, errors[1] = a.readRecord(matcher.SQL, matcher.Args, argsMarshal, func(aKey string) (string, error) {
-			return a.columnURL(aKey, matcher.By), nil
+		warmupMatch, errors[1] = a.readRecord(query.SQL, query.Args, jsonEncodedArgs, func(aKey string) (string, error) {
+			return a.columnURL(aKey, query.By), nil
 		})
-	}(matcher)
+	}(query)
 	wg.Wait()
-
-	for i, err := range errors {
-		if a.isKeyNotFoundErr(err) {
-			errors[i] = nil
+	for i := range errors {
+		if errors[i] == nil || a.isKeyNotFoundErr(errors[i]) {
+			continue
 		}
+		err = errors[i]
+		break
 	}
-
-	return fullMatch, columnsInMatch, errors
+	return lazyMatch, warmupMatch, err
 }
 
 func (a *Cache) readRecord(SQL string, args []interface{}, argsMarshal []byte, keyModifiers ...func(aKey string) (string, error)) (*RecordMatched, error) {
-	var aKey string
+	var keyValue string
 	var err error
 
 	if argsMarshal == nil {
-		aKey, err = hash.GenerateURL(SQL, "", "", args)
+		keyValue, err = hash.GenerateURL(SQL, "", "", args)
 	} else {
-		aKey, err = hash.GenerateWithMarshal(SQL, "", "", argsMarshal)
+		keyValue, err = hash.GenerateWithMarshal(SQL, "", "", argsMarshal)
 	}
 
 	if err != nil {
@@ -371,23 +322,23 @@ func (a *Cache) readRecord(SQL string, args []interface{}, argsMarshal []byte, k
 	}
 
 	for _, modifier := range keyModifiers {
-		aKey, err = modifier(aKey)
+		keyValue, err = modifier(keyValue)
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	fullMatchKey, err := a.key(aKey)
+	storeKey, err := a.key(keyValue)
 	if err != nil {
 		return nil, err
 	}
 
-	record, err := a.getRecord(fullMatchKey, cachedBins...)
+	record, err := a.getRecord(storeKey, cachedBins...)
 
 	return &RecordMatched{
-		key:      fullMatchKey,
+		key:      storeKey,
 		record:   record,
-		keyValue: aKey,
+		keyValue: keyValue,
 		hasKey:   err == nil,
 	}, err
 }
@@ -403,9 +354,11 @@ func (a *Cache) newBasePolicy(idempotent bool) *as.BasePolicy {
 		if a.timeoutConfig.MaxRetries != 0 && idempotent {
 			policy.MaxRetries = a.timeoutConfig.MaxRetries
 		}
-
-		if a.timeoutConfig.TotalTimeoutInS != 0 {
-			policy.TotalTimeout = time.Second * time.Duration(a.timeoutConfig.TotalTimeoutInS)
+		if a.timeoutConfig.MaxRetries != 0 && idempotent {
+			policy.SleepBetweenRetries = time.Millisecond * time.Duration(a.timeoutConfig.SleepBetweenRetriesMs)
+		}
+		if a.timeoutConfig.TotalTimeoutMs != 0 {
+			policy.TotalTimeout = time.Millisecond * time.Duration(a.timeoutConfig.TotalTimeoutMs)
 		}
 	}
 	return policy
@@ -644,12 +597,12 @@ func (a *Cache) columnURL(URL string, column string) string {
 	return strings.ToLower(column) + "#" + URL
 }
 
-func (a *Cache) updateFullMatchEntry(ctx context.Context, anEntry *cache.Entry, match *RecordMatched, SQL string, argsMarshal []byte, stats *cache.Stats) error {
+func (a *Cache) updateLazyMatchEntry(ctx context.Context, anEntry *cache.Entry, match *RecordMatched, SQL string, jsonEncodedArgs []byte, stats *cache.Stats) error {
 	if match == nil || !match.hasKey {
 		return nil
 	}
 
-	if !a.recordMatches(match.record, SQL, argsMarshal) {
+	if !a.recordMatches(match.record, SQL, jsonEncodedArgs) {
 		if match.record != nil {
 			_ = a.Delete(ctx, anEntry)
 		}
@@ -670,7 +623,7 @@ func (a *Cache) updateFullMatchEntry(ctx context.Context, anEntry *cache.Entry, 
 	return nil
 }
 
-func (a *Cache) updateColumnsInMatchEntry(entry *cache.Entry, match *RecordMatched, matcher *cache.Index, stats *cache.Stats) error {
+func (a *Cache) updateColumnsInMatchEntry(entry *cache.Entry, match *RecordMatched, matcher *cache.ParmetrizedQuery, stats *cache.Stats) error {
 	if match == nil || entry.ReadCloser != nil || !match.hasKey {
 		return nil
 	}
@@ -735,8 +688,8 @@ func (a *Cache) updateWriter(anEntry *cache.Entry, fullMatch *RecordMatched, SQL
 	return nil
 }
 
-func (a *Cache) readChan(readerChan chan *readerWrapper, matcher *cache.Index, columnValue interface{}) {
-	go func(matcher *cache.Index, columnValue interface{}) {
+func (a *Cache) readChan(readerChan chan *readerWrapper, matcher *cache.ParmetrizedQuery, columnValue interface{}) {
+	go func(matcher *cache.ParmetrizedQuery, columnValue interface{}) {
 		reader, err := a.newReader(matcher, columnValue)
 		readerChan <- &readerWrapper{
 			err:    err,
@@ -745,7 +698,7 @@ func (a *Cache) readChan(readerChan chan *readerWrapper, matcher *cache.Index, c
 	}(matcher, columnValue)
 }
 
-func (a *Cache) newReader(matcher *cache.Index, columnValue interface{}) (*Reader, error) {
+func (a *Cache) newReader(matcher *cache.ParmetrizedQuery, columnValue interface{}) (*Reader, error) {
 	valueMarshal, err := json.Marshal(columnValue)
 	if err != nil {
 		return nil, err
@@ -918,4 +871,35 @@ func (a *Cache) put(key *as.Key, binMap as.BinMap) error {
 	}
 
 	return err
+}
+
+func New(namespace string, setName string, client *as.Client, expirationTimeInS uint32, options ...interface{}) (*Cache, error) {
+	var recorder cache.Recorder
+	var allowSmart bool
+	var timeoutConfig *TimeoutConfig
+	var globalFailureHandler *FailureHandler
+
+	for _, anOption := range options {
+		switch actual := anOption.(type) {
+		case cache.Recorder:
+			recorder = actual
+		case cache.AllowSmart:
+			allowSmart = bool(actual)
+		case *TimeoutConfig:
+			timeoutConfig = actual
+		case *FailureHandler:
+			globalFailureHandler = actual
+		}
+	}
+
+	return &Cache{
+		client:            client,
+		namespace:         namespace,
+		set:               setName,
+		recorder:          recorder,
+		expirationTimeInS: expirationTimeInS,
+		allowSmart:        allowSmart,
+		timeoutConfig:     timeoutConfig,
+		failureHandler:    globalFailureHandler,
+	}, nil
 }

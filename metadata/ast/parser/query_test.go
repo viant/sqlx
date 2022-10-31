@@ -16,7 +16,6 @@ func TestParseSelect(t *testing.T) {
 			SQL         string
 			expect      string
 		}{
-
 			{
 				description: "with syntax",
 				SQL: `WITH p AS (SELECT * FROM product), v AS (SELECT * FROM vendor)

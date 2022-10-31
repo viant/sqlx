@@ -63,7 +63,7 @@ type (
 		rowMapperCache  *read.MapperCache
 		cacheConfig     *cacheConfig
 		cacheWarmup     *cacheWarmup
-		matcher         *cache.Index
+		matcher         *cache.ParmetrizedQuery
 	}
 
 	cacheWarmup struct {
@@ -424,7 +424,7 @@ func TestReader_ReadAll(t *testing.T) {
 				column: "foo_id",
 				SQL:    "SELECT * FROM t10 ORDER BY 1 DESC",
 			},
-			matcher: &cache.Index{
+			matcher: &cache.ParmetrizedQuery{
 				SQL:  "SELECT * FROM t10 ORDER BY 1 DESC",
 				Args: []interface{}{},
 				By:   "foo_id",
@@ -459,7 +459,7 @@ func TestReader_ReadAll(t *testing.T) {
 				column: "unk",
 				SQL:    "SELECT * FROM t11 ORDER BY 4 DESC",
 			},
-			matcher: &cache.Index{
+			matcher: &cache.ParmetrizedQuery{
 				SQL:    "SELECT * FROM t11 ORDER BY 4 DESC",
 				Args:   []interface{}{},
 				By:     "unk",
@@ -488,7 +488,7 @@ func TestReader_ReadAll(t *testing.T) {
 			resolver:       io.NewResolver(),
 			expect:         `[{"Id":3,"Desc":"desc3","Name":"Name - 1"},{"Id":4,"Desc":"desc4","Name":"Name - 2"},{"Id":5,"Desc":"desc5","Name":"Name - 3"}]`,
 			expectResolved: `["102","102","101"]`,
-			matcher: &cache.Index{
+			matcher: &cache.ParmetrizedQuery{
 				SQL:    "SELECT * FROM t12 ORDER BY 4 DESC",
 				Args:   []interface{}{},
 				By:     "unk",
@@ -517,7 +517,7 @@ func TestReader_ReadAll(t *testing.T) {
 			resolver:       io.NewResolver(),
 			expect:         `[]`,
 			expectResolved: `[]`,
-			matcher: &cache.Index{
+			matcher: &cache.ParmetrizedQuery{
 				SQL:    "SELECT * FROM t13 ORDER BY 4 DESC",
 				Args:   []interface{}{},
 				By:     "unk",
@@ -554,7 +554,7 @@ func TestReader_ReadAll(t *testing.T) {
 				column: "unk",
 				SQL:    "SELECT * FROM t14 ORDER BY 4 DESC",
 			},
-			matcher: &cache.Index{
+			matcher: &cache.ParmetrizedQuery{
 				SQL:    "SELECT * FROM t14 ORDER BY 4 DESC",
 				Args:   []interface{}{},
 				By:     "unk",
@@ -584,7 +584,7 @@ func TestReader_ReadAll(t *testing.T) {
 			resolver:       io.NewResolver(),
 			expect:         `[{"Id":2,"Desc":"desc2","Name":"Bruce"},{"Id":3,"Desc":"desc3","Name":"Name - 1"},{"Id":4,"Desc":"desc4","Name":"Name - 2"},{"Id":1,"Desc":"desc1","Name":"John"},{"Id":5,"Desc":"desc5","Name":"Name - 3"},{"Id":6,"Desc":"desc6","Name":"Name - 4"}]`,
 			expectResolved: `["102","102","102","101","101","101"]`,
-			matcher: &cache.Index{
+			matcher: &cache.ParmetrizedQuery{
 				SQL:    "SELECT * FROM t13 ORDER BY 4 DESC",
 				Args:   []interface{}{},
 				By:     "unk",
@@ -614,7 +614,7 @@ func TestReader_ReadAll(t *testing.T) {
 			resolver:       io.NewResolver(),
 			expect:         `[{"Id":2,"Desc":"desc2","Name":"Bruce"},{"Id":3,"Desc":"desc3","Name":"Name - 1"},{"Id":1,"Desc":"desc1","Name":"John"},{"Id":5,"Desc":"desc5","Name":"Name - 3"}]`,
 			expectResolved: `["102","102","101","101"]`,
-			matcher: &cache.Index{
+			matcher: &cache.ParmetrizedQuery{
 				SQL:    "SELECT * FROM t14 ORDER BY 4 DESC",
 				Args:   []interface{}{},
 				By:     "unk",
@@ -649,7 +649,7 @@ func TestReader_ReadAll(t *testing.T) {
 				column: "foo_id",
 				SQL:    "SELECT * FROM t15 ORDER BY 1 DESC",
 			},
-			matcher: &cache.Index{
+			matcher: &cache.ParmetrizedQuery{
 				SQL:   "SELECT * FROM t15 ORDER BY 1 DESC",
 				Args:  []interface{}{},
 				By:    "foo_id",

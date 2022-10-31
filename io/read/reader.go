@@ -30,7 +30,7 @@ type (
 		mapperCache        *MapperCache
 		targetDatatype     string
 		disableMapperCache DisableMapperCache
-		matcher            *cache.Index
+		matcher            *cache.ParmetrizedQuery
 		db                 *sql.DB
 		row                *bufferEntry
 		cacheStats         *cache.Stats
@@ -96,7 +96,7 @@ func (r *Reader) QueryAll(ctx context.Context, emit func(row interface{}) error,
 	return nil
 }
 
-func (r *Reader) createSource(ctx context.Context, entry *cache.Entry, args []interface{}, matcher *cache.Index) (*sql.Rows, cache.Source, error) {
+func (r *Reader) createSource(ctx context.Context, entry *cache.Entry, args []interface{}, matcher *cache.ParmetrizedQuery) (*sql.Rows, cache.Source, error) {
 	if entry == nil || !entry.Has() || len(entry.Meta.Fields) == 0 {
 		if err := r.ensureStmt(ctx); err != nil {
 			return nil, nil, err
@@ -416,7 +416,7 @@ func NewStmt(stmt *sql.Stmt, newRow func() interface{}, options ...option.Option
 	var mapperCache *MapperCache
 	var disableMapperCache DisableMapperCache
 	var db *sql.DB
-	var columnsInMatcher *cache.Index
+	var columnsInMatcher *cache.ParmetrizedQuery
 	var stats *cache.Stats
 
 	for _, anOption := range options {
@@ -427,9 +427,9 @@ func NewStmt(stmt *sql.Stmt, newRow func() interface{}, options ...option.Option
 			mapperCache = actual
 		case DisableMapperCache:
 			disableMapperCache = actual
-		case *cache.Index:
+		case *cache.ParmetrizedQuery:
 			columnsInMatcher = actual
-		case **cache.Index:
+		case **cache.ParmetrizedQuery:
 			columnsInMatcher = *actual
 		case *sql.DB:
 			db = actual
