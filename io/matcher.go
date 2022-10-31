@@ -8,10 +8,31 @@ import (
 )
 
 //Matcher implements column to struct filed mapper
-type Matcher struct {
-	resolver  Resolve
-	tagName   string
-	unmatched []int
+type (
+	Matcher struct {
+		resolver  Resolve
+		tagName   string
+		unmatched []int
+	}
+
+	matchError struct {
+		Unmatched []string
+	}
+)
+
+// Error returns matchError's message
+func (m *matchError) Error() string {
+	return fmt.Sprintf("failed to match columns: %v", m.Unmatched)
+}
+
+func newMatchError(columns ...string) error {
+	return &matchError{Unmatched: columns}
+}
+
+// IsMatchedError returns whether err is matchError
+func IsMatchedError(err error) bool {
+	_, ok := err.(*matchError)
+	return ok
 }
 
 //Match matches field with columns
@@ -54,7 +75,8 @@ func (f *Matcher) matchedColumns(xStruct *xunsafe.Struct, matched []Field, colum
 		for _, pos := range f.unmatched {
 			unmatchedColumn = append(unmatchedColumn, matched[pos].Column.Name())
 		}
-		return fmt.Errorf("failed to match columns: %v", unmatchedColumn)
+
+		return newMatchError(unmatchedColumn...)
 	}
 
 	for _, pos := range f.unmatched {

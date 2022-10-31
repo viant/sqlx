@@ -8,13 +8,36 @@ import (
 )
 
 //Field represents column mapped field
-type Field struct {
-	Tag
-	Column
-	*xunsafe.Field
-	EvalAddr    func(pointer unsafe.Pointer) interface{}
-	Info        *sink.Column
-	MatchesType bool
+type (
+	Field struct {
+		Tag
+		Column
+		*xunsafe.Field
+		EvalAddr    func(pointer unsafe.Pointer) interface{}
+		Info        *sink.Column
+		MatchesType bool
+	}
+
+	// Fields represents slice of Field
+	Fields []Field
+)
+
+// ColumnNames returns slice of column names for given Fields
+func (f Fields) ColumnNames() []string {
+	var result = make([]string, len(f))
+	for i, field := range f {
+		result[i] = field.Column.Name()
+	}
+	return result
+}
+
+// XFields returns slice of xunsafe.Field for given Fields
+func (f Fields) XFields() []xunsafe.Field {
+	var result = make([]xunsafe.Field, len(f))
+	for i, field := range f {
+		result[i] = *field.Field
+	}
+	return result
 }
 
 //Addr returns field pointer

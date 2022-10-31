@@ -26,7 +26,10 @@ require (
 	cloud.google.com/go/compute v1.7.0 // indirect
 	github.com/andybalholm/brotli v1.0.3 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
+	github.com/denisenkom/go-mssqldb v0.12.2 // indirect
 	github.com/go-errors/errors v1.4.2 // indirect
+	github.com/golang-sql/civil v0.0.0-20190719163853-cb61b32ac6fe // indirect
+	github.com/golang-sql/sqlexp v0.1.0 // indirect
 	github.com/golang/groupcache v0.0.0-20200121045136-8c9f03a8e57e // indirect
 	github.com/golang/protobuf v1.5.2 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.0.0-20220520183353-fd19c99a87aa // indirect

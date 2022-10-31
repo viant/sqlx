@@ -35,7 +35,7 @@ func init() {
 		info.NewQuery(info.KindCatalog, "SELECT T.CATALOG_NAME FROM (SELECT NAME AS CATALOG_NAME FROM SYS.DATABASES) T", sqlServer,
 			info.NewCriterion(info.Catalog, "T.CATALOG_NAME")),
 
-		info.NewQuery(info.KindCurrentSchema, `SELECT SCHEMA_NAME() AS SCHEMA_NAME`, sqlServer),
+		info.NewQuery(info.KindCurrentSchema, `SELECT DB_NAME() AS CATALOG_NAME, SCHEMA_NAME() AS SCHEMA_NAME`, sqlServer),
 
 		// Dynamic SQL to get all catalogs with schemas
 		info.NewQuery(info.KindSchemas, schemasDynamicSQLQuery, sqlServer,
@@ -502,9 +502,9 @@ FROM @T
 		Load:                dialect.LoadTypeLocalData,
 		QuoteCharacter:      '\'',
 		CanAutoincrement:    true,
-		CanLastInsertID:     false, //TODO
+		CanLastInsertID:     false, //TODO ???
 		AutoincrementFunc:   "",
-		PlaceholderResolver: new(PlaceHolderGenerator), // TODO
+		PlaceholderResolver: new(PlaceHolderGenerator),
 	})
 }
 
