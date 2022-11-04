@@ -2,9 +2,12 @@ package option
 
 import (
 	"database/sql"
+	"github.com/viant/sqlx"
 	"github.com/viant/sqlx/metadata/database"
 	"github.com/viant/sqlx/metadata/info"
+	"github.com/viant/sqlx/metadata/sink"
 	"strings"
+	"unsafe"
 )
 
 const (
@@ -184,4 +187,102 @@ func (o Options) LoadHint() string {
 		}
 	}
 	return ""
+}
+
+//SQL returns sqlx.SQL
+func (o Options) SQL() *sqlx.SQL {
+	if len(o) == 0 {
+		return nil
+	}
+	for _, candidate := range o {
+		if dialect, ok := candidate.(*sqlx.SQL); ok {
+			return dialect
+		}
+	}
+	return nil
+}
+
+//SequenceSQLBuilder returns sqlx.SQL
+func (o Options) SequenceSQLBuilder() func(*sink.Sequence) (*sqlx.SQL, error) {
+	if len(o) == 0 {
+		return nil
+	}
+	for _, candidate := range o {
+		if fn, ok := candidate.(func(*sink.Sequence) (*sqlx.SQL, error)); ok {
+			return fn
+		}
+	}
+	return nil
+}
+
+func (o Options) MaxIDSQLBuilder() func() *sqlx.SQL {
+	if len(o) == 0 {
+		return nil
+	}
+	for _, candidate := range o {
+		if fn, ok := candidate.(func() *sqlx.SQL); ok {
+			return fn
+		}
+	}
+	return nil
+}
+
+//PresetIdStrategy returns sqlx.SQL
+func (o Options) AutoincrementStrategy() PresetIdStrategy {
+	if len(o) == 0 {
+		return PresetIdStrategyUndefined
+	}
+	for _, candidate := range o {
+		if value, ok := candidate.(PresetIdStrategy); ok {
+			return value
+		}
+	}
+	return PresetIdStrategyUndefined
+}
+
+func (o Options) Interfaces() []interface{} {
+	return *(*[]interface{})(unsafe.Pointer(&o))
+}
+
+//AsOptions case slice of interface to Options
+func AsOptions(options []interface{}) Options {
+	return *(*Options)(unsafe.Pointer(&options))
+}
+
+type PresetIdStrategy string
+
+const (
+	PresetIdStrategyUndefined        = PresetIdStrategy("undefined")
+	PresetIdWithTransientTransaction = PresetIdStrategy("transient")
+	PresetIdWithUDFSequence          = PresetIdStrategy("udf")
+	PresetIdWithMax                  = PresetIdStrategy("maxid")
+)
+
+//Tag returns annotation tag, default sqlx
+func (o Options) Args() *Args {
+	if len(o) == 0 {
+		return nil
+	}
+	for _, candidate := range o {
+		if value, ok := candidate.(*Args); ok {
+			return value
+		}
+	}
+	return nil
+}
+
+type RecordCount int64
+
+//RecordCount returns batch size option
+func (o Options) RecordCount() int64 {
+	if len(o) == 0 {
+		return 1
+	}
+	for _, candidate := range o {
+		switch actual := candidate.(type) {
+		case RecordCount:
+			return int64(actual)
+		}
+	}
+	return 0
 }

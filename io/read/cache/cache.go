@@ -15,5 +15,5 @@ type Cache interface {
 	Close(ctx context.Context, entry *Entry) error
 	Delete(todo context.Context, entry *Entry) error
 	Rollback(ctx context.Context, entry *Entry) error
-	IndexBy(ctx context.Context, db *sql.DB, column, SQL string, args []interface{}) (int, error)
+	IndexBy(ctx context.Context, db *sql.DB, column, SQL string, args []interface{}) error
 }

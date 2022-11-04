@@ -32,7 +32,7 @@ func init() {
 		info.NewQuery(info.KindVersion, "SELECT CONCAT('MySQL - ', VERSION())", mySQL5),
 
 		info.NewQuery(info.KindSchemas, `SELECT 
-CATALOG_NAME, 
+'' CATALOG_NAME, 
 SCHEMA_NAME,
 COALESCE(SQL_PATH,'') AS SQL_PATH,
 DEFAULT_CHARACTER_SET_NAME,
@@ -42,7 +42,7 @@ FROM information_schema.schemata
 			info.NewCriterion(info.Catalog, "CATALOG_NAME"),
 		),
 		info.NewQuery(info.KindSchema, `SELECT 
-CATALOG_NAME, 
+'' CATALOG_NAME, 
 SCHEMA_NAME,
 COALESCE(SQL_PATH,'') AS SQL_PATH,
 DEFAULT_CHARACTER_SET_NAME,
@@ -53,7 +53,7 @@ FROM information_schema.schemata
 			info.NewCriterion(info.Schema, "SCHEMA_NAME"),
 		),
 		info.NewQuery(info.KindTables, `SELECT 
-TABLE_CATALOG,
+'' TABLE_CATALOG,
 TABLE_SCHEMA,
 TABLE_NAME,
 TABLE_TYPE,
@@ -70,7 +70,7 @@ FROM INFORMATION_SCHEMA.TABLES`,
 		),
 
 		info.NewQuery(info.KindTable, `SELECT 
-TABLE_CATALOG,
+'' TABLE_CATALOG,
 TABLE_SCHEMA,
 TABLE_NAME,
 COLUMN_NAME,
@@ -91,12 +91,14 @@ FROM INFORMATION_SCHEMA.COLUMNS`,
 		),
 
 		info.NewQuery(info.KindSequences, `SELECT 
-  t.TABLE_CATALOG AS SEQUENCE_CATALOG,
+  '' SEQUENCE_CATALOG,
   t.TABLE_SCHEMA AS SEQUENCE_SCHEMA, 
   c.TABLE_NAME AS SEQUENCE_NAME,
+  COALESCE(t.AUTO_INCREMENT, 0) AS SEQUENCE_VALUE,
+  0 INCREMENT_BY,
   c.COLUMN_TYPE AS DATA_TYPE,
-  c.MAX_VALUE,
-  COALESCE(t.AUTO_INCREMENT, '') AS SEQUENCE_VALUE
+  0 START_VALUE,
+  c.MAX_VALUE
 FROM 
   (SELECT 
      TABLE_SCHEMA,
@@ -125,12 +127,10 @@ FROM
 			info.NewCriterion(info.Catalog, "t.TABLE_CATALOG"),
 			info.NewCriterion(info.Schema, "t.TABLE_SCHEMA"),
 			info.NewCriterion(info.Sequence, "t.TABLE_NAME"),
-		).OnPost(
-			sequence.UpdateSequence,
-		),
+		).OnPost(info.NewHandler(sequence.UpdateMySQLSequence)),
 
 		info.NewQuery(info.KindIndexes, `SELECT 
-		TABLE_CATALOG,
+		'' TABLE_CATALOG,
 		TABLE_SCHEMA,
 		TABLE_NAME,
 		INDEX_SCHEMA,
@@ -148,7 +148,7 @@ GROUP BY 1, 2, 3, 4, 5, 6, 7
 		),
 
 		info.NewQuery(info.KindIndex, `SELECT 
-		TABLE_CATALOG,
+		'' TABLE_CATALOG,
 		TABLE_SCHEMA,
 		TABLE_NAME,
 		INDEX_NAME,
@@ -166,7 +166,7 @@ FROM INFORMATION_SCHEMA.STATISTICS
 		info.NewQuery(info.KindPrimaryKeys, `SELECT 
 c.CONSTRAINT_NAME,  
 s.CONSTRAINT_TYPE,
-s.CONSTRAINT_CATALOG,
+'' CONSTRAINT_CATALOG,
 s.CONSTRAINT_SCHEMA,
 c.TABLE_NAME,
 c.COLUMN_NAME, 
@@ -185,10 +185,11 @@ WHERE  s.CONSTRAINT_TYPE = 'PRIMARY KEY'
 			info.NewCriterion(info.Table, "c.TABLE_NAME"),
 		),
 
+		// TODO A BUG IN LINE s.CONSTRAINT_SCHEMA AS REFERENCED_TABLE_SCHEMA
 		info.NewQuery(info.KindForeignKeys, `SELECT 
 c.CONSTRAINT_NAME,  
 s.CONSTRAINT_TYPE,
-s.CONSTRAINT_CATALOG,
+'' CONSTRAINT_CATALOG,
 s.CONSTRAINT_SCHEMA,
 c.TABLE_NAME,
 c.COLUMN_NAME, 
@@ -229,7 +230,46 @@ where ID=CONNECTION_ID() LIMIT 1;
 			info.NewCriterion(info.Schema, ""),
 			info.NewCriterion(info.Table, ""),
 		),
+
+		// TODO SHOW INCOMPATIBILITY NORMAL ALTER WITH OTHERS, THERE'S NO SELECT HERE
+		info.NewQuery(info.KindSequenceNextValue, `SELECT 1`,
+			mySQL5,
+			info.NewCriterion(info.Catalog, ""),
+			info.NewCriterion(info.Schema, ""),
+			info.NewCriterion(info.Object, ""),
+			info.NewCriterion(info.SequenceNewCurrentValue, ""),
+		).OnPre(&sequence.Transient{}, &sequence.Udf{}), //TODO ADD MAX ID HERE
+
+		info.NewQuery(info.KindLockTableAllRowsNoWait, `SELECT 1 AS CATALOG_NAME FROM $Args[0].$Args[1].$Args[2] FOR UPDATE NOWAIT`,
+			mySQL5,
+			info.NewCriterion(info.Catalog, ""),
+			info.NewCriterion(info.Schema, ""),
+			info.NewCriterion(info.Table, ""),
+		),
+
+		info.NewQuery(info.KindLockGet, `SELECT '$Args[0]' AS LOCK_CATALOG,
+'$Args[1]' AS LOCK_SCHEMA,
+'$Args[2]' AS LOCK_TABLE,
+'$Args[0].$Args[1].$Args[2]' AS LOCK_NAME,
+GET_LOCK('$Args[0].$Args[1].$Args[2]',10) AS SUCCESS`,
+			mySQL5,
+			info.NewCriterion(info.Catalog, ""),
+			info.NewCriterion(info.Schema, ""),
+			info.NewCriterion(info.Table, ""),
+		),
+
+		info.NewQuery(info.KindLockRelease, `SELECT '$Args[0]' AS LOCK_CATALOG,
+'$Args[1]' AS LOCK_SCHEMA,
+'$Args[2]' AS LOCK_TABLE,
+'$Args[0].$Args[1].$Args[2]' AS LOCK_NAME,
+CASE WHEN IS_FREE_LOCK('$Args[0].$Args[1].$Args[2]') = 0 THEN RELEASE_LOCK('$Args[0].$Args[1].$Args[2]') ELSE 1 END AS SUCCESS`,
+			mySQL5,
+			info.NewCriterion(info.Catalog, ""),
+			info.NewCriterion(info.Schema, ""),
+			info.NewCriterion(info.Table, ""),
+		),
 	)
+
 	if err != nil {
 		log.Printf("failed to register queries: %v", err)
 	}
@@ -243,7 +283,7 @@ where ID=CONNECTION_ID() LIMIT 1;
 		Load:             dialect.LoadTypeLocalData,
 		QuoteCharacter:   '\'',
 		CanAutoincrement: true,
-		CanLastInsertID:  true,
+		CanLastInsertID:  false, // in reality true but multi-insert gives us the id from the first row, not the last one
 		// TODO: provide real autoincrement function
 		AutoincrementFunc: "autoincrement",
 	})

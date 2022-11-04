@@ -12,19 +12,11 @@ func parseJoin(cursor *parsly.Cursor, join *query.Join, dest *query.Select) erro
 	case parenthesesCode:
 		join.With = expr.NewRaw(match.Text(cursor))
 	case selectorTokenCode:
-		identityOrAlias := match.Text(cursor)
-		withSelect := dest.WithSelects.Select(identityOrAlias)
-		if withSelect != nil {
-			join.With = expr.NewParenthesis(withSelect.Raw)
-			join.Alias = identityOrAlias
-		} else {
-			join.With = expr.NewSelector(identityOrAlias)
-		}
+		join.With = expr.NewSelector(match.Text(cursor))
 	}
 
-	if join.Alias == "" {
-		join.Alias = discoverAlias(cursor)
-	}
+	join.Alias = discoverAlias(cursor)
+
 	match = cursor.MatchAfterOptional(whitespaceMatcher, commentBlockMatcher, onKeywordMatcher)
 	if match.Code == commentBlock {
 		join.Comments = match.Text(cursor)
@@ -41,13 +33,13 @@ func parseJoin(cursor *parsly.Cursor, join *query.Join, dest *query.Select) erro
 	if err := parseBinaryExpr(cursor, binary); err != nil {
 		return err
 	}
-	match = cursor.MatchAfterOptional(whitespaceMatcher, joinToken, groupByMatcher, havingKeywordMatcher, whereKeywordMatcher, orderByKeywordMatcher, windowMatcher, unionMatcher)
+	match = cursor.MatchAfterOptional(whitespaceMatcher, joinToken, groupByMatcher, havingKeywordMatcher, whereKeywordMatcher, orderByKeywordMatcher, windowMatcher)
 	if match.Code == parsly.EOF {
 		return nil
 	}
 	if match.Code == commentBlock {
 		join.Comments = match.Text(cursor)
-		match = cursor.MatchAfterOptional(whitespaceMatcher, joinToken, groupByMatcher, havingKeywordMatcher, whereKeywordMatcher, orderByKeywordMatcher, windowMatcher, unionMatcher)
+		match = cursor.MatchAfterOptional(whitespaceMatcher, joinToken, groupByMatcher, havingKeywordMatcher, whereKeywordMatcher, orderByKeywordMatcher, windowMatcher)
 		if match.Code == parsly.EOF {
 			return nil
 		}
@@ -55,7 +47,7 @@ func parseJoin(cursor *parsly.Cursor, join *query.Join, dest *query.Select) erro
 
 	hasMatch, err := matchPostFrom(cursor, dest, match)
 	if !hasMatch && err == nil {
-		err = cursor.NewError(joinToken, joinToken, groupByMatcher, havingKeywordMatcher, whereKeywordMatcher, orderByKeywordMatcher, windowMatcher, unionMatcher)
+		err = cursor.NewError(joinToken, joinToken, groupByMatcher, havingKeywordMatcher, whereKeywordMatcher, orderByKeywordMatcher, windowMatcher)
 	}
 
 	return err

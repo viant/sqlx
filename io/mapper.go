@@ -5,7 +5,6 @@ import (
 	"github.com/viant/sqlx/option"
 	"github.com/viant/xunsafe"
 	"reflect"
-	"strings"
 )
 
 //ColumnMapper maps src to columns and its placeholders
@@ -36,22 +35,24 @@ func StructColumnMapper(src interface{}, tagName string, options ...option.Optio
 		if isExported := field.PkgPath == ""; !isExported {
 			continue
 		}
+
 		tag := ParseTag(field.Tag.Get(tagName))
+		if err := tag.validateWithField(field); err != nil {
+			return nil, nil, err
+		}
 		if tag.Transient {
 			continue
 		}
-		columnName := field.Name
-		if tag.Column != "" {
-			columnName = tag.Column
-		}
-		if tag.Autoincrement || tag.PrimaryKey || strings.ToLower(columnName) == "id" {
-			if tag == nil {
-				tag = &Tag{Column: columnName, PrimaryKey: true}
-			}
+
+		columnName := tag.getColumnName(field)
+		if tag.isIdentity(columnName) {
+			tag.PrimaryKey = true
+			tag.Column = columnName
 			tag.FieldIndex = i
 			identityColumns = append(identityColumns, NewColumn(columnName, "", field.Type, tag))
 			continue
 		}
+
 		if identityOnly {
 			continue
 		}

@@ -15,10 +15,14 @@ type (
 		SQL      string
 		Criteria Criteria
 		database.Product
+		PreHandlers  []Handler
 		PostHandlers []Handler
 	}
 
-	Handler func(ctx context.Context, db *sql.DB, target interface{}, argsOpt interface{}) error
+	Handler interface {
+		Handle(ctx context.Context, db *sql.DB, target interface{}, options ...interface{}) (doNext bool, err error)
+		CanUse(options ...interface{}) bool
+	}
 
 	//Criterion represents query criterion
 	Criterion struct {
@@ -33,8 +37,31 @@ type (
 	Queries []*Query
 )
 
+type defaultHandler struct {
+	fn func(ctx context.Context, db *sql.DB, target interface{}, options ...interface{}) (doNext bool, err error)
+}
+
+func (h *defaultHandler) Handle(ctx context.Context, db *sql.DB, target interface{}, options ...interface{}) (doNext bool, err error) {
+	return h.fn(ctx, db, target, options...)
+}
+
+func (h *defaultHandler) CanUse(options ...interface{}) bool {
+	return true
+}
+
+func NewHandler(fn func(ctx context.Context, db *sql.DB, target interface{}, options ...interface{}) (doNext bool, err error)) *defaultHandler {
+	return &defaultHandler{
+		fn: fn,
+	}
+}
+
 func (q *Query) OnPost(auxiliaries ...Handler) *Query {
 	q.PostHandlers = auxiliaries
+	return q
+}
+
+func (q *Query) OnPre(auxiliaries ...Handler) *Query {
+	q.PreHandlers = auxiliaries
 	return q
 }
 

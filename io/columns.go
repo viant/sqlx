@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"fmt"
 	"reflect"
-	"strings"
 	"time"
 )
 
@@ -18,6 +17,19 @@ func (c Columns) Autoincrement() int {
 	}
 	for i, item := range c {
 		if tag := item.Tag(); tag != nil && tag.Autoincrement {
+			return i
+		}
+	}
+	return -1
+}
+
+func (c Columns) IdentityColumnPos() int {
+	if len(c) == 0 {
+		return -1
+	}
+	for i, item := range c {
+
+		if tag := item.Tag(); tag.isIdentity(item.Name()) {
 			return i
 		}
 	}
@@ -126,18 +138,15 @@ func StructColumns(recordType reflect.Type, tagName string) ([]Column, error) {
 		if isExported := field.PkgPath == ""; !isExported {
 			continue
 		}
-		fieldName := field.Name
+
 		aTag := ParseTag(field.Tag.Get(tagName))
 		aTag.FieldIndex = i
 		if aTag.Transient {
 			continue
 		}
-		aTag.PrimaryKey = aTag.Autoincrement || aTag.PrimaryKey || strings.ToLower(fieldName) == "id"
-		columnName := fieldName
-		if names := aTag.Column; names != "" {
-			columns := strings.Split(names, "|")
-			columnName = columns[0]
-		}
+		columnName := aTag.getColumnName(field)
+		aTag.PrimaryKey = aTag.isIdentity(columnName)
+
 		result = append(result, &column{
 			name:     columnName,
 			scanType: field.Type,

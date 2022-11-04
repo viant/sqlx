@@ -19,7 +19,7 @@ func Stringify(n node.Node) string {
 
 func stringify(n node.Node, builder *bytes.Buffer) {
 	if n == nil {
-		panic("node was nil")
+		panic("node was nill")
 	}
 	switch actual := n.(type) {
 	case *query.Select:
@@ -37,26 +37,12 @@ func stringify(n node.Node, builder *bytes.Buffer) {
 			builder.WriteString(" WHERE ")
 			stringify(actual.Qualify.X, builder)
 		}
-		if len(actual.GroupBy) > 0 {
-			builder.WriteString(" GROUP BY ")
-			for _, item := range actual.GroupBy {
-				stringify(item, builder)
-			}
-		}
-		if actual.Having != nil {
-			builder.WriteString(" HAVING ")
-			stringify(actual.Having, builder)
-		}
 
 		if len(actual.OrderBy) > 0 {
 			builder.WriteString(" ORDER BY ")
 			for _, item := range actual.OrderBy {
 				stringify(item, builder)
 			}
-		}
-		if union := actual.Union; union != nil {
-			builder.WriteString(" " + union.Raw + " ")
-			stringify(union.X, builder)
 		}
 
 	case *query.Join:

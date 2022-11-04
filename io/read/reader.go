@@ -30,10 +30,9 @@ type (
 		mapperCache        *MapperCache
 		targetDatatype     string
 		disableMapperCache DisableMapperCache
-		matcher            *cache.ParmetrizedQuery
+		matcher            *cache.Index
 		db                 *sql.DB
 		row                *bufferEntry
-		cacheStats         *cache.Stats
 	}
 
 	bufferEntry struct {
@@ -96,7 +95,7 @@ func (r *Reader) QueryAll(ctx context.Context, emit func(row interface{}) error,
 	return nil
 }
 
-func (r *Reader) createSource(ctx context.Context, entry *cache.Entry, args []interface{}, matcher *cache.ParmetrizedQuery) (*sql.Rows, cache.Source, error) {
+func (r *Reader) createSource(ctx context.Context, entry *cache.Entry, args []interface{}, matcher *cache.Index) (*sql.Rows, cache.Source, error) {
 	if entry == nil || !entry.Has() || len(entry.Meta.Fields) == 0 {
 		if err := r.ensureStmt(ctx); err != nil {
 			return nil, nil, err
@@ -337,7 +336,7 @@ func (r *Reader) Stmt() *sql.Stmt {
 
 func (r *Reader) cacheEntry(ctx context.Context, sql string, args []interface{}) (*cache.Entry, error) {
 	if r.cache != nil {
-		entry, err := r.cache.Get(ctx, sql, args, r.matcher, r.cacheStats)
+		entry, err := r.cache.Get(ctx, sql, args, r.matcher)
 		return entry, err
 	}
 
@@ -416,8 +415,7 @@ func NewStmt(stmt *sql.Stmt, newRow func() interface{}, options ...option.Option
 	var mapperCache *MapperCache
 	var disableMapperCache DisableMapperCache
 	var db *sql.DB
-	var columnsInMatcher *cache.ParmetrizedQuery
-	var stats *cache.Stats
+	var columnsInMatcher *cache.Index
 
 	for _, anOption := range options {
 		switch actual := anOption.(type) {
@@ -427,14 +425,12 @@ func NewStmt(stmt *sql.Stmt, newRow func() interface{}, options ...option.Option
 			mapperCache = actual
 		case DisableMapperCache:
 			disableMapperCache = actual
-		case *cache.ParmetrizedQuery:
+		case *cache.Index:
 			columnsInMatcher = actual
-		case **cache.ParmetrizedQuery:
+		case **cache.Index:
 			columnsInMatcher = *actual
 		case *sql.DB:
 			db = actual
-		case *cache.Stats:
-			stats = actual
 		}
 	}
 
@@ -449,7 +445,6 @@ func NewStmt(stmt *sql.Stmt, newRow func() interface{}, options ...option.Option
 		disableMapperCache: disableMapperCache,
 		matcher:            columnsInMatcher,
 		db:                 db,
-		cacheStats:         stats,
 	}
 	return result
 }
