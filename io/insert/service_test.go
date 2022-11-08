@@ -119,6 +119,27 @@ func TestService_Exec(t *testing.T) {
 				option.BatchSize(3),
 			},
 		},
+		{
+			description: "Service.Builder - autoincrement batchSize - empty table ",
+			driver:      "sqlite3",
+			dsn:         "/tmp/sqllite.db",
+			table:       "t3",
+			initSQL: []string{
+				"DROP TABLE IF EXISTS t3",
+				"CREATE TABLE t3 (foo_id INTEGER PRIMARY KEY AUTOINCREMENT, foo_name TEXT, Bar INTEGER)",
+			},
+			records: []*entityWithAutoIncrement{
+				{Id: 0, Name: "John1", Desc: "description", Bar: 17},
+				{Id: 0, Name: "John2", Desc: "description", Bar: 18},
+				{Id: 0, Name: "John3", Desc: "description", Bar: 19},
+			},
+			affected: 3,
+			lastID:   3,
+			options: []option.Option{
+				option.BatchSize(2),
+				option.PresetIDWithMax,
+			},
+		},
 	}
 
 outer:

@@ -19,6 +19,7 @@ type (
 		PostHandlers []Handler
 	}
 
+	// Handler interface for handling pre- and post-query custom functions
 	Handler interface {
 		Handle(ctx context.Context, db *sql.DB, target interface{}, options ...interface{}) (doNext bool, err error)
 		CanUse(options ...interface{}) bool
@@ -37,29 +38,35 @@ type (
 	Queries []*Query
 )
 
-type defaultHandler struct {
+// DefaultHandler represents default handler, implements Handler interface
+type DefaultHandler struct {
 	fn func(ctx context.Context, db *sql.DB, target interface{}, options ...interface{}) (doNext bool, err error)
 }
 
-func (h *defaultHandler) Handle(ctx context.Context, db *sql.DB, target interface{}, options ...interface{}) (doNext bool, err error) {
+// Handle default implementation Handler's Handle function
+func (h *DefaultHandler) Handle(ctx context.Context, db *sql.DB, target interface{}, options ...interface{}) (doNext bool, err error) {
 	return h.fn(ctx, db, target, options...)
 }
 
-func (h *defaultHandler) CanUse(options ...interface{}) bool {
+// CanUse default implementation Handler's CanUse function
+func (h *DefaultHandler) CanUse(options ...interface{}) bool {
 	return true
 }
 
-func NewHandler(fn func(ctx context.Context, db *sql.DB, target interface{}, options ...interface{}) (doNext bool, err error)) *defaultHandler {
-	return &defaultHandler{
+// NewHandler creates new DefaultHandler
+func NewHandler(fn func(ctx context.Context, db *sql.DB, target interface{}, options ...interface{}) (doNext bool, err error)) *DefaultHandler {
+	return &DefaultHandler{
 		fn: fn,
 	}
 }
 
+// OnPost sets Query's PostHandlers
 func (q *Query) OnPost(auxiliaries ...Handler) *Query {
 	q.PostHandlers = auxiliaries
 	return q
 }
 
+// OnPre sets Query's PreHandlers
 func (q *Query) OnPre(auxiliaries ...Handler) *Query {
 	q.PreHandlers = auxiliaries
 	return q

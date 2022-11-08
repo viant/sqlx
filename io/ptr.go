@@ -2,11 +2,10 @@ package io
 
 import "github.com/viant/xunsafe"
 
-//TODO COMMENT
-// Int64Ptr returns p
+// Int64Ptr returns pointer to index-th element of slice as pointer to int84
 func Int64Ptr(values []interface{}, index int) (*int64, error) {
-	// TODO WHAT WITH OTHER TYPES LIKE uint, uint64, int32 ...
-	// TODO fmt.Errorf("expected *int or *int64 for identity, got %T", idPtr)
+	// TODO serve other types like uint, uint64, int32 ...
+	// TODO handling errors
 	ptr := xunsafe.AsPointer(values[index])
 	return (*int64)(ptr), nil
 }

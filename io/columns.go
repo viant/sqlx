@@ -23,6 +23,7 @@ func (c Columns) Autoincrement() int {
 	return -1
 }
 
+// IdentityColumnPos returns identity column position in []Column
 func (c Columns) IdentityColumnPos() int {
 	if len(c) == 0 {
 		return -1

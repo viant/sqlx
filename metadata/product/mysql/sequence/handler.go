@@ -12,9 +12,12 @@ import (
 
 const autoincrementAssignment = "AUTO_INCREMENT="
 
+// UpdateMySQLSequence updates for all passed sink.Sequences theirs Value or StartValue
+// getting autoincrement metadata by: SHOW CREATE TABLE ...,  @@SESSION.auto_increment_increment, @@SESSION.auto_increment_offset
+//
 // Warning!
-// Until we don't use autoincrement (by insert with 0 value id), "show create table" and "information_schema.tables"
-// show wrong autoincrement value if auto_increment_increment > 1
+// Until we don't use autoincrement in the table (by insert at least one row with 0-value id), "show create table" and "information_schema.tables"
+// show wrong autoincrement value if @@SESSION.auto_increment_increment > 1
 func UpdateMySQLSequence(ctx context.Context, db *sql.DB, target interface{}, iopts ...interface{}) (doNext bool, err error) {
 
 	options := option.AsOptions(iopts)
@@ -26,12 +29,6 @@ func UpdateMySQLSequence(ctx context.Context, db *sql.DB, target interface{}, io
 	case *[]sink.Sequence:
 		for i := range *actual {
 			if err := updateSequence(ctx, db, &(*actual)[i], tx); err != nil {
-				return false, err
-			}
-		}
-	case *[]*sink.Sequence:
-		for i := range *actual {
-			if err := updateSequence(ctx, db, (*actual)[i], tx); err != nil {
 				return false, err
 			}
 		}

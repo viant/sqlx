@@ -202,7 +202,7 @@ func (o Options) SQL() *sqlx.SQL {
 	return nil
 }
 
-//SequenceSQLBuilder returns sqlx.SQL
+// SequenceSQLBuilder returns sqlx.SQL
 func (o Options) SequenceSQLBuilder() func(*sink.Sequence) (*sqlx.SQL, error) {
 	if len(o) == 0 {
 		return nil
@@ -215,6 +215,7 @@ func (o Options) SequenceSQLBuilder() func(*sink.Sequence) (*sqlx.SQL, error) {
 	return nil
 }
 
+// MaxIDSQLBuilder returns function returning SQL which gets max identity value from table
 func (o Options) MaxIDSQLBuilder() func() *sqlx.SQL {
 	if len(o) == 0 {
 		return nil
@@ -227,19 +228,20 @@ func (o Options) MaxIDSQLBuilder() func() *sqlx.SQL {
 	return nil
 }
 
-//PresetIdStrategy returns sqlx.SQL
-func (o Options) AutoincrementStrategy() PresetIdStrategy {
+// PresetIDStrategy returns PresetIDStrategy option
+func (o Options) PresetIDStrategy() PresetIDStrategy {
 	if len(o) == 0 {
-		return PresetIdStrategyUndefined
+		return PresetIDStrategyUndefined
 	}
 	for _, candidate := range o {
-		if value, ok := candidate.(PresetIdStrategy); ok {
+		if value, ok := candidate.(PresetIDStrategy); ok {
 			return value
 		}
 	}
-	return PresetIdStrategyUndefined
+	return PresetIDStrategyUndefined
 }
 
+// Interfaces returns current options as interfaces
 func (o Options) Interfaces() []interface{} {
 	return *(*[]interface{})(unsafe.Pointer(&o))
 }
@@ -249,16 +251,18 @@ func AsOptions(options []interface{}) Options {
 	return *(*Options)(unsafe.Pointer(&options))
 }
 
-type PresetIdStrategy string
+// PresetIDStrategy represents strategy of presetting identities
+type PresetIDStrategy string
 
+// PresetIDStrategyUndefined and others, represent presetting identities strategies
 const (
-	PresetIdStrategyUndefined        = PresetIdStrategy("undefined")
-	PresetIdWithTransientTransaction = PresetIdStrategy("transient")
-	PresetIdWithUDFSequence          = PresetIdStrategy("udf")
-	PresetIdWithMax                  = PresetIdStrategy("maxid")
+	PresetIDStrategyUndefined        = PresetIDStrategy("undefined")
+	PresetIDWithTransientTransaction = PresetIDStrategy("transient")
+	PresetIDWithUDFSequence          = PresetIDStrategy("udf")
+	PresetIDWithMax                  = PresetIDStrategy("maxid")
 )
 
-//Tag returns annotation tag, default sqlx
+// Args returns *Args option
 func (o Options) Args() *Args {
 	if len(o) == 0 {
 		return nil
@@ -271,9 +275,10 @@ func (o Options) Args() *Args {
 	return nil
 }
 
+// RecordCount represents record count option
 type RecordCount int64
 
-//RecordCount returns batch size option
+//RecordCount returns record count option
 func (o Options) RecordCount() int64 {
 	if len(o) == 0 {
 		return 1

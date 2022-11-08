@@ -12,6 +12,7 @@ type Sequence struct {
 	MaxValue    int64  `sqlx:"MAX_VALUE"`
 }
 
+// MinValue returns previous sequence's next value for given record count
 func (s *Sequence) MinValue(recordCount int64) int64 {
 
 	modValue := (s.Value - s.StartValue) % s.IncrementBy
@@ -31,6 +32,7 @@ func (s *Sequence) MinValue(recordCount int64) int64 {
 	return s.Value - modValue - recordCount*s.IncrementBy
 }
 
+// NextValue returns sequence's next value for given record count
 func (s *Sequence) NextValue(recordCount int64) int64 {
 	modValue := (s.Value - s.StartValue) % s.IncrementBy
 

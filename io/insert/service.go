@@ -52,7 +52,7 @@ func (s *Service) Exec(ctx context.Context, any interface{}, options ...option.O
 	batchSize := option.Options(options).BatchSize()
 	record := valueAt(0)
 	if record == nil {
-		return 0, 0, fmt.Errorf("invalid record/s %T %v\n", any, any)
+		return 0, 0, fmt.Errorf("invalid record/s %T %v", any, any)
 	}
 
 	var sess *session
@@ -85,12 +85,12 @@ func (s *Service) Exec(ctx context.Context, any interface{}, options ...option.O
 
 	var presetIdentities = presetInsertMode && sess.shallPresetIdentities
 	if presetIdentities {
-		switch option.Options(options).AutoincrementStrategy() {
-		case option.PresetIdStrategyUndefined:
+		switch option.Options(options).PresetIDStrategy() {
+		case option.PresetIDStrategyUndefined:
 			presetIdentities = false
-		case option.PresetIdWithMax:
+		case option.PresetIDWithMax:
 			options = append(options, s.maxIDSQLBuilder(sess))
-		case option.PresetIdWithTransientTransaction:
+		case option.PresetIDWithTransientTransaction:
 			options = append(options, s.transientDMLBuilder(sess, record, batchRecValuesBuf, int64(recordCount)))
 		}
 		if presetIdentities {

@@ -21,7 +21,7 @@ import (
 // show wrong autoincrement value if (GLOBAL|SESSION) auto_increment_increment > 1
 //
 // 2. Problems with offset > increment_by - see test sqlx/metadata/product/mysql/test/sequence_test.go
-func TestService_NextSequenceValue_InsertWithTransientSequence_WithTx(t *testing.T) {
+func TestService_NextSequenceValue(t *testing.T) {
 	dsn, dsnSchema, shallSkip := getTestConfig(t)
 	if shallSkip {
 		return
@@ -34,7 +34,7 @@ func TestService_NextSequenceValue_InsertWithTransientSequence_WithTx(t *testing
 		expect      *sink.Sequence
 	}{
 		{
-			description: "01. info.KindSequenceNextValue with PresetIdWithTransientTransaction strategy",
+			description: "01. info.KindSequenceNextValue with PresetIDWithTransientTransaction strategy",
 			initSQL: []string{
 				"DROP TABLE IF EXISTS t1",
 				"CREATE TABLE t1(foo_id INTEGER AUTO_INCREMENT PRIMARY KEY, foo_name TEXT, bar INTEGER)",
@@ -43,7 +43,7 @@ func TestService_NextSequenceValue_InsertWithTransientSequence_WithTx(t *testing
 			},
 			options: option.Options{
 				option.NewArgs("", dsnSchema, "t1"),
-				option.PresetIdWithTransientTransaction,
+				option.PresetIDWithTransientTransaction,
 				dmlBuilder(1, &sqlx.SQL{
 					Query: `INSERT INTO t1 (foo_name, bar, foo_id) VALUES (?,?,?)`,
 					Args:  []interface{}{"John", 20, 0},
@@ -62,7 +62,7 @@ func TestService_NextSequenceValue_InsertWithTransientSequence_WithTx(t *testing
 			},
 		},
 		{
-			description: "02. info.KindSequenceNextValue with PresetIdWithTransientTransaction strategy",
+			description: "02. info.KindSequenceNextValue with PresetIDWithTransientTransaction strategy",
 			initSQL: []string{
 				createSequenceTable,
 				createProcedure,
@@ -78,7 +78,7 @@ func TestService_NextSequenceValue_InsertWithTransientSequence_WithTx(t *testing
 			},
 			options: option.Options{
 				option.NewArgs("", dsnSchema, "t1"),
-				option.PresetIdWithUDFSequence,
+				option.PresetIDWithUDFSequence,
 				dmlBuilder(1, &sqlx.SQL{
 					Query: `INSERT INTO t1 (foo_name, bar, foo_id) VALUES (?,?,?)`,
 					Args:  []interface{}{"John", 20, 0},

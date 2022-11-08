@@ -7,12 +7,14 @@ type Args struct {
 	items []interface{}
 }
 
+// Unwrap returns options arguments as interfaces
 func (a *Args) Unwrap() []interface{} {
 	return a.items
 }
 
+// StringN returns first n option arguments as strings
 func (a *Args) StringN(n int) ([]string, error) {
-	if len(a.items) < 3 {
+	if len(a.items) < n {
 		return nil, fmt.Errorf("expected %v, but had: %v", n, len(a.items))
 	}
 	var result = make([]string, n)

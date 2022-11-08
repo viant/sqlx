@@ -8,8 +8,11 @@ import (
 	"github.com/viant/sqlx/option"
 )
 
+// Max represents struct used to setting new autoincrement value
+// using simple "SELECT MAX(ID)" approach
 type Max struct{}
 
+// Handle sets new autoincrement value using simple "SELECT MAX(ID)" approach
 func (n *Max) Handle(ctx context.Context, db *sql.DB, target interface{}, iopts ...interface{}) (doNext bool, err error) {
 	options := option.AsOptions(iopts)
 
@@ -55,7 +58,8 @@ func (n *Max) Handle(ctx context.Context, db *sql.DB, target interface{}, iopts 
 	return false, nil
 }
 
+// CanUse returns true if Handle function can be executed
 func (n *Max) CanUse(iopts ...interface{}) bool {
 	options := option.AsOptions(iopts)
-	return options.AutoincrementStrategy() == option.PresetIdWithMax
+	return options.PresetIDStrategy() == option.PresetIDWithMax
 }

@@ -71,8 +71,6 @@ const (
 	KindForeignKeysCheckOff
 	// KindSequenceNextValue defines setting next value of sequence/autoincrement/identity kind
 	KindSequenceNextValue
-	// KindLockTableAllRowsNoWait defines lock for all table rows
-	KindLockTableAllRowsNoWait
 	// KindLockGet defines lock get kind
 	KindLockGet
 	// KindLockRelease defines lock release kind
@@ -125,8 +123,6 @@ func (k Kind) String() string {
 		return "KindSession"
 	case KindSequenceNextValue:
 		return "KindSequenceNextValue"
-	case KindLockTableAllRowsNoWait:
-		return "KindLockTableAllRowsNoWait"
 	case KindLockGet:
 		return "KindLockGet"
 	case KindLockRelease:
@@ -180,8 +176,6 @@ func (k Kind) Criteria() []string {
 		return []string{Catalog, Schema, Table}
 	case KindSequenceNextValue:
 		return []string{Catalog, Schema, Object, SequenceNewCurrentValue}
-	case KindLockTableAllRowsNoWait:
-		return []string{Catalog, Schema, Table}
 	case KindLockGet:
 		return []string{Catalog, Schema, Table}
 	case KindLockRelease:

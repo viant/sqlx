@@ -11,8 +11,11 @@ import (
 	"github.com/viant/sqlx/option"
 )
 
+// Transient represents struct used to setting new autoincrement value
+// using insert inside new transaction finished by rollback
 type Transient struct{}
 
+// Handle sets new autoincrement value by inserting row using new transaction finished by rollback, uses locking
 func (n *Transient) Handle(ctx context.Context, db *sql.DB, target interface{}, iopts ...interface{}) (doNext bool, err error) {
 
 	meta := metadata.New()
@@ -31,7 +34,8 @@ func (n *Transient) Handle(ctx context.Context, db *sql.DB, target interface{}, 
 	if err = n.lock(ctx, meta, db, options); err != nil {
 		return false, err
 	}
-	defer io.MergeErrorIfNeeded(n.unlock(ctx, meta, db, options), &err)
+	fn := func() error { return n.unlock(ctx, meta, db, options) }
+	defer io.MergeErrorIfNeeded(fn, &err)
 
 	sequence := sink.Sequence{}
 
@@ -54,7 +58,7 @@ func (n *Transient) Handle(ctx context.Context, db *sql.DB, target interface{}, 
 	}
 
 	tx, err := db.BeginTx(ctx, nil)
-	defer io.MergeErrorIfNeeded(tx.Rollback(), &err)
+	defer io.MergeErrorIfNeeded(tx.Rollback, &err)
 
 	if err != nil {
 		return false, err
@@ -106,7 +110,8 @@ func (n *Transient) unlock(ctx context.Context, meta *metadata.Service, db *sql.
 	return nil
 }
 
+// CanUse returns true if Handle function can be executed
 func (n *Transient) CanUse(iopts ...interface{}) bool {
 	options := option.AsOptions(iopts)
-	return options.AutoincrementStrategy() == option.PresetIdWithTransientTransaction
+	return options.PresetIDStrategy() == option.PresetIDWithTransientTransaction
 }

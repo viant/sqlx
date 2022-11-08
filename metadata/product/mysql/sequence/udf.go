@@ -9,8 +9,14 @@ import (
 	"github.com/viant/sqlx/option"
 )
 
+// Udf represents struct used to setting new autoincrement value
+// using user defined stored procedure in db
+// and internal autoincrement value handling
 type Udf struct{}
 
+// Handle sets new autoincrement value by executing user defined stored procedure
+// and using internal autoincrement value handling
+//
 // all this handler requires more testing (especially with transactions)
 func (n *Udf) Handle(ctx context.Context, db *sql.DB, target interface{}, iopts ...interface{}) (doNext bool, err error) {
 	options := option.AsOptions(iopts)
@@ -43,11 +49,10 @@ func (n *Udf) Handle(ctx context.Context, db *sql.DB, target interface{}, iopts 
 	seq.Catalog = catalog
 	seq.Schema = schema
 	seq.Name = sequenceName
-	//seq.DataType = "int" // TODO HARDCODED TYPE
 
 	seq.Catalog, seq.Schema, seq.Name = arguments[0], arguments[1], arguments[2]
 
-	// TODO ADD NEW TX
+	// TODO ADD NEW TX, but adding new TX causes impossible to read SESSION variables set before
 	// all this handler requires more testing (especially with transactions)
 	var rows *sql.Rows
 	if tx != nil {
@@ -79,9 +84,10 @@ func (n *Udf) Handle(ctx context.Context, db *sql.DB, target interface{}, iopts 
 	return false, nil
 }
 
+// CanUse returns true if Handle function can be executed
 func (n *Udf) CanUse(iopts ...interface{}) bool {
 	options := option.AsOptions(iopts)
-	return options.AutoincrementStrategy() == option.PresetIdWithUDFSequence
+	return options.PresetIDStrategy() == option.PresetIDWithUDFSequence
 }
 
 func runQuery(ctx context.Context, db *sql.DB, SQL string, trg []interface{}, tx *sql.Tx) (err error) {

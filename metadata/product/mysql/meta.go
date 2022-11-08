@@ -231,21 +231,13 @@ where ID=CONNECTION_ID() LIMIT 1;
 			info.NewCriterion(info.Table, ""),
 		),
 
-		// TODO SHOW INCOMPATIBILITY NORMAL ALTER WITH OTHERS, THERE'S NO SELECT HERE
 		info.NewQuery(info.KindSequenceNextValue, `SELECT 1`,
 			mySQL5,
 			info.NewCriterion(info.Catalog, ""),
 			info.NewCriterion(info.Schema, ""),
 			info.NewCriterion(info.Object, ""),
 			info.NewCriterion(info.SequenceNewCurrentValue, ""),
-		).OnPre(&sequence.Transient{}, &sequence.Udf{}), //TODO ADD MAX ID HERE
-
-		info.NewQuery(info.KindLockTableAllRowsNoWait, `SELECT 1 AS CATALOG_NAME FROM $Args[0].$Args[1].$Args[2] FOR UPDATE NOWAIT`,
-			mySQL5,
-			info.NewCriterion(info.Catalog, ""),
-			info.NewCriterion(info.Schema, ""),
-			info.NewCriterion(info.Table, ""),
-		),
+		).OnPre(&sequence.Transient{}, &sequence.Udf{}),
 
 		info.NewQuery(info.KindLockGet, `SELECT '$Args[0]' AS LOCK_CATALOG,
 '$Args[1]' AS LOCK_SCHEMA,

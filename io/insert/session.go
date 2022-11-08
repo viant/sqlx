@@ -106,7 +106,7 @@ func (s *session) insert(ctx context.Context, recValues []interface{}, valueAt i
 	inBatchCount := 0
 	var err error
 	var rowsAffected, totalRowsAffected, lastInsertedID int64
-	var newId = minSeqNextValue
+	var newID = minSeqNextValue
 
 	for i := 0; i < size; i++ {
 		record := valueAt(i)
@@ -120,8 +120,8 @@ func (s *session) insert(ctx context.Context, recValues []interface{}, valueAt i
 				if err != nil {
 					return 0, 0, err
 				}
-				*idPtr = newId
-				newId += sequence.IncrementBy
+				*idPtr = newID
+				newID += sequence.IncrementBy
 			}
 			if *idPtr == 0 {
 				recValues[idIndex] = nil
@@ -191,7 +191,7 @@ func (s *session) flushQuery(ctx context.Context, values []interface{}, identiti
 	if err != nil {
 		return 0, 0, err
 	}
-	defer rows.Close()
+	defer io.MergeErrorIfNeeded(rows.Close, &err)
 	rows.NextResultSet()
 	newLastInsertedID = 0
 
