@@ -25,6 +25,7 @@ type session struct {
 	stmt                  *sql.Stmt
 	shallPresetIdentities bool
 	incrementBy           int
+	inBatchCount          int
 }
 
 func (s *session) init(record interface{}) (err error) {
@@ -103,19 +104,19 @@ func isClosedError(err error) bool {
 }
 
 func (s *session) insert(ctx context.Context, recValues []interface{}, valueAt io.ValueAccessor, size int, minSeqNextValue int64, sequence *sink.Sequence, presetIdentities bool, identitiesBatched []interface{}) (int64, int64, error) {
-	inBatchCount := 0
+	s.inBatchCount = 0
 	var err error
 	var rowsAffected, totalRowsAffected, lastInsertedID int64
 	var newID = minSeqNextValue
 
 	for i := 0; i < size; i++ {
 		record := valueAt(i)
-		offset := inBatchCount * len(s.columns)
+		offset := s.inBatchCount * len(s.columns)
 		s.binder(record, recValues[offset:], 0, len(s.columns))
 		if s.identityColumnPos != nil {
 			idIndex := offset + *s.identityColumnPos
-			identitiesBatched[inBatchCount] = recValues[idIndex]
-			idPtr, err := io.Int64Ptr(identitiesBatched, inBatchCount)
+			identitiesBatched[s.inBatchCount] = recValues[idIndex]
+			idPtr, err := io.Int64Ptr(identitiesBatched, s.inBatchCount)
 			if presetIdentities {
 				if err != nil {
 					return 0, 0, err
@@ -128,24 +129,23 @@ func (s *session) insert(ctx context.Context, recValues []interface{}, valueAt i
 			}
 		}
 
-		inBatchCount++
-
-		if inBatchCount == s.batchSize {
+		s.inBatchCount++
+		if s.inBatchCount == s.batchSize {
 			rowsAffected, lastInsertedID, err = s.flush(ctx, recValues, identitiesBatched)
 			if err != nil {
 				return 0, 0, err
 			}
 			totalRowsAffected += rowsAffected
-			inBatchCount = 0
+			s.inBatchCount = 0
 		}
 	}
 
-	if inBatchCount > 0 {
-		err = s.prepare(ctx, inBatchCount)
+	if s.inBatchCount > 0 {
+		err = s.prepare(ctx, s.inBatchCount)
 		if err != nil {
 			return 0, 0, nil
 		}
-		rowsAffected, lastInsertedID, err = s.flush(ctx, recValues[0:inBatchCount*len(s.columns)], identitiesBatched)
+		rowsAffected, lastInsertedID, err = s.flush(ctx, recValues[0:s.inBatchCount*len(s.columns)], identitiesBatched)
 		if err != nil {
 			return 0, 0, nil
 		}
@@ -175,6 +175,9 @@ func (s *session) flush(ctx context.Context, values []interface{}, identities []
 		for i := rowsAffected - 1; i >= 0; i-- { //this would only work for single thread running insert
 			// since driver lastInsertedID does guarantee continuity in generated IDs
 			intPtr, _ := io.Int64Ptr(identities, int(i)) //we can only set next id back for single records, batch insert is not reliable
+			if intPtr == nil {
+				continue
+			}
 			if *intPtr > 0 {
 				break
 			}
@@ -210,13 +213,23 @@ func (s *session) flushQuery(ctx context.Context, values []interface{}, identiti
 }
 
 func (s *session) lastInsertedIdentity(values []interface{}, result sql.Result) (int64, error) {
-	if s.identityColumnPos != nil && *s.identityColumnPos != -1 && !s.Dialect.CanLastInsertID {
-		value, err := io.Int64Ptr(values, len(values)-1)
+	if s.identityColumnPos != nil && *s.identityColumnPos != -1 {
+		idx := len(values) - 1
+		if s.inBatchCount != 0 {
+			idx = s.inBatchCount - 1
+		}
+		if values[idx] == nil {
+			if s.Dialect.CanLastInsertID {
+				return result.LastInsertId()
+			}
+		}
+		value, err := io.Int64Ptr(values, idx)
 		if err != nil {
 			return 0, err
 		}
-		return *value, nil
+		if *value != 0 {
+			return *value, nil
+		}
 	}
 	return result.LastInsertId()
-
 }
