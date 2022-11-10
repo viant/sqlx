@@ -275,7 +275,7 @@ CASE WHEN IS_FREE_LOCK('$Args[0].$Args[1].$Args[2]') = 0 THEN RELEASE_LOCK('$Arg
 		Load:             dialect.LoadTypeLocalData,
 		QuoteCharacter:   '\'',
 		CanAutoincrement: true,
-		CanLastInsertID:  false, // in reality true but multi-insert gives us the id from the first row, not the last one
+		CanLastInsertID:  true, // in reality true but multi-insert gives us the id from the first row, not the last one
 		// TODO: provide real autoincrement function
 		AutoincrementFunc: "autoincrement",
 	})
