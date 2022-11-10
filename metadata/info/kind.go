@@ -19,6 +19,10 @@ const (
 	Sequence = "Sequence"
 	//Function defines function kind literal
 	Function = "Function"
+	// SequenceNewCurrentValue defines kind literal
+	SequenceNewCurrentValue = "SequenceNewCurrentValue"
+	// Object defines kind literal
+	Object = "Object"
 )
 
 //Kind represents dictionary info kind
@@ -65,6 +69,12 @@ const (
 	KindForeignKeysCheckOn
 	//KindForeignKeysCheckOff defines fk check off kind
 	KindForeignKeysCheckOff
+	// KindSequenceNextValue defines setting next value of sequence/autoincrement/identity kind
+	KindSequenceNextValue
+	// KindLockGet defines lock get kind
+	KindLockGet
+	// KindLockRelease defines lock release kind
+	KindLockRelease
 	//KindReserved defines reserved kind
 	KindReserved
 )
@@ -111,6 +121,12 @@ func (k Kind) String() string {
 		return "KindForeignKeysCheckOff"
 	case KindSession:
 		return "KindSession"
+	case KindSequenceNextValue:
+		return "KindSequenceNextValue"
+	case KindLockGet:
+		return "KindLockGet"
+	case KindLockRelease:
+		return "KindLockRelease"
 	}
 	return fmt.Sprintf("undefined kind: %v", int(k))
 }
@@ -157,6 +173,12 @@ func (k Kind) Criteria() []string {
 	case KindForeignKeysCheckOn:
 		return []string{Catalog, Schema, Table}
 	case KindForeignKeysCheckOff:
+		return []string{Catalog, Schema, Table}
+	case KindSequenceNextValue:
+		return []string{Catalog, Schema, Object, SequenceNewCurrentValue}
+	case KindLockGet:
+		return []string{Catalog, Schema, Table}
+	case KindLockRelease:
 		return []string{Catalog, Schema, Table}
 	}
 	return emptyCriteria

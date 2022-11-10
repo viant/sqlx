@@ -27,12 +27,18 @@ type Default struct {
 }
 
 // NewDefault creates a default generator
-func NewDefault(dialect *info.Dialect, db *sql.DB, session *sink.Session) *Default {
+func NewDefault(ctx context.Context, dialect *info.Dialect, db *sql.DB, session *sink.Session) (*Default, error) {
+	if session == nil {
+		var err error
+		if session, err = config.Session(ctx, db); err != nil {
+			return nil, err
+		}
+	}
 	return &Default{
 		dialect: dialect,
 		db:      db,
 		session: session,
-	}
+	}, nil
 }
 
 // Apply generated values to the any
@@ -135,29 +141,11 @@ func (d *Default) prepare(ctx context.Context, rType reflect.Type, table string)
 	d.columns = genColumns
 	d.queryMapper = queryMapper
 
-	return genColumns, queryMapper, err
+	return genColumns, queryMapper, nil
 }
 
 func (d *Default) loadColumnsInfo(ctx context.Context, table string) ([]sink.Column, error) {
-	session, err := d.ensureSession(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return config.Columns(ctx, session, d.db, table)
-
-}
-
-func (d *Default) ensureSession(ctx context.Context) (*sink.Session, error) {
-	if d.session != nil {
-		return d.session, nil
-	}
-	session, err := config.Session(ctx, d.db)
-	if err != nil {
-		return nil, err
-	}
-
-	d.session = session
-	return session, nil
+	return config.Columns(ctx, d.session, d.db, table)
 }
 
 func (d *Default) flush(ctx context.Context, values []interface{}, offset int, limit int, at func(index int) interface{}) error {

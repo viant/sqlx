@@ -2,9 +2,12 @@ package option
 
 import (
 	"database/sql"
+	"github.com/viant/sqlx"
 	"github.com/viant/sqlx/metadata/database"
 	"github.com/viant/sqlx/metadata/info"
+	"github.com/viant/sqlx/metadata/sink"
 	"strings"
+	"unsafe"
 )
 
 const (
@@ -184,4 +187,107 @@ func (o Options) LoadHint() string {
 		}
 	}
 	return ""
+}
+
+//SQL returns sqlx.SQL
+func (o Options) SQL() *sqlx.SQL {
+	if len(o) == 0 {
+		return nil
+	}
+	for _, candidate := range o {
+		if dialect, ok := candidate.(*sqlx.SQL); ok {
+			return dialect
+		}
+	}
+	return nil
+}
+
+// SequenceSQLBuilder returns sqlx.SQL
+func (o Options) SequenceSQLBuilder() func(*sink.Sequence) (*sqlx.SQL, error) {
+	if len(o) == 0 {
+		return nil
+	}
+	for _, candidate := range o {
+		if fn, ok := candidate.(func(*sink.Sequence) (*sqlx.SQL, error)); ok {
+			return fn
+		}
+	}
+	return nil
+}
+
+// MaxIDSQLBuilder returns function returning SQL which gets max identity value from table
+func (o Options) MaxIDSQLBuilder() func() *sqlx.SQL {
+	if len(o) == 0 {
+		return nil
+	}
+	for _, candidate := range o {
+		if fn, ok := candidate.(func() *sqlx.SQL); ok {
+			return fn
+		}
+	}
+	return nil
+}
+
+// PresetIDStrategy returns PresetIDStrategy option
+func (o Options) PresetIDStrategy() PresetIDStrategy {
+	if len(o) == 0 {
+		return PresetIDStrategyUndefined
+	}
+	for _, candidate := range o {
+		if value, ok := candidate.(PresetIDStrategy); ok {
+			return value
+		}
+	}
+	return PresetIDStrategyUndefined
+}
+
+// Interfaces returns current options as interfaces
+func (o Options) Interfaces() []interface{} {
+	return *(*[]interface{})(unsafe.Pointer(&o))
+}
+
+//AsOptions case slice of interface to Options
+func AsOptions(options []interface{}) Options {
+	return *(*Options)(unsafe.Pointer(&options))
+}
+
+// PresetIDStrategy represents strategy of presetting identities
+type PresetIDStrategy string
+
+// PresetIDStrategyUndefined and others, represent presetting identities strategies
+const (
+	PresetIDStrategyUndefined        = PresetIDStrategy("undefined")
+	PresetIDWithTransientTransaction = PresetIDStrategy("transient")
+	PresetIDWithUDFSequence          = PresetIDStrategy("udf")
+	PresetIDWithMax                  = PresetIDStrategy("maxid")
+)
+
+// Args returns *Args option
+func (o Options) Args() *Args {
+	if len(o) == 0 {
+		return nil
+	}
+	for _, candidate := range o {
+		if value, ok := candidate.(*Args); ok {
+			return value
+		}
+	}
+	return nil
+}
+
+// RecordCount represents record count option
+type RecordCount int64
+
+//RecordCount returns record count option
+func (o Options) RecordCount() int64 {
+	if len(o) == 0 {
+		return 1
+	}
+	for _, candidate := range o {
+		switch actual := candidate.(type) {
+		case RecordCount:
+			return int64(actual)
+		}
+	}
+	return 0
 }

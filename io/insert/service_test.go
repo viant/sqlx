@@ -66,12 +66,12 @@ func TestService_Exec(t *testing.T) {
 				"CREATE TABLE t2 (foo_id INTEGER PRIMARY KEY, foo_name TEXT, Bar INTEGER)",
 			},
 			records: []entity{
-				{Id: 1, Name: "John1", Desc: "description", Bar: 17},
-				{Id: 2, Name: "John2", Desc: "description", Bar: 18},
-				{Id: 3, Name: "John3", Desc: "description", Bar: 19},
+				{Id: 10, Name: "John1", Desc: "description", Bar: 17},
+				{Id: 11, Name: "John2", Desc: "description", Bar: 18},
+				{Id: 12, Name: "John3", Desc: "description", Bar: 19},
 			},
 			affected: 3,
-			lastID:   3,
+			lastID:   12,
 			options: []option.Option{
 				option.BatchSize(2),
 			},
@@ -117,6 +117,27 @@ func TestService_Exec(t *testing.T) {
 			lastID:   6,
 			options: []option.Option{
 				option.BatchSize(3),
+			},
+		},
+		{
+			description: "Service.Builder - autoincrement batchSize - empty table ",
+			driver:      "sqlite3",
+			dsn:         "/tmp/sqllite.db",
+			table:       "t3",
+			initSQL: []string{
+				"DROP TABLE IF EXISTS t3",
+				"CREATE TABLE t3 (foo_id INTEGER PRIMARY KEY AUTOINCREMENT, foo_name TEXT, Bar INTEGER)",
+			},
+			records: []*entityWithAutoIncrement{
+				{Id: 0, Name: "John1", Desc: "description", Bar: 17},
+				{Id: 0, Name: "John2", Desc: "description", Bar: 18},
+				{Id: 0, Name: "John3", Desc: "description", Bar: 19},
+			},
+			affected: 3,
+			lastID:   3,
+			options: []option.Option{
+				option.BatchSize(2),
+				option.PresetIDWithMax,
 			},
 		},
 	}

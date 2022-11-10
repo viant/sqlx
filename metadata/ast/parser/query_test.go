@@ -16,33 +16,11 @@ func TestParseSelect(t *testing.T) {
 			SQL         string
 			expect      string
 		}{
-			{
-				description: "with syntax",
-				SQL: `WITH p AS (SELECT * FROM product), v AS (SELECT * FROM vendor)
-				SELECT p.*, v.* FROM p JOIN v ON p.VENDOR_ID = v.ID`,
-				expect: `SELECT p.*, v.* FROM (SELECT * FROM product) p JOIN (SELECT * FROM vendor) v ON p.VENDOR_ID = v.ID`,
-			},
 
 			{
-				description: "group by",
-				SQL:         `SELECT ID, SUM(amount) FROM product u GROUP BY 1`,
-				expect:      `SELECT ID, SUM(amount) FROM product u GROUP BY 1`,
-			},
-
-			{
-				description: "group by",
-				SQL:         `SELECT ID, SUM(amount) FROM product u GROUP BY 1`,
-				expect:      `SELECT ID, SUM(amount) FROM product u GROUP BY 1`,
-			},
-			{
-				description: "group by, having",
-				SQL:         `SELECT ID, SUM(amount) FROM product u GROUP BY 1 HAVING COUNT(DISTINCT zz) > 2`,
-				expect:      `SELECT ID, SUM(amount) FROM product u GROUP BY 1 HAVING COUNT(DISTINCT zz) > 2`,
-			},
-			{
-				description: "union all",
-				SQL:         `SELECT user.* FROM user1 u UNION ALL SELECT user.* FROM user2 u`,
-				expect:      `SELECT user.* FROM user1 u UNION ALL SELECT user.* FROM user2 u`,
+				description: "comments",
+				SQL:         `SELECT user.* FROM user u -- extra comments `,
+				expect:      `SELECT user.* FROM user u`,
 			},
 			{
 				description: "expr with comments",

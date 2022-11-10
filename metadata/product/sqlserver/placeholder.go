@@ -5,7 +5,7 @@ import (
 	"strconv"
 )
 
-//PlaceholderGenerator represents placeholder
+// PlaceHolderGenerator represents placeholder
 type PlaceHolderGenerator struct {
 }
 

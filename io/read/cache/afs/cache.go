@@ -41,8 +41,8 @@ type (
 	}
 )
 
-func (c *Cache) IndexBy(ctx context.Context, db *sql.DB, column, SQL string, args []interface{}) (int, error) {
-	return 0, nil
+func (c *Cache) IndexBy(ctx context.Context, db *sql.DB, column, SQL string, args []interface{}) error {
+	return nil
 }
 
 func (c *Cache) Rollback(ctx context.Context, entry *cache.Entry) error {

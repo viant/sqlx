@@ -1,6 +1,7 @@
 package io
 
 import (
+	"fmt"
 	"reflect"
 	"strings"
 )
@@ -48,7 +49,8 @@ func ParseTag(tagString string) *Tag {
 	}
 	for i, element := range elements {
 		nv := strings.Split(element, "=")
-		if len(nv) == 2 {
+		switch len(nv) {
+		case 2:
 			switch strings.ToLower(strings.TrimSpace(nv[0])) {
 			case "name":
 				tag.Column = strings.TrimSpace(nv[1])
@@ -60,12 +62,13 @@ func ParseTag(tagString string) *Tag {
 				if strings.TrimSpace(nv[1]) == "true" {
 					tag.PrimaryKey = true
 				}
+			case "autoincrement":
+				tag.Autoincrement = true
 			case "generator":
 				generatorStrat := strings.TrimSpace(nv[1])
 				tag.Generator = generatorStrat
 				if generatorStrat == "autoincrement" {
 					tag.Autoincrement = true
-					tag.PrimaryKey = true
 					tag.Generator = ""
 				}
 			case "nullifyempty":
@@ -73,11 +76,50 @@ func ParseTag(tagString string) *Tag {
 				tag.NullifyEmpty = nullifyEmpty == "true" || nullifyEmpty == ""
 			}
 			continue
-		}
-		if i == 0 {
-			tag.Column = strings.TrimSpace(element)
+		case 1:
+			if i == 0 {
+				tag.Column = strings.TrimSpace(element)
+				continue
+			}
+			switch strings.ToLower(element) {
+			case "autoincrement":
+				tag.PrimaryKey = true
+			case "primarykey":
+				tag.PrimaryKey = true
+			case "nullifyempty":
+				tag.NullifyEmpty = true
+			}
 		}
 
 	}
+	tag.PrimaryKey = tag.PrimaryKey || tag.Autoincrement
 	return tag
+}
+
+func (t *Tag) getColumnName(field reflect.StructField) string {
+	columnName := field.Name
+	if names := t.Column; names != "" {
+		columns := strings.Split(names, "|")
+		columnName = columns[0]
+	}
+	return columnName
+}
+
+func (t *Tag) isIdentity(name string) bool {
+	return t.Autoincrement || t.PrimaryKey || strings.ToLower(t.Column) == "id" || strings.ToLower(name) == "id"
+}
+
+func (t *Tag) validateWithField(field reflect.StructField) error {
+	if t.Sequence != "" {
+		columnName := t.getColumnName(field)
+		return t.validate(columnName)
+	}
+	return nil
+}
+
+func (t *Tag) validate(name string) error {
+	if t.Sequence != "" && !t.isIdentity(name) {
+		return fmt.Errorf("invalid tag combination: a sequence cannot be used for a non-identity field (column, sequence) = (%s, %s)", t.Column, t.Sequence)
+	}
+	return nil
 }

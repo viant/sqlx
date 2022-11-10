@@ -4,6 +4,7 @@ import (
 	"github.com/viant/sqlx/metadata/database"
 	"github.com/viant/sqlx/metadata/info"
 	"github.com/viant/sqlx/metadata/info/dialect"
+	"github.com/viant/sqlx/metadata/product/sqlite/sequence"
 	"github.com/viant/sqlx/metadata/registry"
 	"log"
 )
@@ -191,6 +192,14 @@ FROM pragma_database_list
 			info.NewCriterion(info.Schema, ""),
 			info.NewCriterion(info.Table, ""),
 		),
+
+		info.NewQuery(info.KindSequenceNextValue, `SELECT 1`,
+			product,
+			info.NewCriterion(info.Catalog, ""),
+			info.NewCriterion(info.Schema, ""),
+			info.NewCriterion(info.Object, ""),
+			info.NewCriterion(info.SequenceNewCurrentValue, ""),
+		).OnPre(&sequence.Max{}),
 	)
 
 	if err != nil {

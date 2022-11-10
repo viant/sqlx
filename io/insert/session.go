@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/viant/sqlx/io"
 	"github.com/viant/sqlx/io/config"
+	"github.com/viant/sqlx/metadata/sink"
 	"github.com/viant/sqlx/option"
 	"reflect"
 	"strings"
@@ -16,24 +17,30 @@ type session struct {
 	rType     reflect.Type
 	batchSize int
 	*config.Config
-	binder              io.PlaceholderBinder
-	columns             io.Columns
-	autoIncrementColumn io.Column
-	autoIncrement       *int
-	db                  *sql.DB
-	stmt                *sql.Stmt
+	binder                io.PlaceholderBinder
+	columns               io.Columns
+	identityColumn        io.Column
+	identityColumnPos     *int
+	db                    *sql.DB
+	stmt                  *sql.Stmt
+	shallPresetIdentities bool
+	incrementBy           int
 }
 
 func (s *session) init(record interface{}) (err error) {
 	if s.columns, s.binder, err = s.Mapper(record, s.TagName); err != nil {
 		return err
 	}
-	if autoIncrement := s.columns.Autoincrement(); autoIncrement != -1 {
-		s.autoIncrement = &autoIncrement
-		s.autoIncrementColumn = s.columns[autoIncrement]
-		s.columns = s.columns[:autoIncrement]
-		s.Identity = s.autoIncrementColumn.Name()
+
+	var identityColumnPos = s.columns.IdentityColumnPos()
+
+	if identityColumnPos != -1 {
+		s.identityColumnPos = &identityColumnPos
+		s.identityColumn = s.columns[identityColumnPos]
+		s.Identity = s.identityColumn.Name()
+		s.shallPresetIdentities = s.identityColumn.Tag().Autoincrement || s.identityColumn.Tag().Sequence != ""
 	}
+
 	s.Builder, err = NewBuilder(s.TableName, s.columns.Names(), s.Dialect, s.Identity, s.batchSize)
 	return err
 }
@@ -71,7 +78,9 @@ func (s *session) end(err error) error {
 }
 
 func (s *session) prepare(ctx context.Context, batchSize int) error {
-	SQL := s.Dialect.EnsurePlaceholders(s.Builder.Build(option.BatchSize(batchSize)))
+	SQL := s.Builder.Build(option.BatchSize(batchSize))
+	SQL = s.Dialect.EnsurePlaceholders(SQL)
+
 	var err error
 	if s.stmt != nil {
 		if err = s.stmt.Close(); err != nil {
@@ -93,42 +102,50 @@ func isClosedError(err error) bool {
 	return strings.Contains(err.Error(), "closed")
 }
 
-func (s *session) insert(ctx context.Context, batchSize int, record interface{}, recordsFn func() interface{}) (int64, int64, error) {
-	var recValues = make([]interface{}, batchSize*len(s.columns))
-	var identities = make([]interface{}, batchSize)
+func (s *session) insert(ctx context.Context, recValues []interface{}, valueAt io.ValueAccessor, size int, minSeqNextValue int64, sequence *sink.Sequence, presetIdentities bool, identitiesBatched []interface{}) (int64, int64, error) {
 	inBatchCount := 0
-	identityIndex := 0
 	var err error
 	var rowsAffected, totalRowsAffected, lastInsertedID int64
-	//ToDo: get real lastInsertedID
-	hasAutoIncrement := s.autoIncrement != nil
-	for ; record != nil; record = recordsFn() {
+	var newID = minSeqNextValue
+
+	for i := 0; i < size; i++ {
+		record := valueAt(i)
 		offset := inBatchCount * len(s.columns)
 		s.binder(record, recValues[offset:], 0, len(s.columns))
-		if s.autoIncrement != nil {
-			if autoIncrement := s.autoIncrement; autoIncrement != nil {
-				s.binder(record, identities[identityIndex:], *s.autoIncrement, 1)
-				identityIndex++
+		if s.identityColumnPos != nil {
+			idIndex := offset + *s.identityColumnPos
+			identitiesBatched[inBatchCount] = recValues[idIndex]
+			idPtr, err := io.Int64Ptr(identitiesBatched, inBatchCount)
+			if presetIdentities {
+				if err != nil {
+					return 0, 0, err
+				}
+				*idPtr = newID
+				newID += sequence.IncrementBy
+			}
+			if *idPtr == 0 {
+				recValues[idIndex] = nil
 			}
 		}
+
 		inBatchCount++
-		if inBatchCount == batchSize {
-			rowsAffected, lastInsertedID, err = s.flush(ctx, recValues, lastInsertedID, identities[:identityIndex], hasAutoIncrement)
+
+		if inBatchCount == s.batchSize {
+			rowsAffected, lastInsertedID, err = s.flush(ctx, recValues, identitiesBatched)
 			if err != nil {
 				return 0, 0, err
 			}
 			totalRowsAffected += rowsAffected
 			inBatchCount = 0
-			identityIndex = 0
 		}
 	}
 
-	if inBatchCount > 0 { //overflow
+	if inBatchCount > 0 {
 		err = s.prepare(ctx, inBatchCount)
 		if err != nil {
 			return 0, 0, nil
 		}
-		rowsAffected, lastInsertedID, err = s.flush(ctx, recValues[0:inBatchCount*len(s.columns)], lastInsertedID, identities[:identityIndex], hasAutoIncrement)
+		rowsAffected, lastInsertedID, err = s.flush(ctx, recValues[0:inBatchCount*len(s.columns)], identitiesBatched)
 		if err != nil {
 			return 0, 0, nil
 		}
@@ -137,55 +154,69 @@ func (s *session) insert(ctx context.Context, batchSize int, record interface{},
 	return totalRowsAffected, lastInsertedID, err
 }
 
-func (s *session) flush(ctx context.Context, values []interface{}, prevInsertedID int64, identities []interface{}, hasAutoIncrement bool) (int64, int64, error) {
-	var rowsAffected, newLastInsertedID int64
-	if hasAutoIncrement && !s.Dialect.CanLastInsertID {
-		rows, err := s.stmt.QueryContext(ctx, values...)
-		if err != nil {
-			return 0, 0, err
-		}
-		defer rows.Close()
-		for rows.Next() {
-			if err = rows.Scan(identities[rowsAffected]); err != nil {
-				return 0, 0, err
-			}
-			rowsAffected++
-		}
-		return rowsAffected, newLastInsertedID, err
+func (s *session) flush(ctx context.Context, values []interface{}, identities []interface{}) (int64, int64, error) {
+
+	if s.Dialect.CanReturning {
+		return s.flushQuery(ctx, values, identities)
 	}
 
 	result, err := s.stmt.ExecContext(ctx, values...)
 	if err != nil {
 		return 0, 0, err
 	}
-	rowsAffected, err = result.RowsAffected()
+	rowsAffected, err := result.RowsAffected()
 	if err != nil {
 		return 0, 0, err
 	}
-	if hasAutoIncrement && s.Dialect.CanLastInsertID {
-		newLastInsertedID, err = result.LastInsertId()
+
+	lastInsertedID, _ := s.lastInsertedIdentity(values, result)
+	if !s.shallPresetIdentities && lastInsertedID > 0 {
+		id := lastInsertedID
+		for i := rowsAffected - 1; i >= 0; i-- { //this would only work for single thread running insert
+			// since driver lastInsertedID does guarantee continuity in generated IDs
+			intPtr, _ := io.Int64Ptr(identities, int(i)) //we can only set next id back for single records, batch insert is not reliable
+			if *intPtr > 0 {
+				break
+			}
+			*intPtr = id
+			id -= int64(s.incrementBy)
+		}
+	}
+	return rowsAffected, lastInsertedID, nil
+}
+
+func (s *session) flushQuery(ctx context.Context, values []interface{}, identities []interface{}) (int64, int64, error) {
+	var rowsAffected, newLastInsertedID int64
+	rows, err := s.stmt.QueryContext(ctx, values...)
+	if err != nil {
+		return 0, 0, err
+	}
+	defer io.MergeErrorIfNeeded(rows.Close, &err)
+	rows.NextResultSet()
+	newLastInsertedID = 0
+
+	for rows.Next() {
+		if err = rows.Scan(&newLastInsertedID); err != nil {
+			return 0, 0, err
+		}
+		idPtr, err := io.Int64Ptr(identities, int(rowsAffected))
 		if err != nil {
 			return 0, 0, err
 		}
-	}
-
-	lastInsertedID := prevInsertedID
-	if lastInsertedID == 0 {
-		lastInsertedID = newLastInsertedID - int64(len(identities))
-	}
-
-	if len(identities) > 0 { // update autoinc fields
-		//ToDo: check: newLastInsertedID-prevInsertedID>len(values)
-		for i, ID := range identities {
-			switch val := ID.(type) {
-			case *int64:
-				*val = lastInsertedID + int64(i+1)
-			case *int:
-				*val = int(lastInsertedID + int64(i+1))
-			default:
-				return 0, 0, fmt.Errorf("expected *int or *int64 for autoinc, got %T", val)
-			}
-		}
+		*idPtr = newLastInsertedID
+		rowsAffected++
 	}
 	return rowsAffected, newLastInsertedID, err
+}
+
+func (s *session) lastInsertedIdentity(values []interface{}, result sql.Result) (int64, error) {
+	if s.identityColumnPos != nil && *s.identityColumnPos != -1 && !s.Dialect.CanLastInsertID {
+		value, err := io.Int64Ptr(values, len(values)-1)
+		if err != nil {
+			return 0, err
+		}
+		return *value, nil
+	}
+	return result.LastInsertId()
+
 }

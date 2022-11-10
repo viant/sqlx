@@ -73,9 +73,6 @@ func (s *Service) Info(ctx context.Context, db *sql.DB, kind info.Kind, sink Sin
 		}
 	}
 
-	args := &option.Args{}
-	option.Assign(options, &args)
-
 	queries := registry.Lookup(product.Name, kind)
 	if len(queries) == 0 {
 		return fmt.Errorf("unsupported kind: %s for: %s", kind, product.Name)
@@ -84,15 +81,41 @@ func (s *Service) Info(ctx context.Context, db *sql.DB, kind info.Kind, sink Sin
 	if query == nil {
 		return fmt.Errorf("unsupported kind: %s, for: %sv%v", kind, product.Name, product.Major)
 	}
-	if err = s.runQuery(ctx, db, query, sink, options...); err != nil || len(query.PostHandlers) == 0 {
+
+	done, err := s.runHandler(ctx, db, query.PreHandlers, sink, options)
+	if done || err != nil {
 		return err
 	}
-	for _, handler := range query.PostHandlers {
-		if err = handler(ctx, db, sink, args); err != nil {
-			return err
-		}
+
+	if err = s.runQuery(ctx, db, query, sink, options...); err != nil || query.PostHandlers == nil {
+		return err
+	}
+
+	done, err = s.runHandler(ctx, db, query.PostHandlers, sink, options)
+	if done || err != nil {
+		return err
 	}
 	return nil
+}
+
+func (s *Service) runHandler(ctx context.Context, db *sql.DB, handlers []info.Handler, sink Sink, options option.Options) (shallReturn bool, err error) {
+	if len(handlers) == 0 {
+		return false, nil
+	}
+	var opts = options.Interfaces()
+
+	for _, handler := range handlers {
+		if canUse := handler.CanUse(opts...); !canUse {
+			continue
+		}
+
+		doNext, err := handler.Handle(ctx, db, sink, opts...)
+		if err != nil || !doNext {
+			return true, err
+		}
+	}
+
+	return false, err
 }
 
 func (s *Service) matchProduct(ctx context.Context, db *sql.DB) (*database.Product, error) {
@@ -126,13 +149,20 @@ func (s *Service) matchVersion(ctx context.Context, db *sql.DB, product *databas
 }
 
 func (s *Service) executeQuery(ctx context.Context, db *sql.DB, query *info.Query, options ...option.Option) (sql.Result, error) {
+	tx := option.Options.Tx(options)
 	args := &option.Args{}
 	option.Assign(options, &args)
 	SQL, params, err := prepareSQL(query, s.dialect.PlaceholderGetter(), args)
 	if err != nil {
 		return nil, err
 	}
-	stmt, err := db.PrepareContext(ctx, SQL)
+
+	var stmt *sql.Stmt
+	if tx != nil {
+		stmt, err = tx.PrepareContext(ctx, SQL)
+	} else {
+		stmt, err = db.PrepareContext(ctx, SQL)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -141,6 +171,7 @@ func (s *Service) executeQuery(ctx context.Context, db *sql.DB, query *info.Quer
 }
 
 func (s *Service) runQuery(ctx context.Context, db *sql.DB, query *info.Query, sink Sink, options ...option.Option) error {
+	tx := option.Options.Tx(options)
 	args := &option.Args{}
 	option.Assign(options, &args)
 	placeholderGetter := func() string {
@@ -153,11 +184,18 @@ func (s *Service) runQuery(ctx context.Context, db *sql.DB, query *info.Query, s
 	if err != nil {
 		return err
 	}
-	stmt, err := db.PrepareContext(ctx, SQL)
+
+	var stmt *sql.Stmt
+	if tx != nil {
+		stmt, err = tx.PrepareContext(ctx, SQL)
+	} else {
+		stmt, err = db.PrepareContext(ctx, SQL)
+	}
 	if err != nil {
 		return err
 	}
 	defer stmt.Close()
+
 	var rows *sql.Rows
 	if len(params) > 0 {
 		rows, err = stmt.Query(params...)
@@ -186,8 +224,8 @@ func prepareSQL(query *info.Query, placeholderGetter func() string, argsOpt *opt
 	}
 	criteria := query.Kind.Criteria()
 
-	if len(args) > len(criteria) {
-		return "", filterArgs, fmt.Errorf("invalid arguments, expected: %v, but had: %v", criteria, args)
+	if len(criteria) < len(args) {
+		return "", filterArgs, fmt.Errorf("invalid arguments, len(criteria) < len(args) (%d < %d), expected: %v, but had: %v", len(criteria), len(args), criteria, args)
 	}
 
 	SQL := query.SQL
@@ -196,6 +234,15 @@ func prepareSQL(query *info.Query, placeholderGetter func() string, argsOpt *opt
 	for i, item := range args {
 		if text, ok := item.(string); ok {
 			expr := fmt.Sprintf("$Args[%v]", i)
+
+			if text == "" {
+				dottedExpr := expr + "."
+				if strings.Contains(SQL, dottedExpr) {
+					expanded[i] = true
+					SQL = strings.ReplaceAll(SQL, dottedExpr, text)
+				}
+			}
+
 			if strings.Contains(SQL, expr) {
 				expanded[i] = true
 				SQL = strings.ReplaceAll(SQL, expr, text)
