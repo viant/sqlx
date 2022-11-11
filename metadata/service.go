@@ -156,7 +156,6 @@ func (s *Service) executeQuery(ctx context.Context, db *sql.DB, query *info.Quer
 	if err != nil {
 		return nil, err
 	}
-
 	var stmt *sql.Stmt
 	if tx != nil {
 		stmt, err = tx.PrepareContext(ctx, SQL)
@@ -229,7 +228,6 @@ func prepareSQL(query *info.Query, placeholderGetter func() string, argsOpt *opt
 	}
 
 	SQL := query.SQL
-
 	var expanded = make([]bool, len(args))
 	for i, item := range args {
 		if text, ok := item.(string); ok {

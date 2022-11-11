@@ -39,6 +39,25 @@ func New(ctx context.Context, db *sql.DB, tableName string, options ...option.Op
 	return inserter, nil
 }
 
+//NextSequence resets next updateSequence
+func (s *Service) NextSequence(ctx context.Context, any interface{}, recordCount int, options ...option.Option) (*sink.Sequence, error) {
+	valueAt, count, err := io.Values(any)
+	if err != nil {
+		return nil, err
+	}
+	if count == 0 {
+		return nil, fmt.Errorf("failed to get nexr sequene for empty %T", any)
+	}
+	batchSize := option.Options(options).BatchSize()
+	record := valueAt(0)
+	sess, err := s.NewSession(ctx, record, batchSize)
+	if err != nil {
+		return nil, err
+	}
+	var batchRecordBuffer = make([]interface{}, batchSize*len(sess.columns))
+	return s.nextSequence(ctx, sess, record, batchRecordBuffer, recordCount, options)
+}
+
 //Exec runs insertService SQL
 func (s *Service) Exec(ctx context.Context, any interface{}, options ...option.Option) (int64, int64, error) {
 	valueAt, recordCount, err := io.Values(any)
@@ -48,26 +67,18 @@ func (s *Service) Exec(ctx context.Context, any interface{}, options ...option.O
 	if recordCount == 0 {
 		return 0, 0, nil
 	}
-
 	batchSize := option.Options(options).BatchSize()
 	record := valueAt(0)
 	if record == nil {
 		return 0, 0, fmt.Errorf("invalid record/s %T %v", any, any)
 	}
-
-	var sess *session
-	if sess, err = s.ensureSession(ctx, record, batchSize); err != nil {
-		return 0, 0, err
-	}
-
-	var batchRecValuesBuf = make([]interface{}, batchSize*len(sess.columns))
-	var identities = make([]interface{}, batchSize)
-	metaSession, err := config.Session(ctx, s.db)
+	sess, err := s.NewSession(ctx, record, batchSize)
 	if err != nil {
 		return 0, 0, err
 	}
-
-	defGenerator, err := generator.NewDefault(ctx, sess.Dialect, s.db, metaSession)
+	var batchRecordBuffer = make([]interface{}, batchSize*len(sess.columns))
+	var identities = make([]interface{}, batchSize)
+	defGenerator, err := generator.NewDefault(ctx, sess.Dialect, s.db, sess.info)
 	if err != nil {
 		return 0, 0, err
 	}
@@ -75,37 +86,25 @@ func (s *Service) Exec(ctx context.Context, any interface{}, options ...option.O
 		return 0, 0, err
 	}
 
-	presetInsertMode, err := s.getPresetInsertMode(sess, record, batchRecValuesBuf)
+	presetInsertMode, err := s.getPresetInsertMode(sess, record, batchRecordBuffer)
 	if err != nil {
 		return 0, 0, err
 	}
-
-	var sequence = &sink.Sequence{}
 	var minSeqNextValue int64
+	sess.shallPresetIdentities = sess.shallPresetIdentities && presetInsertMode
 
-	var presetIdentities = presetInsertMode && sess.shallPresetIdentities
-	if presetIdentities {
-		switch option.Options(options).PresetIDStrategy() {
-		case option.PresetIDStrategyUndefined:
-			presetIdentities = false
-		case option.PresetIDWithMax:
-			options = append(options, s.maxIDSQLBuilder(sess))
-		case option.PresetIDWithTransientTransaction:
-			options = append(options, s.transientDMLBuilder(sess, record, batchRecValuesBuf, int64(recordCount)))
+	if sess.shallPresetIdentities {
+		sequence, err := s.nextSequence(ctx, sess, record, batchRecordBuffer, recordCount, options)
+		if err != nil {
+			return 0, 0, err
 		}
-		if presetIdentities {
-			sequenceName := s.getSequenceName(sess)
-			options = append(options, option.NewArgs(metaSession.Catalog, metaSession.Schema, sequenceName), option.RecordCount(recordCount))
-			meta := metadata.New()
-			err := meta.Info(ctx, s.db, info.KindSequenceNextValue, sequence, options...)
-			if err != nil {
-				return 0, 0, err
-			}
-			sess.incrementBy = int(sequence.IncrementBy)
+		if sequence != nil {
 			minSeqNextValue = sequence.MinValue(int64(recordCount))
 		}
 	}
-
+	if !sess.shallPresetIdentities && sess.identityColumn != nil {
+		sess.updateSequence(ctx, s.getSequenceName(sess))
+	}
 	if err = sess.begin(ctx, s.db, options); err != nil {
 		return 0, 0, err
 	}
@@ -113,10 +112,29 @@ func (s *Service) Exec(ctx context.Context, any interface{}, options ...option.O
 		err = sess.end(err)
 		return 0, 0, err
 	}
-
-	rowsAffected, lastInsertedID, err := sess.insert(ctx, batchRecValuesBuf, valueAt, recordCount, minSeqNextValue, sequence, presetIdentities, identities)
+	rowsAffected, lastInsertedID, err := sess.insert(ctx, batchRecordBuffer, valueAt, recordCount, minSeqNextValue, identities)
 	err = sess.end(err)
 	return rowsAffected, lastInsertedID, err
+}
+
+func (s *Service) nextSequence(ctx context.Context, sess *session, record interface{}, batchRecordBuffer []interface{}, recordCount int, options []option.Option) (*sink.Sequence, error) {
+	switch option.Options(options).PresetIDStrategy() {
+	case option.PresetIDStrategyUndefined:
+		sess.shallPresetIdentities = false
+		return nil, nil
+	case option.PresetIDWithMax:
+		options = append(options, s.maxIDSQLBuilder(sess))
+	case option.PresetIDWithTransientTransaction:
+		options = append(options, s.transientDMLBuilder(sess, record, batchRecordBuffer, int64(recordCount)))
+	}
+	sequenceName := s.getSequenceName(sess)
+	options = append(options, option.NewArgs(sess.info.Catalog, sess.info.Schema, sequenceName), option.RecordCount(recordCount))
+	meta := metadata.New()
+	err := meta.Info(ctx, s.db, info.KindSequenceNextValue, &sess.sequence, options...)
+	if err != nil {
+		return nil, err
+	}
+	return &sess.sequence, nil
 }
 
 func (s *Service) sequenceName(sess *session) string {
@@ -128,9 +146,9 @@ func (s *Service) sequenceName(sess *session) string {
 	return sequenceName
 }
 
-func (s *Service) getPresetInsertMode(sess *session, record interface{}, batchRecValuesBuf []interface{}) (bool, error) {
-	sess.binder(record, batchRecValuesBuf, 0, len(sess.columns))
-	idPtr, err := io.Int64Ptr(batchRecValuesBuf, *sess.identityColumnPos)
+func (s *Service) getPresetInsertMode(sess *session, record interface{}, batchRecordBuffer []interface{}) (bool, error) {
+	sess.binder(record, batchRecordBuffer, 0, len(sess.columns))
+	idPtr, err := io.Int64Ptr(batchRecordBuffer, *sess.identityColumnPos)
 	if err != nil {
 		return false, err
 	}
@@ -149,14 +167,14 @@ func (s *Service) getSequenceName(sess *session) string {
 	return sequence
 }
 
-func (s *Service) transientDMLBuilder(sess *session, record interface{}, batchRecValuesBuf []interface{}, recordCount int64) func(*sink.Sequence) (*sqlx.SQL, error) {
+func (s *Service) transientDMLBuilder(sess *session, record interface{}, batchRecordBuffer []interface{}, recordCount int64) func(*sink.Sequence) (*sqlx.SQL, error) {
 	return func(sequence *sink.Sequence) (*sqlx.SQL, error) {
 		resetAutoincrementQuery := sess.Builder.Build(option.BatchSize(1))
 		resetAutoincrementQuery = sess.Dialect.EnsurePlaceholders(resetAutoincrementQuery)
-		sess.binder(record, batchRecValuesBuf, 0, len(sess.columns))
+		sess.binder(record, batchRecordBuffer, 0, len(sess.columns))
 
 		values := make([]interface{}, len(sess.columns))
-		copy(values, batchRecValuesBuf[0:len(sess.columns)-2]) // don't copy ID pointer (last position in slice)
+		copy(values, batchRecordBuffer[0:len(sess.columns)-2]) // don't copy ID pointer (last position in slice)
 
 		oldValue := sequence.Value
 		sequence.Value = sequence.NextValue(recordCount)
@@ -184,7 +202,7 @@ func (s *Service) maxIDSQLBuilder(sess *session) func() *sqlx.SQL {
 		}
 	}
 }
-func (s *Service) ensureSession(ctx context.Context, record interface{}, batchSize int) (*session, error) {
+func (s *Service) NewSession(ctx context.Context, record interface{}, batchSize int) (*session, error) {
 	s.mux.Lock()
 	defer s.mux.Unlock()
 	rType := reflect.TypeOf(record)
@@ -198,20 +216,28 @@ func (s *Service) ensureSession(ctx context.Context, record interface{}, batchSi
 			identityColumnPos: sess.identityColumnPos,
 			db:                sess.db,
 			batchSize:         sess.batchSize,
-			incrementBy:       1,
+			info:              sess.info,
+			sequence:          sink.Sequence{IncrementBy: 1},
 		}, nil
 	}
+
+	metaSession, err := config.Session(ctx, s.db)
+	if err != nil {
+		return nil, err
+	}
+
 	result := &session{
-		rType:       rType,
-		batchSize:   batchSize,
-		Config:      config.New(s.tableName),
-		incrementBy: 1,
+		rType:     rType,
+		batchSize: batchSize,
+		Config:    config.New(s.tableName),
+		sequence:  sink.Sequence{IncrementBy: 1},
+		info:      metaSession,
+		db:        s.db,
 	}
 	if err := result.ApplyOption(ctx, s.db, s.options...); err != nil {
 		return nil, err
 	}
-
-	err := result.init(record)
+	err = result.init(record)
 	if err == nil {
 		s.cachedSession = result
 	}
