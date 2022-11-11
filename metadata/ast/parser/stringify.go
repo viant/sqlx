@@ -3,6 +3,7 @@ package parser
 import (
 	"bytes"
 	"fmt"
+	del "github.com/viant/sqlx/metadata/ast/delete"
 	"github.com/viant/sqlx/metadata/ast/expr"
 	"github.com/viant/sqlx/metadata/ast/insert"
 	"github.com/viant/sqlx/metadata/ast/node"
@@ -61,7 +62,6 @@ func stringify(n node.Node, builder *bytes.Buffer) {
 		stringify(actual.On, builder)
 	case *expr.Qualify:
 		stringify(actual.X, builder)
-
 	case *expr.Literal:
 		builder.WriteString(actual.Value)
 	case query.List:
@@ -181,6 +181,41 @@ func stringify(n node.Node, builder *bytes.Buffer) {
 			stringify(value.Expr, builder)
 		}
 		builder.WriteString(")")
+	case *del.Statement:
+		builder.WriteString("DELETE")
+		for i, item := range actual.Items {
+			if i != 0 {
+				builder.WriteString(", ")
+			}
+
+			stringify(item, builder)
+		}
+
+		stringify(actual.Target, builder)
+		for _, join := range actual.Joins {
+			stringify(join, builder)
+		}
+
+		if actual.Qualify != nil {
+			builder.WriteString(" WHERE ")
+			stringify(actual.Qualify, builder)
+		}
+	case del.Target:
+		builder.WriteString(" FROM ")
+		stringify(actual.X, builder)
+		if actual.Alias != "" {
+			builder.WriteString(" " + actual.Alias)
+		}
+
+		if actual.Comments != "" {
+			builder.WriteString(" " + actual.Comments)
+		}
+	case *del.Item:
+		builder.WriteString(" ")
+		builder.WriteString(actual.Raw)
+		if actual.Comments != "" {
+			builder.WriteString(" " + actual.Comments)
+		}
 	default:
 		panic(fmt.Sprintf("%T unsupported", n))
 	}

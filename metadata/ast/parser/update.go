@@ -14,19 +14,13 @@ func ParseUpdate(SQL string) (*update.Statement, error) {
 }
 
 func parseUpdate(cursor *parsly.Cursor, stmt *update.Statement) error {
-
 	match := cursor.MatchAfterOptional(whitespaceMatcher, updateKeywordMatcher)
 	switch match.Code {
 	case updateKeyword:
 		match = cursor.MatchAfterOptional(whitespaceMatcher, selectorMatcher)
 		switch match.Code {
 		case selectorTokenCode:
-			sel := match.Text(cursor)
-			stmt.Target.X = expr.NewSelector(sel)
-			match = cursor.MatchAfterOptional(whitespaceMatcher, commentBlockMatcher)
-			if match.Code == commentBlock {
-				stmt.Target.Comments = match.Text(cursor)
-			}
+			stmt.Target = extractTarget(cursor, match)
 			match = cursor.MatchAfterOptional(whitespaceMatcher, setKeywordMatcher)
 			if match.Code != setKeyword {
 				return cursor.NewError(setKeywordMatcher)
@@ -43,6 +37,20 @@ func parseUpdate(cursor *parsly.Cursor, stmt *update.Statement) error {
 		}
 	}
 	return nil
+}
+
+func extractTarget(cursor *parsly.Cursor, match *parsly.TokenMatch) update.Target {
+	sel := match.Text(cursor)
+	comment := ""
+	match = cursor.MatchAfterOptional(whitespaceMatcher, commentBlockMatcher)
+	if match.Code == commentBlock {
+		comment = match.Text(cursor)
+	}
+
+	return update.Target{
+		X:        expr.NewSelector(sel),
+		Comments: comment,
+	}
 }
 
 func parseUpdateSetItems(cursor *parsly.Cursor, stmt *update.Statement) error {
