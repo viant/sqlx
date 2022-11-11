@@ -48,6 +48,7 @@ func parseQuery(cursor *parsly.Cursor, dest *query.Select) error {
 		if err := parseSelectListItem(cursor, &dest.List); err != nil {
 			return err
 		}
+
 		match = cursor.MatchAfterOptional(whitespaceMatcher, fromKeywordMatcher)
 		switch match.Code {
 		case fromKeyword:
@@ -60,10 +61,7 @@ func parseQuery(cursor *parsly.Cursor, dest *query.Select) error {
 				dest.From.X = expr.NewRaw(match.Text(cursor))
 			}
 			dest.From.Alias = discoverAlias(cursor)
-			match = cursor.MatchAfterOptional(whitespaceMatcher, commentBlockMatcher)
-			if match.Code == commentBlock {
-				dest.From.Comments = match.Text(cursor)
-			}
+			dest.From.Comments = matchComment(cursor)
 
 			dest.Joins = make([]*query.Join, 0)
 
@@ -81,6 +79,15 @@ func parseQuery(cursor *parsly.Cursor, dest *query.Select) error {
 		}
 	}
 	return nil
+}
+
+func matchComment(cursor *parsly.Cursor) string {
+	match := cursor.MatchAfterOptional(whitespaceMatcher, commentBlockMatcher)
+	if match.Code == commentBlock {
+		return match.Text(cursor)
+	}
+
+	return ""
 }
 
 func matchPostFrom(cursor *parsly.Cursor, dest *query.Select, match *parsly.TokenMatch) (bool, error) {

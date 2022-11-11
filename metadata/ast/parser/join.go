@@ -6,7 +6,21 @@ import (
 	"github.com/viant/sqlx/metadata/ast/query"
 )
 
-func parseJoin(cursor *parsly.Cursor, join *query.Join, dest *query.Select) error {
+func parseJoins(cursor *parsly.Cursor, join *query.Join, dest *query.Select) error {
+	match, err := parseJoin(cursor, join)
+	if err != nil {
+		return err
+	}
+
+	hasMatch, err := matchPostFrom(cursor, dest, match)
+	if !hasMatch && err == nil {
+		err = cursor.NewError(joinToken, joinToken, groupByMatcher, havingKeywordMatcher, whereKeywordMatcher, orderByKeywordMatcher, windowMatcher)
+	}
+
+	return err
+}
+
+func parseJoin(cursor *parsly.Cursor, join *query.Join) (*parsly.TokenMatch, error) {
 	match := cursor.MatchAfterOptional(whitespaceMatcher, parenthesesMatcher, selectorMatcher)
 	switch match.Code {
 	case parenthesesCode:
@@ -25,38 +39,32 @@ func parseJoin(cursor *parsly.Cursor, join *query.Join, dest *query.Select) erro
 	switch match.Code {
 	case onKeyword:
 	default:
-		return cursor.NewError(onKeywordMatcher)
+		return match, cursor.NewError(onKeywordMatcher)
 	}
 	binary := &expr.Binary{}
 	join.On = &expr.Qualify{}
 	join.On.X = binary
 	if err := parseBinaryExpr(cursor, binary); err != nil {
-		return err
+		return match, err
 	}
 	match = cursor.MatchAfterOptional(whitespaceMatcher, joinToken, groupByMatcher, havingKeywordMatcher, whereKeywordMatcher, orderByKeywordMatcher, windowMatcher)
 	if match.Code == parsly.EOF {
-		return nil
+		return match, nil
 	}
 	if match.Code == commentBlock {
 		join.Comments = match.Text(cursor)
 		match = cursor.MatchAfterOptional(whitespaceMatcher, joinToken, groupByMatcher, havingKeywordMatcher, whereKeywordMatcher, orderByKeywordMatcher, windowMatcher)
 		if match.Code == parsly.EOF {
-			return nil
+			return match, nil
 		}
 	}
-
-	hasMatch, err := matchPostFrom(cursor, dest, match)
-	if !hasMatch && err == nil {
-		err = cursor.NewError(joinToken, joinToken, groupByMatcher, havingKeywordMatcher, whereKeywordMatcher, orderByKeywordMatcher, windowMatcher)
-	}
-
-	return err
+	return match, nil
 }
 
 func appendJoin(cursor *parsly.Cursor, match *parsly.TokenMatch, dest *query.Select) error {
 	join := query.NewJoin(match.Text(cursor))
 	dest.Joins = append(dest.Joins, join)
-	if err := parseJoin(cursor, join, dest); err != nil {
+	if err := parseJoins(cursor, join, dest); err != nil {
 		return err
 	}
 	return nil

@@ -52,6 +52,7 @@ const (
 	rangeOperator
 	windowTokenCode
 	literalCode
+	deleteCode
 )
 
 var whitespaceMatcher = parsly.NewToken(whitespaceCode, "whitespace", matcher.NewWhiteSpace())
@@ -117,3 +118,4 @@ var identifierMatcher = parsly.NewToken(identifierCode, "IDENT", smatcher.NewIde
 var selectorMatcher = parsly.NewToken(selectorTokenCode, "SELECTOR", smatcher.NewSelector())
 var placeholderMatcher = parsly.NewToken(placeholderTokenCode, "SELECTOR", smatcher.NewPlaceholder())
 var literalMatcher = parsly.NewToken(literalCode, "LITERAL", matcher.NewNop())
+var deleteMatcher = parsly.NewToken(deleteCode, "DELETE", matcher.NewFragmentsFold([]byte("delete")))

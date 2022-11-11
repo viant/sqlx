@@ -9,7 +9,6 @@ import (
 )
 
 func TestParseUpdate(t *testing.T) {
-
 	var testCases = []struct {
 		description string
 		SQL         string
