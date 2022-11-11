@@ -14,7 +14,6 @@ func Int64Ptr(values []interface{}, index int) (*int64, error) {
 	case *int64:
 		return actual, nil
 	default:
-		panic(fmt.Sprintf("invalid ID type: %T", actual))
 		return nil, fmt.Errorf("unsupported type: %T", actual)
 	}
 }
