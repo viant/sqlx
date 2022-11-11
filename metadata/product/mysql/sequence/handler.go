@@ -43,7 +43,6 @@ func updateSequence(ctx context.Context, db *sql.DB, sequence *sink.Sequence, tx
 	if err := runQuery(ctx, db, SQL, []interface{}{&name, &DDL}, tx); err != nil {
 		return err
 	}
-
 	if index := strings.Index(DDL, autoincrementAssignment); index != -1 {
 		seqValueFragment := DDL[index+len(autoincrementAssignment):]
 		if index := strings.Index(seqValueFragment, " "); index != -1 {

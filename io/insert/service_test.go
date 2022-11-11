@@ -166,7 +166,7 @@ outer:
 		if !assert.Nil(t, err, testCase.description) {
 			continue
 		}
-		affected, lastID, err := insert.Exec(context.TODO(), testCase.records)
+		affected, lastID, err := insert.Exec(context.TODO(), testCase.records, testCase.options...)
 		assert.Nil(t, err, testCase.description)
 		assert.EqualValues(t, testCase.affected, affected, testCase.description)
 		assert.EqualValues(t, testCase.lastID, lastID, testCase.description)

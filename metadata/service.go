@@ -153,6 +153,8 @@ func (s *Service) executeQuery(ctx context.Context, db *sql.DB, query *info.Quer
 	args := &option.Args{}
 	option.Assign(options, &args)
 	SQL, params, err := prepareSQL(query, s.dialect.PlaceholderGetter(), args)
+
+	fmt.Printf("SQL: %v %v\n", SQL, params)
 	if err != nil {
 		return nil, err
 	}
@@ -229,7 +231,6 @@ func prepareSQL(query *info.Query, placeholderGetter func() string, argsOpt *opt
 	}
 
 	SQL := query.SQL
-
 	var expanded = make([]bool, len(args))
 	for i, item := range args {
 		if text, ok := item.(string); ok {

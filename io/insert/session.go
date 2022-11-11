@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"github.com/viant/sqlx/io"
 	"github.com/viant/sqlx/io/config"
+	"github.com/viant/sqlx/metadata"
+	"github.com/viant/sqlx/metadata/info"
 	"github.com/viant/sqlx/metadata/sink"
 	"github.com/viant/sqlx/option"
 	"reflect"
@@ -14,6 +16,7 @@ import (
 
 type session struct {
 	*io.Transaction
+	info      *sink.Session
 	rType     reflect.Type
 	batchSize int
 	*config.Config
@@ -24,8 +27,8 @@ type session struct {
 	db                    *sql.DB
 	stmt                  *sql.Stmt
 	shallPresetIdentities bool
-	incrementBy           int
 	inBatchCount          int
+	sequence              sink.Sequence
 }
 
 func (s *session) init(record interface{}) (err error) {
@@ -103,7 +106,7 @@ func isClosedError(err error) bool {
 	return strings.Contains(err.Error(), "closed")
 }
 
-func (s *session) insert(ctx context.Context, recValues []interface{}, valueAt io.ValueAccessor, size int, minSeqNextValue int64, sequence *sink.Sequence, presetIdentities bool, identitiesBatched []interface{}) (int64, int64, error) {
+func (s *session) insert(ctx context.Context, recValues []interface{}, valueAt io.ValueAccessor, size int, minSeqNextValue int64, identitiesBatched []interface{}) (int64, int64, error) {
 	s.inBatchCount = 0
 	var err error
 	var rowsAffected, totalRowsAffected, lastInsertedID int64
@@ -116,13 +119,10 @@ func (s *session) insert(ctx context.Context, recValues []interface{}, valueAt i
 		if s.identityColumnPos != nil {
 			idIndex := offset + *s.identityColumnPos
 			identitiesBatched[s.inBatchCount] = recValues[idIndex]
-			idPtr, err := io.Int64Ptr(identitiesBatched, s.inBatchCount)
-			if presetIdentities {
-				if err != nil {
-					return 0, 0, err
-				}
+			idPtr, _ := io.Int64Ptr(identitiesBatched, s.inBatchCount)
+			if s.shallPresetIdentities {
 				*idPtr = newID
-				newID += sequence.IncrementBy
+				newID += s.sequence.IncrementBy
 			}
 			if *idPtr == 0 {
 				recValues[idIndex] = nil
@@ -155,11 +155,9 @@ func (s *session) insert(ctx context.Context, recValues []interface{}, valueAt i
 }
 
 func (s *session) flush(ctx context.Context, values []interface{}, identities []interface{}) (int64, int64, error) {
-
 	if s.Dialect.CanReturning {
 		return s.flushQuery(ctx, values, identities)
 	}
-
 	result, err := s.stmt.ExecContext(ctx, values...)
 	if err != nil {
 		return 0, 0, err
@@ -168,24 +166,48 @@ func (s *session) flush(ctx context.Context, values []interface{}, identities []
 	if err != nil {
 		return 0, 0, err
 	}
-
-	lastInsertedID, _ := s.lastInsertedIdentity(values, result)
+	lastInsertedID, _ := s.lastInsertedIdentity(identities, result)
 	if !s.shallPresetIdentities && lastInsertedID > 0 {
-		id := lastInsertedID
-		for i := rowsAffected - 1; i >= 0; i-- { //this would only work for single thread running insert
-			// since driver lastInsertedID does guarantee continuity in generated IDs
-			intPtr, _ := io.Int64Ptr(identities, int(i)) //we can only set next id back for single records, batch insert is not reliable
-			if intPtr == nil {
-				continue
-			}
-			if *intPtr > 0 {
-				break
-			}
-			*intPtr = id
-			id -= int64(s.incrementBy)
-		}
+		s.updateInsertIDs(ctx, lastInsertedID, rowsAffected, identities)
 	}
 	return rowsAffected, lastInsertedID, nil
+}
+
+func (s *session) updateInsertIDs(ctx context.Context, lastInsertedID int64, rowsAffected int64, identities []interface{}) {
+	if rowsAffected == 0 {
+		return
+	}
+	if intPtr, _ := io.Int64Ptr(identities, 0); intPtr != nil && *intPtr > 0 {
+		return
+	}
+
+	if s.sequence.Value == 0 { //no info about sequence
+		for i := 0; i < int(rowsAffected); i++ {
+			intPtr, _ := io.Int64Ptr(identities, int(i)) //we can only set next id back for single records, batch insert is not reliable
+			if *intPtr > 0 {
+				continue
+			}
+			*intPtr = lastInsertedID
+			lastInsertedID += s.sequence.IncrementBy
+		}
+		return
+	}
+
+	if s.sequence.Value == lastInsertedID {
+		incrementBy := s.sequence.IncrementBy
+		s.updateSequence(ctx, s.sequence.Name)
+		expectedNextInsertID := (1 + rowsAffected) * incrementBy
+		if expectedNextInsertID != s.sequence.Value { //race condition during batch insert, skip updating IDs
+			return
+		}
+		for i := 0; i < int(rowsAffected); i++ {
+			intPtr, _ := io.Int64Ptr(identities, int(i)) //we can only set next id back for single records, batch insert is not reliable
+			*intPtr = lastInsertedID
+			lastInsertedID += s.sequence.IncrementBy
+		}
+		return
+	}
+
 }
 
 func (s *session) flushQuery(ctx context.Context, values []interface{}, identities []interface{}) (int64, int64, error) {
@@ -213,23 +235,32 @@ func (s *session) flushQuery(ctx context.Context, values []interface{}, identiti
 }
 
 func (s *session) lastInsertedIdentity(values []interface{}, result sql.Result) (int64, error) {
-	if s.identityColumnPos != nil && *s.identityColumnPos != -1 {
-		idx := len(values) - 1
-		if s.inBatchCount != 0 {
-			idx = s.inBatchCount - 1
-		}
-		if values[idx] == nil {
-			if s.Dialect.CanLastInsertID {
-				return result.LastInsertId()
-			}
-		}
-		value, err := io.Int64Ptr(values, idx)
+	idx := s.lastBatchPos(values)
+	value, err := io.Int64Ptr(values, idx)
+	if s.shallPresetIdentities {
 		if err != nil {
 			return 0, err
 		}
-		if *value != 0 {
+		return *value, nil
+	} else if s.identityColumn != nil {
+		if value != nil && *value > 0 {
 			return *value, nil
 		}
 	}
 	return result.LastInsertId()
+}
+
+//updateSequence updates session sequence
+func (s *session) updateSequence(ctx context.Context, sequenceName string) {
+	meta := metadata.New()
+	options := append([]option.Option{}, option.NewArgs(s.info.Catalog, s.info.Schema, sequenceName))
+	_ = meta.Info(ctx, s.db, info.KindSequences, &s.sequence, options...)
+}
+
+func (s *session) lastBatchPos(values []interface{}) int {
+	idx := len(values) - 1
+	if s.inBatchCount != 0 {
+		idx = s.inBatchCount - 1
+	}
+	return idx
 }
