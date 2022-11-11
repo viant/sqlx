@@ -1,12 +1,30 @@
 package cache
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"github.com/aerospike/aerospike-client-go/types"
+)
+
+const (
+	TypeReadMulti  = "warmup"
+	TypeReadSingle = "lazy"
+	TypeWrite      = "write"
+	TypeNone       = "none"
+
+	ErrorNone                      = ""
+	ErrorTypeTimeout               = "aerospike timeout error"
+	ErrorTypeServerUnavailable     = "aerospike server unavailable node"
+	ErrorTypeServerGeneric         = "aerospike error occured"
+	ErrorTypeCurrentlyNotAvailable = "aerospike currently not available"
+)
 
 type (
+	Type       string
+	ErrorType  string
 	AllowSmart bool
 
-	//Index abstraction to represent data optimisation with caching and custom pagination
-	Index struct {
+	//ParmetrizedQuery abstraction to represent data optimisation with caching and custom pagination
+	ParmetrizedQuery struct {
 		By      string
 		SQL     string
 		Ordered bool //SQL uses order by indexby column
@@ -19,9 +37,28 @@ type (
 		marshalArgs []byte
 		initialized bool
 	}
+
+	Stats struct {
+		Type           Type
+		RecordsCounter int
+		Key            string
+		FoundWarmup    bool             `json:",omitempty"`
+		FoundLazy      bool             `json:",omitempty"`
+		ErrorType      string           `json:",omitempty"`
+		ErrorCode      types.ResultCode `json:",omitempty"`
+	}
 )
 
-func (m *Index) Init() {
+func (s *Stats) Init() {
+	s.Type = TypeNone
+	s.RecordsCounter = 0
+}
+
+func (s *Stats) FoundAny() bool {
+	return s.FoundLazy || s.FoundWarmup
+}
+
+func (m *ParmetrizedQuery) Init() {
 	if m.initialized {
 		return
 	}
@@ -32,7 +69,7 @@ func (m *Index) Init() {
 	}
 }
 
-func (m *Index) MarshalArgs() ([]byte, error) {
+func (m *ParmetrizedQuery) MarshalArgs() ([]byte, error) {
 	if m.marshalArgs != nil {
 		return m.marshalArgs, nil
 	}

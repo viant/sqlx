@@ -10,7 +10,7 @@ import (
 
 type (
 	MultiReader struct {
-		matcher       *cache.Index
+		matcher       *cache.ParmetrizedQuery
 		mux           sync.Mutex
 		readers       []*Reader
 		buffer        bytes.Buffer
@@ -19,7 +19,7 @@ type (
 	}
 )
 
-func NewMultiReader(matcher *cache.Index) *MultiReader {
+func NewMultiReader(matcher *cache.ParmetrizedQuery) *MultiReader {
 	return &MultiReader{
 		matcher: matcher,
 	}

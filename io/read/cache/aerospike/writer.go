@@ -10,7 +10,6 @@ import (
 )
 
 type Writer struct {
-	client   *as.Client
 	mainKey  *as.Key
 	buffers  []*bytes.Buffer
 	id       string
@@ -42,8 +41,7 @@ func (w *Writer) Flush() error {
 			return err
 		}
 
-		policy := w.cache.writePolicy()
-		if err = w.client.Put(policy, key, binMap); err != nil {
+		if err = w.cache.put(key, binMap); err != nil {
 			w.delete(childKey)
 			return err
 		}
