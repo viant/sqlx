@@ -153,12 +153,9 @@ func (s *Service) executeQuery(ctx context.Context, db *sql.DB, query *info.Quer
 	args := &option.Args{}
 	option.Assign(options, &args)
 	SQL, params, err := prepareSQL(query, s.dialect.PlaceholderGetter(), args)
-
-	fmt.Printf("SQL: %v %v\n", SQL, params)
 	if err != nil {
 		return nil, err
 	}
-
 	var stmt *sql.Stmt
 	if tx != nil {
 		stmt, err = tx.PrepareContext(ctx, SQL)
