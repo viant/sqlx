@@ -8,9 +8,22 @@ import (
 // Int64Ptr returns pointer to index-th element of slice as pointer to int84
 func Int64Ptr(values []interface{}, index int) (*int64, error) {
 	switch actual := values[index].(type) {
-	case *int, *uint:
+	case *int, *uint, uint64:
 		ptr := xunsafe.AsPointer(values[index])
 		return (*int64)(ptr), nil
+	case **int64:
+		if *actual == nil {
+			i := int64(0)
+			*actual = &i
+		}
+		return *actual, nil
+	case **int, **uint, **uint64:
+		ptr := (**int64)(xunsafe.AsPointer(values[index]))
+		if *ptr == nil {
+			i := int64(0)
+			*ptr = &i
+		}
+		return *ptr, nil
 	case *int64:
 		return actual, nil
 	default:
