@@ -199,7 +199,7 @@ FROM pragma_database_list
 			info.NewCriterion(info.Schema, ""),
 			info.NewCriterion(info.Object, ""),
 			info.NewCriterion(info.SequenceNewCurrentValue, ""),
-		).OnPre(&sequence.Max{}),
+		).OnPre(&sequence.Max{}, &sequence.Next{}),
 	)
 
 	if err != nil {
