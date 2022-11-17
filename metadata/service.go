@@ -150,9 +150,11 @@ func (s *Service) matchVersion(ctx context.Context, db *sql.DB, product *databas
 
 func (s *Service) executeQuery(ctx context.Context, db *sql.DB, query *info.Query, options ...option.Option) (sql.Result, error) {
 	tx := option.Options.Tx(options)
+
 	args := &option.Args{}
 	option.Assign(options, &args)
 	SQL, params, err := prepareSQL(query, s.dialect.PlaceholderGetter(), args)
+
 	if err != nil {
 		return nil, err
 	}
@@ -162,6 +164,7 @@ func (s *Service) executeQuery(ctx context.Context, db *sql.DB, query *info.Quer
 	} else {
 		stmt, err = db.PrepareContext(ctx, SQL)
 	}
+
 	if err != nil {
 		return nil, err
 	}
@@ -179,6 +182,7 @@ func (s *Service) runQuery(ctx context.Context, db *sql.DB, query *info.Query, s
 	if s.dialect != nil {
 		placeholderGetter = s.dialect.PlaceholderGetter()
 	}
+
 	SQL, params, err := prepareSQL(query, placeholderGetter, args)
 	if err != nil {
 		return err

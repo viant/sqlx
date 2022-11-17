@@ -31,6 +31,13 @@ func (n *Transient) Handle(ctx context.Context, db *sql.DB, target interface{}, 
 		return false, fmt.Errorf("invalid target, expected :%T, but had: %T", targetSequence, target)
 	}
 
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return false, err
+	}
+	defer io.MergeErrorIfNeeded(tx.Rollback, &err)
+
+	options = append(options, tx)
 	if err = n.lock(ctx, meta, db, options); err != nil {
 		return false, err
 	}
@@ -55,13 +62,6 @@ func (n *Transient) Handle(ctx context.Context, db *sql.DB, target interface{}, 
 	}
 	if transientDML == nil {
 		return false, fmt.Errorf("transientDML was empty")
-	}
-
-	tx, err := db.BeginTx(ctx, nil)
-	defer io.MergeErrorIfNeeded(tx.Rollback, &err)
-
-	if err != nil {
-		return false, err
 	}
 
 	_, err = tx.ExecContext(ctx, transientDML.Query, transientDML.Args...)
