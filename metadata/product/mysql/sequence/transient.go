@@ -80,14 +80,12 @@ func (n *Transient) lock(ctx context.Context, meta *metadata.Service, db *sql.DB
 	if argsOps == nil {
 		return fmt.Errorf("argsOps was empty")
 	}
-	arguments := argsOps.Unwrap()
-
 	err := meta.Info(ctx, db, info.KindLockGet, &result, options...)
 	if err != nil {
 		return err
 	}
 	if result.Success == 0 {
-		return fmt.Errorf("unable to create lock for (catalog, schema, table) = (%s, %s, %s), already exists the same lock in use", arguments[0], arguments[1], arguments[2])
+		return fmt.Errorf("failed to acquire lock '%v'", result.Name)
 	}
 	return nil
 }
@@ -98,14 +96,12 @@ func (n *Transient) unlock(ctx context.Context, meta *metadata.Service, db *sql.
 	if argsOps == nil {
 		return fmt.Errorf("argsOps was empty")
 	}
-	arguments := argsOps.Unwrap()
-
 	err := meta.Info(ctx, db, info.KindLockRelease, &result, options...)
 	if err != nil {
 		return err
 	}
 	if result.Success == 0 {
-		return fmt.Errorf("unable to release lock for (catalog, schema, table) = (%s, %s, %s), already exists the same lock in use", arguments[0], arguments[1], arguments[2])
+		return fmt.Errorf("failed to release lock '%s'", result.Name)
 	}
 	return nil
 }
