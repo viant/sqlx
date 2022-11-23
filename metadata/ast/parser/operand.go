@@ -4,6 +4,7 @@ import (
 	"github.com/viant/parsly"
 	"github.com/viant/sqlx/metadata/ast/expr"
 	"github.com/viant/sqlx/metadata/ast/node"
+	"github.com/viant/sqlx/metadata/ast/query"
 	"strings"
 )
 
@@ -53,10 +54,24 @@ func expectOperand(cursor *parsly.Cursor) (node.Node, error) {
 			selector = expr.NewPlaceholder(selRaw)
 		}
 
+		pos := cursor.Pos
 		match = cursor.MatchAfterOptional(whitespaceMatcher, parenthesesMatcher, exceptKeywordMatcher)
 		switch match.Code {
 		case parenthesesCode:
-			return &expr.Call{X: selector, Raw: match.Text(cursor)}, nil
+			raw := match.Text(cursor)
+			var args []node.Node
+			if len(raw) > 0 {
+				argCursor := parsly.NewCursor(cursor.Path, []byte(raw), pos)
+				list := query.List{}
+				if err := parseOrderByListItem(argCursor, &list); err != nil {
+					return nil, err
+				}
+				for i := range list {
+					args = append(args, list[i].Expr)
+				}
+			}
+			return &expr.Call{X: selector, Raw: raw, Args: args}, nil
+
 		case exceptKeyword:
 			return parseStarExpr(cursor, selRaw, selector)
 		}
