@@ -22,6 +22,7 @@ func TestParseSelect(t *testing.T) {
 				SQL:         `SELECT user.* FROM user u -- extra comments `,
 				expect:      `SELECT user.* FROM user u`,
 			},
+
 			{
 				description: "expr with comments",
 				SQL:         `SELECT user.* FROM (SELECT t.* FROM USER t  ) user /* {"Self":{"Holder":"Team", "Child":"ID", "Parent":"MGR_ID" }} */ `,
