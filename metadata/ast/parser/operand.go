@@ -61,7 +61,7 @@ func expectOperand(cursor *parsly.Cursor) (node.Node, error) {
 			raw := match.Text(cursor)
 			var args []node.Node
 			if len(raw) > 0 {
-				argCursor := parsly.NewCursor(cursor.Path, []byte(raw), pos)
+				argCursor := parsly.NewCursor(cursor.Path, []byte(raw[1:len(raw)-1]), pos)
 				list := query.List{}
 				if err := parseOrderByListItem(argCursor, &list); err != nil {
 					return nil, err
