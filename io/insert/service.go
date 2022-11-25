@@ -208,16 +208,17 @@ func (s *Service) NewSession(ctx context.Context, record interface{}, batchSize 
 	rType := reflect.TypeOf(record)
 	if sess := s.cachedSession; sess != nil && sess.rType == rType && sess.batchSize == batchSize {
 		return &session{
-			rType:             rType,
-			Config:            sess.Config,
-			binder:            sess.binder,
-			columns:           sess.columns,
-			identityColumn:    sess.identityColumn,
-			identityColumnPos: sess.identityColumnPos,
-			db:                sess.db,
-			batchSize:         sess.batchSize,
-			info:              sess.info,
-			sequence:          sink.Sequence{IncrementBy: 1},
+			rType:                 rType,
+			Config:                sess.Config,
+			binder:                sess.binder,
+			columns:               sess.columns,
+			identityColumn:        sess.identityColumn,
+			identityColumnPos:     sess.identityColumnPos,
+			db:                    sess.db,
+			batchSize:             sess.batchSize,
+			info:                  sess.info,
+			sequence:              sink.Sequence{IncrementBy: 1},
+			shallPresetIdentities: sess.shallPresetIdentities,
 		}, nil
 	}
 

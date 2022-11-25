@@ -19,7 +19,7 @@ require (
 	github.com/viant/bigquery v0.2.1-0.20220914154037-307a294f2482
 	github.com/viant/parsly v0.0.0-20220907184615-a27c125714a1
 	github.com/viant/toolbox v0.34.5
-	github.com/viant/xunsafe v0.8.1-0.20220609224231-1d3e1fcf7bb6
+	github.com/viant/xunsafe v0.8.1-0.20221124153229-5feda0d224f1
 	google.golang.org/api v0.84.0
 )
 

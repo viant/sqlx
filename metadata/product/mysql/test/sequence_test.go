@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/stretchr/testify/assert"
+	"github.com/viant/sqlx/io"
 	"github.com/viant/sqlx/metadata/sink"
 	"os"
 	"strconv"
@@ -25,10 +26,12 @@ func TestSequence_NextValue_Gen(t *testing.T) {
 	dsn := os.Getenv("TEST_MYSQL_DSN")
 	if dsn == "" {
 		t.Skip("set TEST_MYSQL_DSN before running test")
+		return
 	}
 	dsnSchema := os.Getenv("TEST_MYSQL_DSN_SCHEMA")
-	if dsn == "" {
+	if dsnSchema == "" {
 		t.Skip("set TEST_MYSQL_DSN_SCHEMA before running test")
+		return
 	}
 
 	var testCases = []struct {
@@ -169,7 +172,7 @@ func TestSequence_NextValue_Gen(t *testing.T) {
 						SQL := "SELECT AUTO_INCREMENT FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = '" + dsnSchema + "' AND TABLE_NAME = '" + testCase.table + "'"
 						rows, err := tx.QueryContext(ctx, SQL)
 						assert.Nil(t, err, testCase.description)
-						var onDone2 = func(error) { rows.Close() } //TODO what if defer throws err?
+						var onDone2 = func(err error) { io.MergeErrorIfNeeded(rows.Close, &err) }
 						if rows.Next() {
 							err = rows.Scan(&testCase.expected)
 							if !assert.Nil(t, err, testCase.description) {

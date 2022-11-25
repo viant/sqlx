@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/viant/xunsafe"
 	"reflect"
+	"unsafe"
 )
 
 //ValueAccessor represents function that returns value at given index.
@@ -39,7 +40,21 @@ func Values(any interface{}) (ValueAccessor, int, error) {
 	default:
 		anyValue := reflect.ValueOf(any)
 		switch anyValue.Kind() {
-		case reflect.Ptr, reflect.Struct:
+		case reflect.Ptr:
+			deref := anyValue.Elem()
+			switch deref.Kind() {
+			case reflect.Slice:
+				ptr := xunsafe.AsPointer(actual)
+				return asSliceAccessor(ptr, deref.Type())
+			default:
+				val := actual
+				return func(index int) interface{} {
+					result := val
+					return result
+				}, 1, nil
+			}
+
+		case reflect.Struct:
 			val := actual
 			return func(index int) interface{} {
 				result := val
@@ -48,13 +63,18 @@ func Values(any interface{}) (ValueAccessor, int, error) {
 
 		case reflect.Slice:
 			ptr := xunsafe.AsPointer(actual)
-			aSliceType := xunsafe.NewSlice(reflect.TypeOf(actual))
-			sliceLen := aSliceType.Len(ptr)
-			return func(index int) interface{} {
-				result := aSliceType.ValuePointerAt(ptr, index)
-				return result
-			}, sliceLen, nil
+			sliceType := reflect.TypeOf(actual)
+			return asSliceAccessor(ptr, sliceType)
 		}
 	}
 	return nil, 0, fmt.Errorf("usnupported :%T", any)
+}
+
+func asSliceAccessor(ptr unsafe.Pointer, sliceType reflect.Type) (ValueAccessor, int, error) {
+	aSliceType := xunsafe.NewSlice(sliceType)
+	sliceLen := aSliceType.Len(ptr)
+	return func(index int) interface{} {
+		result := aSliceType.ValuePointerAt(ptr, index)
+		return result
+	}, sliceLen, nil
 }
