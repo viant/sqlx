@@ -1,4 +1,4 @@
-package collector
+package batcher
 
 import (
 	"github.com/viant/xunsafe"

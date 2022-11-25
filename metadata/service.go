@@ -17,6 +17,7 @@ type (
 		dialect *info.Dialect
 		recent
 	}
+
 	recent struct {
 		db      *sql.DB
 		product *database.Product

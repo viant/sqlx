@@ -1,4 +1,4 @@
-package collector_test
+package batcher_test
 
 import (
 	"context"
@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/viant/sqlx/io"
 	"github.com/viant/sqlx/io/insert"
-	"github.com/viant/sqlx/io/insert/collector"
+	"github.com/viant/sqlx/io/insert/batcher"
 	_ "github.com/viant/sqlx/metadata/product/mysql"
 	"github.com/viant/sqlx/option"
 	"github.com/viant/toolbox"
@@ -151,10 +151,12 @@ func TestService_Collect(t *testing.T) {
 			concurrency: false,
 		},
 	}
-
 	db, err := sql.Open(driver, dsn)
 	ctx := context.TODO()
-
+	if !assert.Nil(t, db) {
+		return
+	}
+	defer db.Close()
 	for _, testCase := range useCases {
 
 		for _, SQL := range testCase.initSQL {
@@ -170,8 +172,8 @@ func TestService_Collect(t *testing.T) {
 			return
 		}
 
-		var collectorSrv *collector.Service
-		collectorSrv, err = collector.New(ctx, inserter, reflect.TypeOf(&entity{}), testCase.batchMaxElements, testCase.batchMaxDurationMs, testCase.options...)
+		var collectorSrv *batcher.Service
+		collectorSrv, err = batcher.New(ctx, inserter, reflect.TypeOf(&entity{}), testCase.batchMaxElements, testCase.batchMaxDurationMs, testCase.options...)
 		if !assert.Nil(t, err, testCase.description) {
 			return
 		}
@@ -179,7 +181,7 @@ func TestService_Collect(t *testing.T) {
 		// get test records
 		testRecords := createTestRecords(testCase.recordsCnt)
 
-		states := make([]*collector.State, len(testRecords))
+		states := make([]*batcher.State, len(testRecords))
 		wg := sync.WaitGroup{}
 		wg.Add(len(testRecords))
 
@@ -191,7 +193,7 @@ func TestService_Collect(t *testing.T) {
 			recPtr := testRecords[i]
 			fn := func(recPtr *entity, i int) {
 				defer wg.Done()
-				var state *collector.State
+				var state *batcher.State
 				state, err = collectorSrv.Collect(recPtr)
 				states[i] = state
 				assert.Nil(t, err, testCase.description)
@@ -212,54 +214,62 @@ func TestService_Collect(t *testing.T) {
 				toolbox.Dump(testRecords[i])
 			}
 		}
-
-		// checking db contenet
-		SQL := "SELECT foo_id, foo_name, bar FROM " + testCase.table + " ORDER BY foo_id"
-		var rows *sql.Rows
-		rows, err = db.QueryContext(ctx, SQL)
-		onDone := func(err error) { io.MergeErrorIfNeeded(rows.Close, &err) }
-		assert.Nil(t, err, testCase.description)
-		recordsFromDB := make([]*entity, len(testRecords))
-
-		i := 0
-		for rows.Next() {
-			recordsFromDB[i] = &entity{}
-			err = rows.Scan(&recordsFromDB[i].Id, &recordsFromDB[i].Name, &recordsFromDB[i].Bar)
-			i++
-			if !assert.Nil(t, err, testCase.description) {
-				return
-			}
+		onDone, expected, err := loadExpected(ctx, t, testCase, db, testRecords)
+		if err != nil {
+			return
 		}
-
-		a := testRecords
-		sort.Slice(a, func(i, j int) bool {
-			if a[i].Id == a[j].Id {
-				return a[i].Name < a[j].Name
-			}
-			return a[i].Id < a[j].Id
-		})
-
+		sortSlice(testRecords)
 		if testCase.concurrency {
 			for _, v := range testRecords {
 				assert.True(t, v.Id > 0, testCase.description)
 			}
-			if !assert.EqualValues(t, testRecords, recordsFromDB, testCase.description) {
+			if !assert.EqualValues(t, testRecords, expected, testCase.description) {
 				fmt.Println("## testRecords")
 				toolbox.Dump(testRecords)
-				fmt.Println("## recordsFromDB")
-				toolbox.Dump(recordsFromDB)
+				fmt.Println("## expected")
+				toolbox.Dump(expected)
 			}
 		} else {
-			if !assert.EqualValues(t, testRecords, recordsFromDB, testCase.description) {
+			if !assert.EqualValues(t, testRecords, expected, testCase.description) {
 				fmt.Println("## testRecords")
 				toolbox.Dump(testRecords)
-				fmt.Println("## recordsFromDB")
-				toolbox.Dump(recordsFromDB)
+				fmt.Println("## expected")
+				toolbox.Dump(expected)
 			}
 		}
-
 		onDone(err)
 	}
+}
+
+func sortSlice(a []*entity) {
+	sort.Slice(a, func(i, j int) bool {
+		if a[i].Id == a[j].Id {
+			return a[i].Name < a[j].Name
+		}
+		return a[i].Id < a[j].Id
+	})
+}
+
+func loadExpected(ctx context.Context, t *testing.T, testCase *collectTestCase, db *sql.DB, testRecords []*entity) (func(err error), []*entity, error) {
+	// checking db contenet
+	var err error
+	SQL := "SELECT foo_id, foo_name, bar FROM " + testCase.table + " ORDER BY foo_id"
+	var rows *sql.Rows
+	rows, err = db.QueryContext(ctx, SQL)
+	onDone := func(err error) { io.MergeErrorIfNeeded(rows.Close, &err) }
+	assert.Nil(t, err, testCase.description)
+	recordsFromDB := make([]*entity, len(testRecords))
+
+	i := 0
+	for rows.Next() {
+		recordsFromDB[i] = &entity{}
+		err = rows.Scan(&recordsFromDB[i].Id, &recordsFromDB[i].Name, &recordsFromDB[i].Bar)
+		i++
+		if !assert.Nil(t, err, testCase.description) {
+			return nil, nil, nil
+		}
+	}
+	return onDone, recordsFromDB, err
 }
 
 func createTestRecords(count int) []*entity {
