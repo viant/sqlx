@@ -23,9 +23,8 @@ type (
 
 	// State represents state of batch
 	State struct {
-		err      error
-		lock     sync.Mutex
-		BatchPtr *Batch
+		err  error
+		lock sync.Mutex
 	}
 )
 
@@ -50,7 +49,6 @@ func (b *Batch) TryAcquire() bool {
 func (b *Batch) init() {
 	b.started = time.Now()
 	b.state.lock.Lock()
-	b.state.BatchPtr = b
 	b.count = 0
 	b.flushed = 0
 }
