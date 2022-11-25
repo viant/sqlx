@@ -145,18 +145,19 @@ func TestService_NextSequenceValue(t *testing.T) {
 	}
 }
 
-func getTestConfig(t *testing.T) (dsn, dbname string, shallSkip bool) {
+func getTestConfig(t *testing.T) (dsn, dnsSchema string, shallSkip bool) {
 	dsn = os.Getenv("TEST_MYSQL_DSN")
 	if dsn == "" {
 		t.Skip("set TEST_MYSQL_DSN before running test")
 		return "", "", true
 	}
-	dbname = os.Getenv("TEST_MYSQL_DSN_SCHEMA")
-	if dsn == "" {
+
+	dnsSchema = os.Getenv("TEST_MYSQL_DSN_SCHEMA")
+	if dnsSchema == "" {
 		t.Skip("set TEST_MYSQL_DSN_SCHEMA before running test")
 		return "", "", true
 	}
-	return dsn, dbname, false
+	return dsn, dnsSchema, false
 }
 
 func dmlBuilder(recordCount int64, sql *sqlx.SQL) func(sequence *sink.Sequence) (*sqlx.SQL, error) {
