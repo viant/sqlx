@@ -10,11 +10,15 @@ import (
 )
 
 //Columns returns table columns
-func Columns(ctx context.Context, session *sink.Session, db *sql.DB, table string) ([]sink.Column, error) {
+func Columns(ctx context.Context, session *sink.Session, db *sql.DB, table string, options ...option.Option) ([]sink.Column, error) {
 	meta := metadata.New()
 
 	tableColumns := make([]sink.Column, 0)
-	err := meta.Info(ctx, db, info.KindTable, &tableColumns, option.NewArgs(session.Catalog, session.Schema, table))
+	if options == nil {
+		options = make(option.Options, 0)
+	}
+	options = append(options, option.NewArgs(session.Catalog, session.Schema, table))
+	err := meta.Info(ctx, db, info.KindTable, &tableColumns, options...)
 
 	return tableColumns, err
 }

@@ -54,7 +54,12 @@ func (s *Service) NextSequence(ctx context.Context, any interface{}, recordCount
 	if err != nil {
 		return nil, err
 	}
+
 	var batchRecordBuffer = make([]interface{}, batchSize*len(sess.columns))
+	if options == nil {
+		options = make(option.Options, 0)
+	}
+	options = append(options, sess.Dialect)
 	return s.nextSequence(ctx, sess, record, batchRecordBuffer, recordCount, options)
 }
 
@@ -76,6 +81,12 @@ func (s *Service) Exec(ctx context.Context, any interface{}, options ...option.O
 	if err != nil {
 		return 0, 0, err
 	}
+
+	if options == nil {
+		options = make(option.Options, 0)
+	}
+	options = append(options, sess.Dialect)
+
 	var batchRecordBuffer = make([]interface{}, batchSize*len(sess.columns))
 	var identities = make([]interface{}, batchSize)
 	defGenerator, err := generator.NewDefault(ctx, sess.Dialect, s.db, sess.info)
@@ -202,6 +213,8 @@ func (s *Service) maxIDSQLBuilder(sess *session) func() *sqlx.SQL {
 		}
 	}
 }
+
+// NewSession creates a new session
 func (s *Service) NewSession(ctx context.Context, record interface{}, batchSize int) (*session, error) {
 	s.mux.Lock()
 	defer s.mux.Unlock()
@@ -222,15 +235,23 @@ func (s *Service) NewSession(ctx context.Context, record interface{}, batchSize 
 		}, nil
 	}
 
-	metaSession, err := config.Session(ctx, s.db)
+	dialect, err := config.Dialect(ctx, s.db)
 	if err != nil {
 		return nil, err
 	}
 
+	metaSession, err := config.Session(ctx, s.db, dialect)
+	if err != nil {
+		return nil, err
+	}
+
+	conf := config.New(s.tableName)
+	conf.Dialect = dialect
+
 	result := &session{
 		rType:     rType,
 		batchSize: batchSize,
-		Config:    config.New(s.tableName),
+		Config:    conf,
 		sequence:  sink.Sequence{IncrementBy: 1},
 		info:      metaSession,
 		db:        s.db,

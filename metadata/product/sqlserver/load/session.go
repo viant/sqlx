@@ -104,14 +104,18 @@ func (s *Session) Exec(ctx context.Context, data interface{}, db *sql.DB, tableN
 func (s *Session) getMetaColumns(db *sql.DB, tableName string) ([]io.Column, error) {
 	meta := metadata.New()
 
+	options := option.Options{s.dialect}
+
 	resSchema := sink.Schema{}
-	err := meta.Info(context.TODO(), db, info.KindCurrentSchema, &resSchema)
+	err := meta.Info(context.TODO(), db, info.KindCurrentSchema, &resSchema, options...)
 	if err != nil {
 		return nil, err
 	}
 
+	options = append(options, option.NewArgs(resSchema.Catalog, resSchema.Name, tableName))
+
 	resColumn := []sink.Column{}
-	err = meta.Info(context.TODO(), db, info.KindTable, &resColumn, option.NewArgs(resSchema.Catalog, resSchema.Name, tableName))
+	err = meta.Info(context.TODO(), db, info.KindTable, &resColumn, options...)
 	if err != nil {
 		return nil, err
 	}

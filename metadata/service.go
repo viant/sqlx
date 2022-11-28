@@ -23,6 +23,14 @@ type (
 	}
 )
 
+func (s *Service) setService(db *sql.DB, product *database.Product) {
+	if s.recent.db == nil || s.recent.db != db || s.recent.product == nil || s.recent.product != product || s.dialect == nil {
+		s.recent.db = db
+		s.recent.product = product
+		s.dialect = registry.LookupDialect(product)
+	}
+}
+
 //DetectProduct detect product for supplied *sql.DB
 func (s *Service) DetectProduct(ctx context.Context, db *sql.DB) (*database.Product, error) {
 	if product := s.recent.match(db); product != nil {
@@ -66,11 +74,13 @@ func (s *Service) Execute(ctx context.Context, db *sql.DB, kind info.Kind, optio
 func (s *Service) Info(ctx context.Context, db *sql.DB, kind info.Kind, sink Sink, options ...option.Option) error {
 	var err error
 
-	product := &database.Product{}
-	if !option.Assign(options, product) {
+	product := option.Options.Product(options)
+	if product == nil {
 		if product, err = s.DetectProduct(ctx, db); err != nil {
 			return err
 		}
+	} else {
+		s.setService(db, product)
 	}
 
 	queries := registry.Lookup(product.Name, kind)
@@ -176,6 +186,7 @@ func (s *Service) runQuery(ctx context.Context, db *sql.DB, query *info.Query, s
 	tx := option.Options.Tx(options)
 	args := &option.Args{}
 	option.Assign(options, &args)
+	// placeholder can be different i.e. @p for sqlserver
 	placeholderGetter := func() string {
 		return "?"
 	}

@@ -253,7 +253,7 @@ func (s *session) lastInsertedIdentity(values []interface{}, result sql.Result) 
 //updateSequence updates session sequence
 func (s *session) updateSequence(ctx context.Context, sequenceName string) {
 	meta := metadata.New()
-	options := append([]option.Option{}, option.NewArgs(s.info.Catalog, s.info.Schema, sequenceName))
+	options := []option.Option{option.NewArgs(s.info.Catalog, s.info.Schema, sequenceName), s.Dialect}
 	_ = meta.Info(ctx, s.db, info.KindSequences, &s.sequence, options...)
 }
 

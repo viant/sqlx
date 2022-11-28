@@ -70,7 +70,7 @@ func (r *registry) LookupDialect(product *database.Product) *info.Dialect {
 			return candidate
 		}
 		if candidate.Major <= product.Major {
-			if result == nil {
+			if result == nil { // TODO IF WE DON'T HAVE THE SAME MAJOR VERSION, WE DON'T GET MAX(candidate.Major)
 				result = candidate
 			}
 			if candidate.Major == product.Major {
