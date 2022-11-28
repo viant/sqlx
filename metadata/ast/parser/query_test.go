@@ -18,6 +18,11 @@ func TestParseSelect(t *testing.T) {
 		}{
 
 			{
+				description: "fun call",
+				SQL:         `SELECT TOUPPER(name) AS Name FROM user u`,
+				expect:      `SELECT TOUPPER(name) AS Name FROM user u`,
+			},
+			{
 				description: "comments",
 				SQL:         `SELECT user.* FROM user u -- extra comments `,
 				expect:      `SELECT user.* FROM user u`,
