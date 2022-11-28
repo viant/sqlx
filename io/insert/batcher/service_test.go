@@ -48,9 +48,12 @@ func TestService_Collect(t *testing.T) {
 		return
 	}
 
+	fmt.Println("#######")
+	fmt.Println(dsn)
+
 	aInitSQL := []string{
-		"DROP TABLE IF EXISTS t1",
-		"CREATE TABLE t1 ( foo_id INTEGER AUTO_INCREMENT PRIMARY KEY, foo_name TEXT, bar INTEGER)",
+		"DROP TABLE IF EXISTS t21",
+		"CREATE TABLE t21 ( foo_id INTEGER AUTO_INCREMENT PRIMARY KEY, foo_name TEXT, bar INTEGER)",
 	}
 	aOptions := []option.Option{
 		option.BatchSize(2),
@@ -60,7 +63,7 @@ func TestService_Collect(t *testing.T) {
 	var useCases = []*collectTestCase{
 		{
 			description:        "1 - Collect - Concurrency: true, recordsCnt: 50, batchMaxElements: 1, batchMaxDurationMs: 1, BatchSize: 2",
-			table:              "t1",
+			table:              "t21",
 			initSQL:            aInitSQL,
 			recordsCnt:         50,
 			batchMaxElements:   1,
@@ -70,7 +73,7 @@ func TestService_Collect(t *testing.T) {
 		},
 		{
 			description:        "2 - Collect - Concurrency: false, recordsCnt: 50, batchMaxElements: 1, batchMaxDurationMs: 1, BatchSize: 2",
-			table:              "t1",
+			table:              "t21",
 			initSQL:            aInitSQL,
 			recordsCnt:         50,
 			batchMaxElements:   1,
@@ -80,7 +83,7 @@ func TestService_Collect(t *testing.T) {
 		},
 		{
 			description:        "3 - Collect - Concurrency: true, recordsCnt: 100, batchMaxElements: 33, batchMaxDurationMs: 1, BatchSize: 2",
-			table:              "t1",
+			table:              "t21",
 			initSQL:            aInitSQL,
 			recordsCnt:         100,
 			batchMaxElements:   33,
@@ -90,7 +93,7 @@ func TestService_Collect(t *testing.T) {
 		},
 		{
 			description:        "4 - Collect - Concurrency: false, recordsCnt: 100, batchMaxElements: 33, batchMaxDurationMs: 1, BatchSize: 2",
-			table:              "t1",
+			table:              "t21",
 			initSQL:            aInitSQL,
 			recordsCnt:         100,
 			batchMaxElements:   33,
@@ -100,7 +103,7 @@ func TestService_Collect(t *testing.T) {
 		},
 		{
 			description:        "5 - Collect - Concurrency: true, recordsCnt: 200, batchMaxElements: 100, batchMaxDurationMs: 500, BatchSize: 100",
-			table:              "t1",
+			table:              "t21",
 			initSQL:            aInitSQL,
 			recordsCnt:         200,
 			batchMaxElements:   100,
@@ -113,7 +116,7 @@ func TestService_Collect(t *testing.T) {
 		},
 		{
 			description:        "6 - Collect - Concurrency: false, recordsCnt: 200, batchMaxElements: 100, batchMaxDurationMs: 500, BatchSize: 100",
-			table:              "t1",
+			table:              "t21",
 			initSQL:            aInitSQL,
 			recordsCnt:         200,
 			batchMaxElements:   100,
@@ -126,7 +129,7 @@ func TestService_Collect(t *testing.T) {
 		},
 		{
 			description:        "7 - Collect - Concurrency: true, recordsCnt: 200, batchMaxElements: 1000, batchMaxDurationMs: 100, BatchSize: 100",
-			table:              "t1",
+			table:              "t21",
 			initSQL:            aInitSQL,
 			recordsCnt:         200,
 			batchMaxElements:   1000,
@@ -139,7 +142,7 @@ func TestService_Collect(t *testing.T) {
 		},
 		{
 			description:        "8 - Collect - Concurrency: false, recordsCnt: 200, batchMaxElements: 1000, batchMaxDurationMs: 100, BatchSize: 100",
-			table:              "t1",
+			table:              "t21",
 			initSQL:            aInitSQL,
 			recordsCnt:         200,
 			batchMaxElements:   1000,
@@ -152,11 +155,13 @@ func TestService_Collect(t *testing.T) {
 		},
 	}
 	db, err := sql.Open(driver, dsn)
-	ctx := context.TODO()
-	if !assert.Nil(t, db) {
+	defer db.Close()
+	if !assert.Nil(t, err) {
 		return
 	}
-	defer db.Close()
+
+	ctx := context.TODO()
+
 	for _, testCase := range useCases {
 
 		for _, SQL := range testCase.initSQL {
