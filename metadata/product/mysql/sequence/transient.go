@@ -37,16 +37,29 @@ func (n *Transient) Handle(ctx context.Context, db *sql.DB, target interface{}, 
 	}
 	defer io.MergeErrorIfNeeded(tx.Rollback, &err)
 
-	options = append(options, tx)
-	if err = n.lock(ctx, meta, db, options); err != nil {
+	lockingOptions := option.Options{argsOps, tx}
+	product := option.Options.Product(options)
+	if product != nil {
+		lockingOptions = append(lockingOptions, product)
+	}
+
+	if err = n.lock(ctx, meta, db, lockingOptions); err != nil {
 		return false, err
 	}
-	fn := func() error { return n.unlock(ctx, meta, db, options) }
+	fn := func() error { return n.unlock(ctx, meta, db, lockingOptions) }
 	defer io.MergeErrorIfNeeded(fn, &err)
 
 	sequence := sink.Sequence{}
+	arguments := argsOps.Unwrap()
+	if len(arguments) < 3 {
+		return false, fmt.Errorf("unable to get sequence's metadata due to: len(arguments) < 3")
+	}
 
-	err = meta.Info(ctx, db, info.KindSequences, &sequence, options...)
+	sequence.Catalog = arguments[0].(string)
+	sequence.Schema = arguments[1].(string)
+	sequence.Name = arguments[2].(string)
+	err = updateSequence(ctx, db, &sequence, tx)
+
 	if err != nil {
 		return false, err
 	}

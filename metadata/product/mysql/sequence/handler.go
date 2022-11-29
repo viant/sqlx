@@ -11,6 +11,7 @@ import (
 )
 
 const autoincrementAssignment = "AUTO_INCREMENT="
+const autoincrementColumnDef = " NOT NULL AUTO_INCREMENT,"
 
 // UpdateMySQLSequence updates for all passed sink.Sequences theirs Value or StartValue
 // getting autoincrement metadata by: SHOW CREATE TABLE ...,  @@SESSION.auto_increment_increment, @@SESSION.auto_increment_offset
@@ -52,6 +53,14 @@ func updateSequence(ctx context.Context, db *sql.DB, sequence *sink.Sequence, tx
 				return fmt.Errorf("invalue sequence value: %w, %v", err, seqValueFragment)
 			}
 			sequence.Value = int64(value)
+		}
+	}
+
+	if indexEnd := strings.Index(DDL, autoincrementColumnDef); indexEnd != -1 {
+		colTypeEndedFragment := DDL[:indexEnd]
+		if indexStart := strings.LastIndex(colTypeEndedFragment, " "); indexStart != -1 {
+			colType := colTypeEndedFragment[indexStart+1:]
+			sequence.DataType = colType
 		}
 	}
 

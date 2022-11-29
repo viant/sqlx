@@ -108,23 +108,15 @@ func TestService_NextSequenceValue(t *testing.T) {
 				return
 			}
 
-			tx, err := db.BeginTx(ctx, nil)
-			defer func() {
-				if err != nil {
-					_ = tx.Rollback()
-				}
-				_ = tx.Commit()
-			}()
-
 			for _, SQL := range testCase.initSQL {
-				_, err := tx.Exec(SQL)
+				_, err := db.Exec(SQL)
 				if !assert.Nil(t, err, testCase.description) {
 					return
 				}
 			}
+			options := testCase.options
 
 			nextSequence := &sink.Sequence{}
-			options := append(testCase.options, tx)
 			err = meta.Info(ctx, db, info.KindSequenceNextValue, nextSequence, options...)
 			if !assert.Nil(t, err, testCase.description) {
 				return

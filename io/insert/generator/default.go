@@ -30,7 +30,7 @@ type Default struct {
 func NewDefault(ctx context.Context, dialect *info.Dialect, db *sql.DB, session *sink.Session) (*Default, error) {
 	if session == nil {
 		var err error
-		if session, err = config.Session(ctx, db); err != nil {
+		if session, err = config.Session(ctx, db, dialect); err != nil {
 			return nil, err
 		}
 	}
@@ -145,7 +145,7 @@ func (d *Default) prepare(ctx context.Context, rType reflect.Type, table string)
 }
 
 func (d *Default) loadColumnsInfo(ctx context.Context, table string) ([]sink.Column, error) {
-	return config.Columns(ctx, d.session, d.db, table)
+	return config.Columns(ctx, d.session, d.db, table, d.dialect)
 }
 
 func (d *Default) flush(ctx context.Context, values []interface{}, offset int, limit int, at func(index int) interface{}) error {

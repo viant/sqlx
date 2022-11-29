@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-// Service represents collector service
+// Service represents batcher service
 type Service struct {
 	inserter   *insert.Service
 	config     *config
@@ -97,13 +97,13 @@ func (s *Service) tryFlush(aBatch *Batch) {
 	}
 }
 
-//New creates a collector service
+//New creates a batcher service
 func New(ctx context.Context, inserter *insert.Service, rType reflect.Type, maxElements int, maxDurationMs int, options ...option.Option) (*Service, error) {
 
 	provider := func() interface{} {
 		return NewBatch(rType, maxElements, maxDurationMs)
 	}
-	collector := &Service{
+	service := &Service{
 		inserter: inserter,
 		batch:    nil,
 		config: &config{
@@ -116,5 +116,5 @@ func New(ctx context.Context, inserter *insert.Service, rType reflect.Type, maxE
 		options:   options,
 	}
 
-	return collector, nil
+	return service, nil
 }
