@@ -185,7 +185,7 @@ func (s *Service) transientDMLBuilder(sess *session, record interface{}, batchRe
 		sess.binder(record, batchRecordBuffer, 0, len(sess.columns))
 
 		values := make([]interface{}, len(sess.columns))
-		copy(values, batchRecordBuffer[0:len(sess.columns)-2]) // don't copy ID pointer (last position in slice)
+		copy(values, batchRecordBuffer[0:len(sess.columns)-1]) // don't copy ID pointer (last position in slice)
 
 		oldValue := sequence.Value
 		sequence.Value = sequence.NextValue(recordCount)

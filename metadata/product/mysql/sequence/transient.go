@@ -76,7 +76,6 @@ func (n *Transient) Handle(ctx context.Context, db *sql.DB, target interface{}, 
 	if transientDML == nil {
 		return false, fmt.Errorf("transientDML was empty")
 	}
-
 	_, err = tx.ExecContext(ctx, transientDML.Query, transientDML.Args...)
 	if err != nil {
 		return false, err
