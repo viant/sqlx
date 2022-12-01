@@ -5,6 +5,7 @@ import (
 	"github.com/viant/sqlx"
 	"github.com/viant/sqlx/metadata/database"
 	"github.com/viant/sqlx/metadata/info"
+	"github.com/viant/sqlx/metadata/info/dialect"
 	"github.com/viant/sqlx/metadata/sink"
 	"strings"
 	"unsafe"
@@ -52,8 +53,8 @@ func (o Options) Dialect() *info.Dialect {
 		return nil
 	}
 	for _, candidate := range o {
-		if dialect, ok := candidate.(*info.Dialect); ok {
-			return dialect
+		if aDialect, ok := candidate.(*info.Dialect); ok {
+			return aDialect
 		}
 	}
 	return nil
@@ -65,8 +66,8 @@ func (o Options) Product() *database.Product {
 		return nil
 	}
 	for _, candidate := range o {
-		if dialect, ok := candidate.(*info.Dialect); ok {
-			return &dialect.Product
+		if aDialect, ok := candidate.(*info.Dialect); ok {
+			return &aDialect.Product
 		}
 		if product, ok := candidate.(*database.Product); ok {
 			return product
@@ -195,8 +196,8 @@ func (o Options) SQL() *sqlx.SQL {
 		return nil
 	}
 	for _, candidate := range o {
-		if dialect, ok := candidate.(*sqlx.SQL); ok {
-			return dialect
+		if aDialect, ok := candidate.(*sqlx.SQL); ok {
+			return aDialect
 		}
 	}
 	return nil
@@ -229,16 +230,16 @@ func (o Options) MaxIDSQLBuilder() func() *sqlx.SQL {
 }
 
 // PresetIDStrategy returns PresetIDStrategy option
-func (o Options) PresetIDStrategy() PresetIDStrategy {
+func (o Options) PresetIDStrategy() dialect.PresetIDStrategy {
 	if len(o) == 0 {
-		return PresetIDStrategyUndefined
+		return dialect.PresetIDStrategyUndefined
 	}
 	for _, candidate := range o {
-		if value, ok := candidate.(PresetIDStrategy); ok {
+		if value, ok := candidate.(dialect.PresetIDStrategy); ok {
 			return value
 		}
 	}
-	return PresetIDStrategyUndefined
+	return dialect.PresetIDStrategyUndefined
 }
 
 // Interfaces returns current options as interfaces
@@ -250,17 +251,6 @@ func (o Options) Interfaces() []interface{} {
 func AsOptions(options []interface{}) Options {
 	return *(*Options)(unsafe.Pointer(&options))
 }
-
-// PresetIDStrategy represents strategy of presetting identities
-type PresetIDStrategy string
-
-// PresetIDStrategyUndefined and others, represent presetting identities strategies
-const (
-	PresetIDStrategyUndefined        = PresetIDStrategy("undefined")
-	PresetIDWithTransientTransaction = PresetIDStrategy("transient")
-	PresetIDWithUDFSequence          = PresetIDStrategy("udf")
-	PresetIDWithMax                  = PresetIDStrategy("maxid")
-)
 
 // Args returns *Args option
 func (o Options) Args() *Args {

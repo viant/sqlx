@@ -255,18 +255,19 @@ WHERE pid=pg_backend_pid() LIMIT 1;
 	}
 
 	registry.RegisterDialect(&info.Dialect{
-		Product:             pgSQL9,
-		Placeholder:         "$",
-		Transactional:       true,
-		Insert:              dialect.InsertWithMultiValues,
-		Upsert:              dialect.UpsertTypeMergeInto,
-		Load:                dialect.LoadTypeUnsupported,
-		CanAutoincrement:    true,
-		CanLastInsertID:     false,
-		CanReturning:        true,
-		QuoteCharacter:      '\'',
-		PlaceholderResolver: &PlaceholderGenerator{},
-		AutoincrementFunc:   "nextval",
+		Product:                 pgSQL9,
+		Placeholder:             "$",
+		Transactional:           true,
+		Insert:                  dialect.InsertWithMultiValues,
+		Upsert:                  dialect.UpsertTypeMergeInto,
+		Load:                    dialect.LoadTypeUnsupported,
+		CanAutoincrement:        true,
+		CanLastInsertID:         false,
+		CanReturning:            true,
+		QuoteCharacter:          '\'',
+		PlaceholderResolver:     &PlaceholderGenerator{},
+		AutoincrementFunc:       "nextval",
+		DefaultPresetIDStrategy: dialect.PresetIDStrategyUndefined,
 	})
 
 }

@@ -7,6 +7,7 @@ import (
 	"github.com/viant/sqlx/io"
 	"github.com/viant/sqlx/metadata"
 	"github.com/viant/sqlx/metadata/info"
+	"github.com/viant/sqlx/metadata/info/dialect"
 	"github.com/viant/sqlx/metadata/sink"
 	"github.com/viant/sqlx/option"
 )
@@ -122,5 +123,5 @@ func (n *Transient) unlock(ctx context.Context, meta *metadata.Service, db *sql.
 // CanUse returns true if Handle function can be executed
 func (n *Transient) CanUse(iopts ...interface{}) bool {
 	options := option.AsOptions(iopts)
-	return options.PresetIDStrategy() == option.PresetIDWithTransientTransaction
+	return options.PresetIDStrategy() == dialect.PresetIDWithTransientTransaction
 }

@@ -20,13 +20,14 @@ var ANSI = database.Product{
 
 func init() {
 	registry.RegisterDialect(&info.Dialect{
-		Product:             ANSI,
-		Placeholder:         "?",
-		Transactional:       true,
-		Insert:              dialect.InsertWithSingleValues,
-		Upsert:              dialect.UpsertTypeUnsupported,
-		Load:                dialect.LoadTypeUnsupported,
-		PlaceholderResolver: &placeholder.DefaultGenerator{},
+		Product:                 ANSI,
+		Placeholder:             "?",
+		Transactional:           true,
+		Insert:                  dialect.InsertWithSingleValues,
+		Upsert:                  dialect.UpsertTypeUnsupported,
+		Load:                    dialect.LoadTypeUnsupported,
+		PlaceholderResolver:     &placeholder.DefaultGenerator{},
+		DefaultPresetIDStrategy: dialect.PresetIDStrategyUndefined,
 	})
 }
 

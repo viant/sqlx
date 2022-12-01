@@ -494,17 +494,18 @@ FROM @T
 		log.Printf("failed to register queries: %v", err)
 	}
 	registry.RegisterDialect(&info.Dialect{
-		Product:             sqlServer,
-		Placeholder:         "@p",
-		Transactional:       true,
-		Insert:              dialect.InsertWithMultiValues,
-		Upsert:              dialect.UpsertTypeMergeInto,
-		Load:                dialect.LoadTypeLocalData,
-		QuoteCharacter:      '\'',
-		CanAutoincrement:    true,
-		CanLastInsertID:     false, //TODO ???
-		AutoincrementFunc:   "",
-		PlaceholderResolver: new(PlaceHolderGenerator),
+		Product:                 sqlServer,
+		Placeholder:             "@p",
+		Transactional:           true,
+		Insert:                  dialect.InsertWithMultiValues,
+		Upsert:                  dialect.UpsertTypeMergeInto,
+		Load:                    dialect.LoadTypeLocalData,
+		QuoteCharacter:          '\'',
+		CanAutoincrement:        true,
+		CanLastInsertID:         false, //TODO ???
+		AutoincrementFunc:       "",
+		PlaceholderResolver:     new(PlaceHolderGenerator),
+		DefaultPresetIDStrategy: dialect.PresetIDStrategyUndefined,
 	})
 }
 

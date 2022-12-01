@@ -2,6 +2,7 @@ package batcher
 
 import (
 	"context"
+	"fmt"
 	"github.com/viant/sqlx/io/insert"
 	"github.com/viant/sqlx/option"
 	"reflect"
@@ -10,22 +11,29 @@ import (
 	"time"
 )
 
+const (
+	defaultMaxDurationMs = 40
+	defaultMaxElements   = 10000000
+	defaultBatchSize     = 100
+)
+
 // Service represents batcher service
 type Service struct {
 	inserter   *insert.Service
-	config     *config
+	RecordType reflect.Type
+	config     *Config
 	batch      *Batch
 	batchPool  *pool
 	mux        sync.Mutex
 	ctx        context.Context
-	options    []option.Option
 	isWatching int32
 }
 
-type config struct {
-	recordType    reflect.Type
-	maxElements   int
-	maxDurationMs int
+// Config represents batcher's config
+type Config struct {
+	MaxElements   int
+	MaxDurationMs int
+	BatchSize     int
 }
 
 // CanFlush checks possibility of flushing batch
@@ -61,7 +69,7 @@ func (s *Service) Collect(recPtr interface{}) (*State, error) {
 }
 
 func (s *Service) monitorBatchExpiry() {
-	sleepTime := time.Millisecond * time.Duration(s.config.maxDurationMs) / 2
+	sleepTime := time.Millisecond * time.Duration(s.config.MaxDurationMs) / 2
 	for {
 		if s.checkBatchExpiry() {
 			return
@@ -91,29 +99,44 @@ func (s *Service) checkBatchExpiry() bool {
 
 func (s *Service) tryFlush(aBatch *Batch) {
 	if atomic.CompareAndSwapInt32(&aBatch.flushed, 0, 1) {
-		_, _, err := s.inserter.Exec(s.ctx, aBatch.collection.newSlice, s.options...)
+		_, _, err := s.inserter.Exec(s.ctx, aBatch.collection.newSlice, option.BatchSize(s.config.BatchSize))
 		aBatch.state.err = err
 		s.batchPool.Put(aBatch)
 	}
 }
 
 //New creates a batcher service
-func New(ctx context.Context, inserter *insert.Service, rType reflect.Type, maxElements int, maxDurationMs int, options ...option.Option) (*Service, error) {
+func New(ctx context.Context, inserter *insert.Service, rType reflect.Type, config *Config) (*Service, error) {
+	if config == nil {
+		return nil, fmt.Errorf("batcher's config is nil")
+	}
+	if inserter == nil {
+		return nil, fmt.Errorf("batcher's inserter is nil")
+	}
+	if rType == nil {
+		return nil, fmt.Errorf("batcher's rType is nil")
+	}
+
+	if config.MaxDurationMs == 0 {
+		config.MaxDurationMs = defaultMaxDurationMs
+	}
+	if config.MaxElements == 0 {
+		config.MaxElements = defaultMaxElements
+	}
+	if config.BatchSize == 0 {
+		config.BatchSize = defaultBatchSize
+	}
 
 	provider := func() interface{} {
-		return NewBatch(rType, maxElements, maxDurationMs)
+		return NewBatch(rType, config.MaxElements, config.MaxDurationMs)
 	}
 	service := &Service{
-		inserter: inserter,
-		batch:    nil,
-		config: &config{
-			recordType:    rType,
-			maxElements:   maxElements,
-			maxDurationMs: maxDurationMs,
-		},
-		batchPool: newPool(provider),
-		ctx:       ctx,
-		options:   options,
+		inserter:   inserter,
+		RecordType: rType,
+		batch:      nil,
+		config:     config,
+		batchPool:  newPool(provider),
+		ctx:        ctx,
 	}
 
 	return service, nil

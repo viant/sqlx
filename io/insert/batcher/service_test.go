@@ -10,7 +10,6 @@ import (
 	"github.com/viant/sqlx/io/insert"
 	"github.com/viant/sqlx/io/insert/batcher"
 	_ "github.com/viant/sqlx/metadata/product/mysql"
-	"github.com/viant/sqlx/option"
 	"github.com/viant/toolbox"
 	"math/rand"
 	"os"
@@ -23,18 +22,16 @@ import (
 )
 
 type collectTestCase struct {
-	description        string
-	table              string
-	initSQL            []string
-	recordsCnt         int
-	batchMaxElements   int
-	batchMaxDurationMs int
-	options            []option.Option
-	concurrency        bool
+	description string
+	table       string
+	initSQL     []string
+	recordsCnt  int
+	config      *batcher.Config
+	concurrency bool
 }
 
 type entity struct {
-	Id   int    `sqlx:"name=foo_id,primaryKey=true,generator=autoincrement"`
+	ID   int    `sqlx:"name=foo_id,primaryKey=true,generator=autoincrement"`
 	Name string `sqlx:"foo_name"`
 	Bar  float64
 }
@@ -48,114 +45,113 @@ func TestService_Collect(t *testing.T) {
 		return
 	}
 
-	fmt.Println("#######")
-	fmt.Println(dsn)
-
 	aInitSQL := []string{
 		"DROP TABLE IF EXISTS t21",
 		"CREATE TABLE t21 ( foo_id INTEGER AUTO_INCREMENT PRIMARY KEY, foo_name TEXT, bar INTEGER)",
 	}
-	aOptions := []option.Option{
-		option.BatchSize(2),
-		option.PresetIDWithTransientTransaction,
-	}
 
 	var useCases = []*collectTestCase{
 		{
-			description:        "1 - Collect - Concurrency: true, recordsCnt: 50, batchMaxElements: 1, batchMaxDurationMs: 1, BatchSize: 2",
-			table:              "t21",
-			initSQL:            aInitSQL,
-			recordsCnt:         50,
-			batchMaxElements:   1,
-			batchMaxDurationMs: 1,
-			options:            aOptions,
-			concurrency:        true,
-		},
-		{
-			description:        "2 - Collect - Concurrency: false, recordsCnt: 50, batchMaxElements: 1, batchMaxDurationMs: 1, BatchSize: 2",
-			table:              "t21",
-			initSQL:            aInitSQL,
-			recordsCnt:         50,
-			batchMaxElements:   1,
-			batchMaxDurationMs: 1,
-			options:            aOptions,
-			concurrency:        false,
-		},
-		{
-			description:        "3 - Collect - Concurrency: true, recordsCnt: 100, batchMaxElements: 33, batchMaxDurationMs: 1, BatchSize: 2",
-			table:              "t21",
-			initSQL:            aInitSQL,
-			recordsCnt:         100,
-			batchMaxElements:   33,
-			batchMaxDurationMs: 1,
-			options:            aOptions,
-			concurrency:        true,
-		},
-		{
-			description:        "4 - Collect - Concurrency: false, recordsCnt: 100, batchMaxElements: 33, batchMaxDurationMs: 1, BatchSize: 2",
-			table:              "t21",
-			initSQL:            aInitSQL,
-			recordsCnt:         100,
-			batchMaxElements:   33,
-			batchMaxDurationMs: 1,
-			options:            aOptions,
-			concurrency:        false,
-		},
-		{
-			description:        "5 - Collect - Concurrency: true, recordsCnt: 200, batchMaxElements: 100, batchMaxDurationMs: 500, BatchSize: 100",
-			table:              "t21",
-			initSQL:            aInitSQL,
-			recordsCnt:         200,
-			batchMaxElements:   100,
-			batchMaxDurationMs: 50,
-			options: []option.Option{
-				option.BatchSize(100),
-				option.PresetIDWithTransientTransaction,
+			description: "1 - Collect - Concurrency: true, recordsCnt: 50, MaxElements: 1, MaxDurationMs: 1, BatchSize: 2",
+			table:       "t21",
+			initSQL:     aInitSQL,
+			recordsCnt:  50,
+			config: &batcher.Config{
+				MaxElements:   1,
+				MaxDurationMs: 1,
+				BatchSize:     1,
 			},
 			concurrency: true,
 		},
 		{
-			description:        "6 - Collect - Concurrency: false, recordsCnt: 200, batchMaxElements: 100, batchMaxDurationMs: 500, BatchSize: 100",
-			table:              "t21",
-			initSQL:            aInitSQL,
-			recordsCnt:         200,
-			batchMaxElements:   100,
-			batchMaxDurationMs: 50,
-			options: []option.Option{
-				option.BatchSize(100),
-				option.PresetIDWithTransientTransaction,
+			description: "2 - Collect - Concurrency: false, recordsCnt: 50, MaxElements: 1, MaxDurationMs: 1, BatchSize: 2",
+			table:       "t21",
+			initSQL:     aInitSQL,
+			recordsCnt:  50,
+			config: &batcher.Config{
+				MaxElements:   1,
+				MaxDurationMs: 1,
+				BatchSize:     1,
 			},
 			concurrency: false,
 		},
 		{
-			description:        "7 - Collect - Concurrency: true, recordsCnt: 200, batchMaxElements: 1000, batchMaxDurationMs: 100, BatchSize: 100",
-			table:              "t21",
-			initSQL:            aInitSQL,
-			recordsCnt:         200,
-			batchMaxElements:   1000,
-			batchMaxDurationMs: 50,
-			options: []option.Option{
-				option.BatchSize(100),
-				option.PresetIDWithTransientTransaction,
+			description: "3 - Collect - Concurrency: true, recordsCnt: 100, MaxElements: 33, MaxDurationMs: 1, BatchSize: 2",
+			table:       "t21",
+			initSQL:     aInitSQL,
+			recordsCnt:  100,
+			config: &batcher.Config{
+				MaxElements:   33,
+				MaxDurationMs: 1,
+				BatchSize:     1,
 			},
 			concurrency: true,
 		},
 		{
-			description:        "8 - Collect - Concurrency: false, recordsCnt: 200, batchMaxElements: 1000, batchMaxDurationMs: 100, BatchSize: 100",
-			table:              "t21",
-			initSQL:            aInitSQL,
-			recordsCnt:         200,
-			batchMaxElements:   1000,
-			batchMaxDurationMs: 50,
-			options: []option.Option{
-				option.BatchSize(100),
-				option.PresetIDWithTransientTransaction,
+			description: "4 - Collect - Concurrency: false, recordsCnt: 100, MaxElements: 33, MaxDurationMs: 1, BatchSize: 2",
+			table:       "t21",
+			initSQL:     aInitSQL,
+			recordsCnt:  100,
+			config: &batcher.Config{
+				MaxElements:   33,
+				MaxDurationMs: 1,
+				BatchSize:     1,
+			},
+			concurrency: false,
+		},
+		{
+			description: "5 - Collect - Concurrency: true, recordsCnt: 200, MaxElements: 100, MaxDurationMs: 500, BatchSize: 100",
+			table:       "t21",
+			initSQL:     aInitSQL,
+			recordsCnt:  200,
+			config: &batcher.Config{
+
+				MaxElements:   100,
+				MaxDurationMs: 50,
+				BatchSize:     100,
+			},
+			concurrency: true,
+		},
+		{
+			description: "6 - Collect - Concurrency: false, recordsCnt: 200, MaxElements: 100, MaxDurationMs: 500, BatchSize: 100",
+			table:       "t21",
+			initSQL:     aInitSQL,
+			recordsCnt:  200,
+			config: &batcher.Config{
+
+				MaxElements:   100,
+				MaxDurationMs: 50,
+				BatchSize:     100,
+			},
+			concurrency: false,
+		},
+		{
+			description: "7 - Collect - Concurrency: true, recordsCnt: 200, MaxElements: 1000, MaxDurationMs: 100, BatchSize: 100",
+			table:       "t21",
+			initSQL:     aInitSQL,
+			recordsCnt:  200,
+			config: &batcher.Config{
+				MaxElements:   1000,
+				MaxDurationMs: 50,
+				BatchSize:     100,
+			},
+			concurrency: true,
+		},
+		{
+			description: "8 - Collect - Concurrency: false, recordsCnt: 200, MaxElements: 1000, MaxDurationMs: 100, BatchSize: 100",
+			table:       "t21",
+			initSQL:     aInitSQL,
+			recordsCnt:  200,
+			config: &batcher.Config{
+				MaxElements:   1000,
+				MaxDurationMs: 50,
+				BatchSize:     100,
 			},
 			concurrency: false,
 		},
 	}
 	db, err := sql.Open(driver, dsn)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	if !assert.Nil(t, err) {
 		return
 	}
@@ -172,13 +168,13 @@ func TestService_Collect(t *testing.T) {
 		}
 
 		var inserter *insert.Service
-		inserter, err = insert.New(ctx, db, testCase.table, testCase.options...)
+		inserter, err = insert.New(ctx, db, testCase.table)
 		if !assert.Nil(t, err, testCase.description) {
 			return
 		}
 
 		var collectorSrv *batcher.Service
-		collectorSrv, err = batcher.New(ctx, inserter, reflect.TypeOf(&entity{}), testCase.batchMaxElements, testCase.batchMaxDurationMs, testCase.options...)
+		collectorSrv, err = batcher.New(ctx, inserter, reflect.TypeOf(&entity{}), testCase.config)
 		if !assert.Nil(t, err, testCase.description) {
 			return
 		}
@@ -213,9 +209,9 @@ func TestService_Collect(t *testing.T) {
 		wg.Wait()
 
 		for i, state := range states {
-			err = state.Error()
+			err = state.Wait()
 			if !assert.Nil(t, err, testCase.description) {
-				fmt.Printf("Error refers to the record nr %d:\n", i)
+				fmt.Printf("error refers to the record nr %d:\n", i)
 				toolbox.Dump(testRecords[i])
 			}
 		}
@@ -226,7 +222,7 @@ func TestService_Collect(t *testing.T) {
 		sortSlice(testRecords)
 		if testCase.concurrency {
 			for _, v := range testRecords {
-				assert.True(t, v.Id > 0, testCase.description)
+				assert.True(t, v.ID > 0, testCase.description)
 			}
 			if !assert.EqualValues(t, testRecords, expected, testCase.description) {
 				fmt.Println("## testRecords")
@@ -248,10 +244,10 @@ func TestService_Collect(t *testing.T) {
 
 func sortSlice(a []*entity) {
 	sort.Slice(a, func(i, j int) bool {
-		if a[i].Id == a[j].Id {
+		if a[i].ID == a[j].ID {
 			return a[i].Name < a[j].Name
 		}
-		return a[i].Id < a[j].Id
+		return a[i].ID < a[j].ID
 	})
 }
 
@@ -268,7 +264,7 @@ func loadExpected(ctx context.Context, t *testing.T, testCase *collectTestCase, 
 	i := 0
 	for rows.Next() {
 		recordsFromDB[i] = &entity{}
-		err = rows.Scan(&recordsFromDB[i].Id, &recordsFromDB[i].Name, &recordsFromDB[i].Bar)
+		err = rows.Scan(&recordsFromDB[i].ID, &recordsFromDB[i].Name, &recordsFromDB[i].Bar)
 		i++
 		if !assert.Nil(t, err, testCase.description) {
 			return nil, nil, nil
@@ -282,7 +278,7 @@ func createTestRecords(count int) []*entity {
 
 	for i := 0; i < count; i++ {
 		testRecords[i] = &entity{
-			Id:   0,
+			ID:   0,
 			Name: "Lu_" + strconv.Itoa(i),
 			Bar:  float64(i),
 		}

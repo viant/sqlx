@@ -10,6 +10,7 @@ import (
 	"github.com/viant/sqlx/io/insert/generator"
 	"github.com/viant/sqlx/metadata"
 	"github.com/viant/sqlx/metadata/info"
+	"github.com/viant/sqlx/metadata/info/dialect"
 	"github.com/viant/sqlx/metadata/sink"
 	"github.com/viant/sqlx/option"
 	"reflect"
@@ -85,6 +86,10 @@ func (s *Service) Exec(ctx context.Context, any interface{}, options ...option.O
 	if options == nil {
 		options = make(option.Options, 0)
 	}
+	options, err = s.ensurePresetIDStrategy(options, sess)
+	if err != nil {
+		return 0, 0, err
+	}
 	options = append(options, sess.Dialect)
 
 	var batchRecordBuffer = make([]interface{}, batchSize*len(sess.columns))
@@ -128,14 +133,42 @@ func (s *Service) Exec(ctx context.Context, any interface{}, options ...option.O
 	return rowsAffected, lastInsertedID, err
 }
 
+func (s *Service) ensurePresetIDStrategy(options []option.Option, sess *session) ([]option.Option, error) {
+	presetIDStrategy := option.Options(options).PresetIDStrategy()
+	if presetIDStrategy != dialect.PresetIDStrategyUndefined {
+		return options, nil
+	}
+
+	if sess.Dialect.DefaultPresetIDStrategy == "" {
+		return nil, fmt.Errorf("empty DefaultPresetIDStrategy")
+	}
+
+	if sess.Dialect.DefaultPresetIDStrategy != dialect.PresetIDStrategyUndefined {
+		options = append(options, sess.Dialect.DefaultPresetIDStrategy)
+	}
+
+	return options, nil
+}
+
 func (s *Service) nextSequence(ctx context.Context, sess *session, record interface{}, batchRecordBuffer []interface{}, recordCount int, options []option.Option) (*sink.Sequence, error) {
-	switch option.Options(options).PresetIDStrategy() {
-	case option.PresetIDStrategyUndefined:
+
+	presetIDStrategy := option.Options(options).PresetIDStrategy()
+
+	if presetIDStrategy == dialect.PresetIDStrategyUndefined {
+		presetIDStrategy = sess.Dialect.DefaultPresetIDStrategy
+	}
+
+	if presetIDStrategy == "" {
+		return nil, fmt.Errorf("empty DefaultPresetIDStrategy")
+	}
+
+	switch presetIDStrategy {
+	case dialect.PresetIDStrategyUndefined:
 		sess.shallPresetIdentities = false
 		return nil, nil
-	case option.PresetIDWithMax:
+	case dialect.PresetIDWithMax:
 		options = append(options, s.maxIDSQLBuilder(sess))
-	case option.PresetIDWithTransientTransaction:
+	case dialect.PresetIDWithTransientTransaction:
 		options = append(options, s.transientDMLBuilder(sess, record, batchRecordBuffer, int64(recordCount)))
 	}
 	sequenceName := s.getSequenceName(sess)
@@ -235,18 +268,18 @@ func (s *Service) NewSession(ctx context.Context, record interface{}, batchSize 
 		}, nil
 	}
 
-	dialect, err := config.Dialect(ctx, s.db)
+	aDialect, err := config.Dialect(ctx, s.db)
 	if err != nil {
 		return nil, err
 	}
 
-	metaSession, err := config.Session(ctx, s.db, dialect)
+	metaSession, err := config.Session(ctx, s.db, aDialect)
 	if err != nil {
 		return nil, err
 	}
 
 	conf := config.New(s.tableName)
-	conf.Dialect = dialect
+	conf.Dialect = aDialect
 
 	result := &session{
 		rType:     rType,

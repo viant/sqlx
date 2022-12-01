@@ -322,15 +322,16 @@ FROM V_MONITOR.SESSIONS`,
 	}
 
 	registry.RegisterDialect(&info.Dialect{
-		Product:           vertica,
-		Placeholder:       ":", // "@" or ":" for backward compatibility
-		Transactional:     true,
-		Insert:            dialect.InsertWithMultiValues,
-		Upsert:            dialect.UpsertTypeMergeInto,
-		Load:              dialect.LoadTypeLocalData,
-		QuoteCharacter:    '\'',
-		CanAutoincrement:  true,
-		CanLastInsertID:   true, // LAST_INSERT_ID works only with AUTO_INCREMENT and IDENTITY columns
-		AutoincrementFunc: "nextval",
+		Product:                 vertica,
+		Placeholder:             ":", // "@" or ":" for backward compatibility
+		Transactional:           true,
+		Insert:                  dialect.InsertWithMultiValues,
+		Upsert:                  dialect.UpsertTypeMergeInto,
+		Load:                    dialect.LoadTypeLocalData,
+		QuoteCharacter:          '\'',
+		CanAutoincrement:        true,
+		CanLastInsertID:         true, // LAST_INSERT_ID works only with AUTO_INCREMENT and IDENTITY columns
+		AutoincrementFunc:       "nextval",
+		DefaultPresetIDStrategy: dialect.PresetIDStrategyUndefined,
 	})
 }

@@ -207,14 +207,15 @@ FROM pragma_database_list
 	}
 
 	registry.RegisterDialect(&info.Dialect{
-		Product:          product,
-		Placeholder:      "?",
-		Transactional:    true,
-		QuoteCharacter:   '\'',
-		Insert:           dialect.InsertWithMultiValues,
-		Upsert:           dialect.UpsertTypeInsertOrReplace,
-		Load:             dialect.LoadTypeUnsupported,
-		CanAutoincrement: true,
-		CanLastInsertID:  true,
+		Product:                 product,
+		Placeholder:             "?",
+		Transactional:           true,
+		QuoteCharacter:          '\'',
+		Insert:                  dialect.InsertWithMultiValues,
+		Upsert:                  dialect.UpsertTypeInsertOrReplace,
+		Load:                    dialect.LoadTypeUnsupported,
+		CanAutoincrement:        true,
+		CanLastInsertID:         true,
+		DefaultPresetIDStrategy: dialect.PresetIDStrategyUndefined,
 	})
 }

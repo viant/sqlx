@@ -28,8 +28,8 @@ type (
 	}
 )
 
-// Error returns state's error
-func (s *State) Error() error {
+// Wait returns state's error
+func (s *State) Wait() error {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 	return s.err

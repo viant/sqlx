@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"github.com/viant/sqlx"
+	"github.com/viant/sqlx/metadata/info/dialect"
 	"github.com/viant/sqlx/metadata/sink"
 	"github.com/viant/sqlx/option"
 )
@@ -87,7 +88,7 @@ func (n *Udf) Handle(ctx context.Context, db *sql.DB, target interface{}, iopts 
 // CanUse returns true if Handle function can be executed
 func (n *Udf) CanUse(iopts ...interface{}) bool {
 	options := option.AsOptions(iopts)
-	return options.PresetIDStrategy() == option.PresetIDWithUDFSequence
+	return options.PresetIDStrategy() == dialect.PresetIDWithUDFSequence
 }
 
 func runQuery(ctx context.Context, db *sql.DB, SQL string, trg []interface{}, tx *sql.Tx) (err error) {

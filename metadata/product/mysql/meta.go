@@ -278,7 +278,8 @@ RELEASE_LOCK('$Args[0].$Args[1].$Args[2]')  AS SUCCESS`,
 		CanAutoincrement: true,
 		CanLastInsertID:  true, // in reality true but multi-insert gives us the id from the first row, not the last one
 		// TODO: provide real autoincrement function
-		AutoincrementFunc: "autoincrement",
+		AutoincrementFunc:       "autoincrement",
+		DefaultPresetIDStrategy: dialect.PresetIDWithTransientTransaction,
 	})
 
 }

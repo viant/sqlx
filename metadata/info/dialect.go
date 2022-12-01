@@ -24,7 +24,8 @@ type Dialect struct {
 	QuoteCharacter    byte
 	// TODO: check if column has a space or exist in keywords in this case use quote if keyword is specified
 	// i.e. normalized column on the dialect
-	Keywords map[string]bool
+	Keywords                map[string]bool
+	DefaultPresetIDStrategy dialect.PresetIDStrategy
 }
 
 //Dialects represents dialects
@@ -56,8 +57,8 @@ func (d *Dialect) EnsurePlaceholders(SQL string) string {
 		fragment := SQL[sqlPos:pos]
 		sqlPos = pos + 1
 		resultPos += copy(result[resultPos:], fragment)
-		placeholder := getPlaceholder()
-		resultPos += copy(result[resultPos:], placeholder)
+		aPlaceholder := getPlaceholder()
+		resultPos += copy(result[resultPos:], aPlaceholder)
 	}
 	if sqlPos < len(SQL) {
 		resultPos += copy(result[resultPos:], SQL[sqlPos:])
