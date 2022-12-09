@@ -143,11 +143,11 @@ func (s *session) insert(ctx context.Context, recValues []interface{}, valueAt i
 	if s.inBatchCount > 0 {
 		err = s.prepare(ctx, s.inBatchCount)
 		if err != nil {
-			return 0, 0, nil
+			return 0, 0, err
 		}
 		rowsAffected, lastInsertedID, err = s.flush(ctx, recValues[0:s.inBatchCount*len(s.columns)], identitiesBatched)
 		if err != nil {
-			return 0, 0, nil
+			return 0, 0, err
 		}
 		totalRowsAffected += rowsAffected
 	}
