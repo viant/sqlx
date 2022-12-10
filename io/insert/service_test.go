@@ -6,6 +6,7 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/assert"
 	"github.com/viant/sqlx/io/insert"
+	"github.com/viant/sqlx/metadata/info/dialect"
 	_ "github.com/viant/sqlx/metadata/product/sqlite"
 	"github.com/viant/sqlx/option"
 	"testing"
@@ -14,13 +15,13 @@ import (
 func TestService_Exec(t *testing.T) {
 
 	type entity struct {
-		Id   int    `sqlx:"name=foo_id,primaryKey=true,generator=autoincrement"`
+		ID   int    `sqlx:"name=foo_id,primaryKey=true,generator=autoincrement"`
 		Name string `sqlx:"foo_name"`
 		Desc string `sqlx:"-"`
 		Bar  float64
 	}
 	type entityWithAutoIncrement struct {
-		Id   int    `sqlx:"name=foo_id,generator=autoincrement"`
+		ID   int    `sqlx:"name=foo_id,generator=autoincrement"`
 		Name string `sqlx:"foo_name"`
 		Desc string `sqlx:"-"`
 		Bar  float64
@@ -49,9 +50,9 @@ func TestService_Exec(t *testing.T) {
 				"CREATE TABLE t1 (foo_id INTEGER PRIMARY KEY, foo_name TEXT, bar INTEGER)",
 			},
 			records: []interface{}{
-				&entity{Id: 1, Name: "John1", Desc: "description", Bar: 17},
-				&entity{Id: 2, Name: "John2", Desc: "description", Bar: 18},
-				&entity{Id: 3, Name: "John3", Desc: "description", Bar: 19},
+				&entity{ID: 1, Name: "John1", Desc: "description", Bar: 17},
+				&entity{ID: 2, Name: "John2", Desc: "description", Bar: 18},
+				&entity{ID: 3, Name: "John3", Desc: "description", Bar: 19},
 			},
 			affected: 3,
 			lastID:   3,
@@ -66,9 +67,9 @@ func TestService_Exec(t *testing.T) {
 				"CREATE TABLE t2 (foo_id INTEGER PRIMARY KEY, foo_name TEXT, Bar INTEGER)",
 			},
 			records: []entity{
-				{Id: 10, Name: "John1", Desc: "description", Bar: 17},
-				{Id: 11, Name: "John2", Desc: "description", Bar: 18},
-				{Id: 12, Name: "John3", Desc: "description", Bar: 19},
+				{ID: 10, Name: "John1", Desc: "description", Bar: 17},
+				{ID: 11, Name: "John2", Desc: "description", Bar: 18},
+				{ID: 12, Name: "John3", Desc: "description", Bar: 19},
 			},
 			affected: 3,
 			lastID:   12,
@@ -86,9 +87,9 @@ func TestService_Exec(t *testing.T) {
 				"CREATE TABLE t3 (foo_id INTEGER PRIMARY KEY AUTOINCREMENT, foo_name TEXT, Bar INTEGER)",
 			},
 			records: []*entityWithAutoIncrement{
-				{Id: 0, Name: "John1", Desc: "description", Bar: 17},
-				{Id: 0, Name: "John2", Desc: "description", Bar: 18},
-				{Id: 0, Name: "John3", Desc: "description", Bar: 19},
+				{ID: 0, Name: "John1", Desc: "description", Bar: 17},
+				{ID: 0, Name: "John2", Desc: "description", Bar: 18},
+				{ID: 0, Name: "John3", Desc: "description", Bar: 19},
 			},
 			affected: 3,
 			lastID:   3,
@@ -107,11 +108,11 @@ func TestService_Exec(t *testing.T) {
 				"INSERT INTO t4(foo_name) VALUES('test')",
 			},
 			records: []*entityWithAutoIncrement{
-				{Id: 0, Name: "John1", Desc: "description", Bar: 17},
-				{Id: 0, Name: "John2", Desc: "description", Bar: 18},
-				{Id: 0, Name: "John3", Desc: "description", Bar: 19},
-				{Id: 0, Name: "John4", Desc: "description", Bar: 19},
-				{Id: 0, Name: "John5", Desc: "description", Bar: 19},
+				{ID: 0, Name: "John1", Desc: "description", Bar: 17},
+				{ID: 0, Name: "John2", Desc: "description", Bar: 18},
+				{ID: 0, Name: "John3", Desc: "description", Bar: 19},
+				{ID: 0, Name: "John4", Desc: "description", Bar: 19},
+				{ID: 0, Name: "John5", Desc: "description", Bar: 19},
 			},
 			affected: 5,
 			lastID:   6,
@@ -129,15 +130,15 @@ func TestService_Exec(t *testing.T) {
 				"CREATE TABLE t3 (foo_id INTEGER PRIMARY KEY AUTOINCREMENT, foo_name TEXT, Bar INTEGER)",
 			},
 			records: []*entityWithAutoIncrement{
-				{Id: 0, Name: "John1", Desc: "description", Bar: 17},
-				{Id: 0, Name: "John2", Desc: "description", Bar: 18},
-				{Id: 0, Name: "John3", Desc: "description", Bar: 19},
+				{ID: 0, Name: "John1", Desc: "description", Bar: 17},
+				{ID: 0, Name: "John2", Desc: "description", Bar: 18},
+				{ID: 0, Name: "John3", Desc: "description", Bar: 19},
 			},
 			affected: 3,
 			lastID:   3,
 			options: []option.Option{
 				option.BatchSize(2),
-				option.PresetIDWithMax,
+				dialect.PresetIDWithMax,
 			},
 		},
 	}
@@ -162,11 +163,11 @@ outer:
 		if !assert.Nil(t, err, testCase.description) {
 			continue
 		}
-		insert, err := insert.New(context.TODO(), db, testCase.table, testCase.options...)
+		inserter, err := insert.New(context.TODO(), db, testCase.table, testCase.options...)
 		if !assert.Nil(t, err, testCase.description) {
 			continue
 		}
-		affected, lastID, err := insert.Exec(context.TODO(), testCase.records, testCase.options...)
+		affected, lastID, err := inserter.Exec(context.TODO(), testCase.records, testCase.options...)
 		assert.Nil(t, err, testCase.description)
 		assert.EqualValues(t, testCase.affected, affected, testCase.description)
 		assert.EqualValues(t, testCase.lastID, lastID, testCase.description)

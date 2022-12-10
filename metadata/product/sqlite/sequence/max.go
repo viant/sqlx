@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"github.com/viant/sqlx/metadata/info/dialect"
 	"github.com/viant/sqlx/metadata/sink"
 	"github.com/viant/sqlx/option"
 )
@@ -61,5 +62,5 @@ func (n *Max) Handle(ctx context.Context, db *sql.DB, target interface{}, iopts 
 // CanUse returns true if Handle function can be executed
 func (n *Max) CanUse(iopts ...interface{}) bool {
 	options := option.AsOptions(iopts)
-	return options.PresetIDStrategy() == option.PresetIDWithMax
+	return options.PresetIDStrategy() == dialect.PresetIDWithMax
 }

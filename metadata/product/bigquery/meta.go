@@ -212,15 +212,16 @@ SESSION_USER() AS USER_NAME,
 		log.Printf("failed to register queries: %v", err)
 	}
 	registry.RegisterDialect(&info.Dialect{
-		Product:           bigQuery,
-		Placeholder:       "?",
-		Transactional:     false, //only script is transactional
-		Insert:            dialect.InsertWithMultiValues,
-		Upsert:            dialect.UpsertTypeMerge,
-		Load:              dialect.LoadTypeLocalData,
-		QuoteCharacter:    '\'',
-		CanAutoincrement:  false,
-		CanLastInsertID:   false,
-		AutoincrementFunc: "",
+		Product:                 bigQuery,
+		Placeholder:             "?",
+		Transactional:           false, //only script is transactional
+		Insert:                  dialect.InsertWithMultiValues,
+		Upsert:                  dialect.UpsertTypeMerge,
+		Load:                    dialect.LoadTypeLocalData,
+		QuoteCharacter:          '\'',
+		CanAutoincrement:        false,
+		CanLastInsertID:         false,
+		AutoincrementFunc:       "",
+		DefaultPresetIDStrategy: dialect.PresetIDStrategyUndefined,
 	})
 }

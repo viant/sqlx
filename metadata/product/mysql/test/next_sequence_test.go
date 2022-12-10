@@ -9,6 +9,7 @@ import (
 	"github.com/viant/sqlx"
 	"github.com/viant/sqlx/metadata"
 	"github.com/viant/sqlx/metadata/info"
+	"github.com/viant/sqlx/metadata/info/dialect"
 	_ "github.com/viant/sqlx/metadata/product/mysql"
 	"github.com/viant/sqlx/metadata/sink"
 	"github.com/viant/sqlx/option"
@@ -43,7 +44,7 @@ func TestService_NextSequenceValue(t *testing.T) {
 			},
 			options: option.Options{
 				option.NewArgs("", dsnSchema, "t1"),
-				option.PresetIDWithTransientTransaction,
+				dialect.PresetIDWithTransientTransaction,
 				dmlBuilder(1, &sqlx.SQL{
 					Query: `INSERT INTO t1 (foo_name, bar, foo_id) VALUES (?,?,?)`,
 					Args:  []interface{}{"John", 20, 0},
@@ -78,7 +79,7 @@ func TestService_NextSequenceValue(t *testing.T) {
 			},
 			options: option.Options{
 				option.NewArgs("", dsnSchema, "t1"),
-				option.PresetIDWithUDFSequence,
+				dialect.PresetIDWithUDFSequence,
 				dmlBuilder(1, &sqlx.SQL{
 					Query: `INSERT INTO t1 (foo_name, bar, foo_id) VALUES (?,?,?)`,
 					Args:  []interface{}{"John", 20, 0},
