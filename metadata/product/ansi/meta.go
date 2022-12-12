@@ -1,6 +1,7 @@
 package ansi
 
 import (
+	"fmt"
 	"github.com/viant/sqlx/metadata/database"
 	"github.com/viant/sqlx/metadata/info"
 	"github.com/viant/sqlx/metadata/info/dialect"
@@ -29,8 +30,30 @@ func init() {
 		PlaceholderResolver:     &placeholder.DefaultGenerator{},
 		DefaultPresetIDStrategy: dialect.PresetIDStrategyUndefined,
 	})
-}
+	err := registry.Register(
+		info.NewQuery(info.KindVersion, "SELECT 1", ANSI).OnPre(info.NopHandler()),
+		info.NewQuery(info.KindSession, "SELECT 1", ANSI).OnPre(info.NopHandler()),
 
-//SELECT count(table_name) FROM information_schema.tables;
-//SELECT column_name, data_type, column_default, is_nullable FROM information_schema.columns WHERE table_name='alpha'
-//SELECT * FROM information_schema.information_schema_catalog_name;
+		info.NewQuery(info.KindSchemas, "SELECT 1", ANSI,
+			info.NewCriterion(info.Catalog, "CATALOG_NAME")).OnPre(info.NopHandler()),
+
+		info.NewQuery(info.KindSchema, "SELECT 1", ANSI,
+			info.NewCriterion(info.Catalog, "CATALOG_NAME"),
+			info.NewCriterion(info.Schema, "SCHEMA_NAME")).OnPre(info.NopHandler()),
+
+		info.NewQuery(info.KindCatalogs, "SELECT 1", ANSI).OnPre(info.NopHandler()),
+		info.NewQuery(info.KindCatalog, "SELECT 1", ANSI,
+			info.NewCriterion(info.Catalog, "CATALOG_NAME"),
+		).OnPre(info.NopHandler()),
+
+		info.NewQuery(info.KindTables, "SELECT 1", ANSI,
+			info.NewCriterion(info.Catalog, "TABLE_CATALOG"),
+			info.NewCriterion(info.Schema, "TABLE_SCHEMA")).OnPre(info.NopHandler()),
+
+		info.NewQuery(info.KindTable, "SELECT 1", ANSI,
+			info.NewCriterion(info.Catalog, "TABLE_CATALOG"),
+			info.NewCriterion(info.Schema, "TABLE_SCHEMA"),
+			info.NewCriterion(info.Table, "TABLE_NAME")).OnPre(info.NopHandler()),
+	)
+	fmt.Printf("ERR :%v\n", err)
+}

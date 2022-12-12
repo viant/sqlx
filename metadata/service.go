@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/viant/sqlx/metadata/database"
 	"github.com/viant/sqlx/metadata/info"
+	"github.com/viant/sqlx/metadata/product/ansi"
 	"github.com/viant/sqlx/metadata/registry"
 	"github.com/viant/sqlx/option"
 	"strings"
@@ -85,7 +86,7 @@ func (s *Service) Info(ctx context.Context, db *sql.DB, kind info.Kind, sink Sin
 
 	queries := registry.Lookup(product.Name, kind)
 	if len(queries) == 0 {
-		return fmt.Errorf("unsupported kind: %s for: %s", kind, product.Name)
+		return fmt.Errorf("unsupported info kind: %s for: %s", kind, product.Name)
 	}
 	query := queries.Match(product)
 	if query == nil {
@@ -130,6 +131,12 @@ func (s *Service) runHandler(ctx context.Context, db *sql.DB, handlers []info.Ha
 
 func (s *Service) matchProduct(ctx context.Context, db *sql.DB) (*database.Product, error) {
 	product := registry.MatchProduct(db)
+	if product == nil {
+		return &ansi.ANSI, nil
+	}
+	if product.Name == ansi.ANSI.Name {
+		return product, nil
+	}
 	return s.matchVersion(ctx, db, product)
 }
 

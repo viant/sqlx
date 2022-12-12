@@ -60,6 +60,25 @@ func NewHandler(fn func(ctx context.Context, db *sql.DB, target interface{}, opt
 	}
 }
 
+type nopHandler struct{}
+
+// Handle default implementation Handler's Handle function
+func (h *nopHandler) Handle(ctx context.Context, db *sql.DB, target interface{}, options ...interface{}) (doNext bool, err error) {
+	return false, nil
+}
+
+// CanUse default implementation Handler's CanUse function
+func (h *nopHandler) CanUse(options ...interface{}) bool {
+	return true
+}
+
+var nop = &nopHandler{}
+
+//NopHandler returns nop handler
+func NopHandler() Handler {
+	return nop
+}
+
 // OnPost sets Query's PostHandlers
 func (q *Query) OnPost(auxiliaries ...Handler) *Query {
 	q.PostHandlers = auxiliaries

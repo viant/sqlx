@@ -12,6 +12,11 @@ func (a *Args) Unwrap() []interface{} {
 	return a.items
 }
 
+// Size returns arguments size
+func (a *Args) Size() int {
+	return len(a.items)
+}
+
 // StringN returns first n option arguments as strings
 func (a *Args) StringN(n int) ([]string, error) {
 	if len(a.items) < n {
