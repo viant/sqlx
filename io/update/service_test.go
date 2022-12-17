@@ -98,7 +98,7 @@ func TestService_Exec(t *testing.T) {
 
 outer:
 
-	for _, testCase := range useCases[1:] {
+	for _, testCase := range useCases {
 
 		//ctx := context.Background()
 		var db *sql.DB
