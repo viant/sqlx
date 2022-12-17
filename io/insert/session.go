@@ -81,8 +81,8 @@ func (s *session) end(err error) error {
 	return s.Transaction.Commit()
 }
 
-func (s *session) prepare(ctx context.Context, batchSize int) error {
-	SQL := s.Builder.Build(option.BatchSize(batchSize))
+func (s *session) prepare(ctx context.Context, record interface{}, batchSize int) error {
+	SQL := s.Builder.Build(record, option.BatchSize(batchSize))
 	SQL = s.Dialect.EnsurePlaceholders(SQL)
 
 	var err error
@@ -112,8 +112,9 @@ func (s *session) insert(ctx context.Context, recValues []interface{}, valueAt i
 	var rowsAffected, totalRowsAffected, lastInsertedID int64
 	var newID = minSeqNextValue
 
+	var record interface{}
 	for i := 0; i < size; i++ {
-		record := valueAt(i)
+		record = valueAt(i)
 		offset := s.inBatchCount * len(s.columns)
 		s.binder(record, recValues[offset:], 0, len(s.columns))
 		if s.identityColumnPos != nil {
@@ -141,7 +142,7 @@ func (s *session) insert(ctx context.Context, recValues []interface{}, valueAt i
 	}
 
 	if s.inBatchCount > 0 {
-		err = s.prepare(ctx, s.inBatchCount)
+		err = s.prepare(ctx, record, s.inBatchCount)
 		if err != nil {
 			return 0, 0, err
 		}

@@ -12,6 +12,7 @@ import (
 
 type session struct {
 	*io.Transaction
+	option.PresenceProvider
 	rType reflect.Type
 	*config.Config
 	binder        io.PlaceholderBinder
@@ -22,7 +23,7 @@ type session struct {
 }
 
 func (s *session) init(record interface{}, options ...option.Option) (err error) {
-	if s.columns, s.binder, err = s.Mapper(record, s.TagName, options...); err != nil {
+	if s.columns, s.binder, err = s.Mapper(record, s.TagName, append(options, &s.PresenceProvider)...); err != nil {
 		return err
 	}
 	if identityIndex := s.columns.PrimaryKeys(); identityIndex != -1 {
@@ -42,35 +43,41 @@ func (s *session) begin(ctx context.Context, db *sql.DB, options []option.Option
 	return nil
 }
 
-func (s *session) prepare(ctx context.Context) error {
-	SQL := s.Builder.Build()
+func (s *session) prepare(ctx context.Context, record interface{}, dml *string) (bool, error) {
+	SQL := s.Builder.Build(record, &s.PresenceProvider)
+	if SQL == "" {
+		return false, nil
+	}
+	if *dml == SQL {
+		return true, nil
+	}
+	*dml = SQL
 	var err error
 	if s.stmt != nil {
 		if err = s.stmt.Close(); err != nil {
-			return fmt.Errorf("failed to close stetement: %w", err)
+			return false, fmt.Errorf("failed to close stetement: %w", err)
 		}
 	}
 	if s.Transaction != nil {
 		s.stmt, err = s.Transaction.Prepare(SQL)
-		return err
+		return err == nil, err
 	}
 	s.stmt, err = s.db.PrepareContext(ctx, SQL)
-	return err
+	return err == nil, err
 }
 
-func (s *session) update(ctx context.Context, record interface{}, recordsFn func() interface{}) (int64, error) {
-	var recValues = make([]interface{}, len(s.columns))
-	affectedRecords := int64(0)
-	for ; record != nil; record = recordsFn() {
-		s.binder(record, recValues, 0, len(s.columns))
-		result, err := s.stmt.ExecContext(ctx, recValues...)
-		if err != nil {
-			return 0, err
-		}
-		affected, _ := result.RowsAffected()
-		affectedRecords += affected
+func (s *session) update(ctx context.Context, record interface{}) (int64, error) {
+
+	var placeholders = make([]interface{}, len(s.columns))
+	s.binder(record, placeholders, 0, len(s.columns))
+
+	placeholders = s.PresenceProvider.Placeholders(record, placeholders)
+	result, err := s.stmt.ExecContext(ctx, placeholders...)
+	if err != nil {
+		return 0, err
 	}
-	return affectedRecords, nil
+	affected, _ := result.RowsAffected()
+	return affected, nil
 }
 
 func (s *session) end(err error) error {

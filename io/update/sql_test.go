@@ -31,7 +31,7 @@ func TestUpdate_Build(t *testing.T) {
 	for _, testCase := range testCases {
 		builder, err := NewBuilder(testCase.table, testCase.columns, testCase.pkColumnIndex, testCase.dialect)
 		assert.Nil(t, err, testCase.description)
-		actual := builder.Build()
+		actual := builder.Build(nil)
 		assert.EqualValues(t, testCase.expect, actual, testCase.description)
 	}
 

@@ -23,7 +23,7 @@ type Builder struct {
 }
 
 //Build builds insert statement
-func (b *Builder) Build(options ...option.Option) string {
+func (b *Builder) Build(record interface{}, options ...option.Option) string {
 	batchSize := option.Options(options).BatchSize()
 	suffix := ""
 	if b.dialect.CanReturning && len(b.id) > 0 {

@@ -1,7 +1,6 @@
 package ansi
 
 import (
-	"fmt"
 	"github.com/viant/sqlx/metadata/database"
 	"github.com/viant/sqlx/metadata/info"
 	"github.com/viant/sqlx/metadata/info/dialect"
@@ -30,7 +29,7 @@ func init() {
 		PlaceholderResolver:     &placeholder.DefaultGenerator{},
 		DefaultPresetIDStrategy: dialect.PresetIDStrategyUndefined,
 	})
-	err := registry.Register(
+	registry.Register(
 		info.NewQuery(info.KindVersion, "SELECT 1", ANSI).OnPre(info.NopHandler()),
 		info.NewQuery(info.KindSession, "SELECT 1", ANSI).OnPre(info.NopHandler()),
 
@@ -55,5 +54,4 @@ func init() {
 			info.NewCriterion(info.Schema, "TABLE_SCHEMA"),
 			info.NewCriterion(info.Table, "TABLE_NAME")).OnPre(info.NopHandler()),
 	)
-	fmt.Printf("ERR :%v\n", err)
 }

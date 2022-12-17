@@ -142,7 +142,8 @@ func StructColumns(recordType reflect.Type, tagName string) ([]Column, error) {
 
 		aTag := ParseTag(field.Tag.Get(tagName))
 		aTag.FieldIndex = i
-		if aTag.Transient {
+
+		if aTag.Transient || aTag.PresenceProvider {
 			continue
 		}
 		columnName := aTag.getColumnName(field)

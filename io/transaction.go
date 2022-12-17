@@ -66,6 +66,5 @@ func (t *Transaction) Commit() error {
 	if t.Global {
 		return nil
 	}
-
 	return t.Tx.Commit()
 }

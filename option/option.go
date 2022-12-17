@@ -104,6 +104,20 @@ func (o Options) IdentityOnly() bool {
 	return false
 }
 
+//PresenceProvider returns PresenceProvider option value or false
+func (o Options) PresenceProvider() *PresenceProvider {
+	if len(o) == 0 {
+		return nil
+	}
+	for _, candidate := range o {
+		switch actual := candidate.(type) {
+		case *PresenceProvider:
+			return actual
+		}
+	}
+	return nil
+}
+
 //Identity returns identity column
 func (o Options) Identity() string {
 	if len(o) == 0 {

@@ -13,6 +13,19 @@ import (
 
 func TestService_Exec(t *testing.T) {
 
+	type recordPresence struct {
+		Id   bool
+		Name bool
+		Desc bool
+	}
+
+	type record struct {
+		Id   int             `sqlx:"name=foo_id,primaryKey=true,generator=autoincrement"`
+		Name string          `sqlx:"foo_name"`
+		Desc string          `sqlx:"desc"`
+		Has  *recordPresence `sqlx:"presence=true"`
+	}
+
 	type entity struct {
 		Id   int    `sqlx:"name=foo_id,primaryKey=true,generator=autoincrement"`
 		Name string `sqlx:"foo_name"`
@@ -32,13 +45,13 @@ func TestService_Exec(t *testing.T) {
 		affected    int64
 	}{
 		{
-			description: "Service.Builder ",
+			description: "Update all ",
 			driver:      "sqlite3",
 			dsn:         "/tmp/sqllite.db",
 			table:       "t1",
 			initSQL: []string{
 				"DROP TABLE IF EXISTS t1",
-				"CREATE TABLE t1 (foo_id INTEGER PRIMARY KEY, foo_name TEXT, bar INTEGER)",
+				"CREATE TABLE t1 (foo_id INTEGER PRIMARY KEY, foo_name TEXT, bar DECIMAL)",
 				"INSERT INTO t1 (foo_id) VALUES(1)",
 				"INSERT INTO t1 (foo_id) VALUES(2)",
 				"INSERT INTO t1 (foo_id) VALUES(3)",
@@ -50,11 +63,42 @@ func TestService_Exec(t *testing.T) {
 			},
 			affected: 3,
 		},
+
+		{
+			description: "Update selective fields",
+			driver:      "sqlite3",
+			dsn:         "/tmp/sqllite.db",
+			table:       "t2",
+			initSQL: []string{
+				"DROP TABLE IF EXISTS t2",
+				"CREATE TABLE t2 (foo_id INTEGER PRIMARY KEY, foo_name TEXT, desc TEXT)",
+				"INSERT INTO t2 (foo_id) VALUES(1)",
+				"INSERT INTO t2 (foo_id, foo_name) VALUES(2, 'John2')",
+				"INSERT INTO t2 (foo_id) VALUES(3)",
+			},
+			records: []interface{}{
+				&record{Id: 1, Name: "John1", Desc: "test 1", Has: &recordPresence{
+					Id:   true,
+					Name: false,
+					Desc: true,
+				}},
+				&record{Id: 2, Name: "John 2", Has: &recordPresence{
+					Id:   true,
+					Name: true,
+					Desc: false,
+				}},
+				&record{Id: 3, Name: "John3", Has: &recordPresence{
+					Id:   false,
+					Name: false,
+				}},
+			},
+			affected: 2,
+		},
 	}
 
 outer:
 
-	for _, testCase := range useCases {
+	for _, testCase := range useCases[1:] {
 
 		//ctx := context.Background()
 		var db *sql.DB

@@ -8,15 +8,16 @@ import (
 
 //Tag represent field tag
 type Tag struct {
-	Column        string
-	Autoincrement bool
-	PrimaryKey    bool
-	Sequence      string
-	FieldIndex    int
-	Transient     bool
-	Ns            string
-	Generator     string
-	NullifyEmpty  bool
+	Column           string
+	Autoincrement    bool
+	PrimaryKey       bool
+	Sequence         string
+	FieldIndex       int
+	Transient        bool
+	Ns               string
+	Generator        string
+	NullifyEmpty     bool
+	PresenceProvider bool
 }
 
 //CanExpand return true if field can expend fied struct fields
@@ -58,6 +59,9 @@ func ParseTag(tagString string) *Tag {
 				tag.Ns = strings.TrimSpace(nv[1])
 			case "sequence":
 				tag.Sequence = strings.TrimSpace(nv[1])
+			case "presence":
+				tag.PresenceProvider = true
+				tag.Transient = true
 			case "primarykey":
 				if strings.TrimSpace(nv[1]) == "true" {
 					tag.PrimaryKey = true

@@ -124,7 +124,7 @@ func (s *Service) Exec(ctx context.Context, any interface{}, options ...option.O
 	if err = sess.begin(ctx, s.db, options); err != nil {
 		return 0, 0, err
 	}
-	if err = sess.prepare(ctx, batchSize); err != nil {
+	if err = sess.prepare(ctx, record, batchSize); err != nil {
 		err = sess.end(err)
 		return 0, 0, err
 	}
@@ -213,7 +213,7 @@ func (s *Service) getSequenceName(sess *session) string {
 
 func (s *Service) transientDMLBuilder(sess *session, record interface{}, batchRecordBuffer []interface{}, recordCount int64) func(*sink.Sequence) (*sqlx.SQL, error) {
 	return func(sequence *sink.Sequence) (*sqlx.SQL, error) {
-		resetAutoincrementQuery := sess.Builder.Build(option.BatchSize(1))
+		resetAutoincrementQuery := sess.Builder.Build(record, option.BatchSize(1))
 		resetAutoincrementQuery = sess.Dialect.EnsurePlaceholders(resetAutoincrementQuery)
 		sess.binder(record, batchRecordBuffer, 0, len(sess.columns))
 

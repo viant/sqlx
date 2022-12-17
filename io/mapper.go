@@ -22,6 +22,7 @@ func StructColumnMapper(src interface{}, tagName string, options ...option.Optio
 	if val := option.Options(options).Columns(); len(val) > 0 {
 		columnRestriction = val.Restriction()
 	}
+	presenceProvider := option.Options(options).PresenceProvider()
 
 	if recordType.Kind() != reflect.Struct {
 		return nil, nil, fmt.Errorf("invalid record type: %v", recordType.Kind())
@@ -30,13 +31,19 @@ func StructColumnMapper(src interface{}, tagName string, options ...option.Optio
 	var identityColumns []Column
 	var getters []xunsafe.Getter
 
+	var filedPos = make(map[string]int)
 	for i := 0; i < recordType.NumField(); i++ {
 		field := recordType.Field(i)
+
+		xField := xunsafe.NewField(field)
+		tag := ParseTag(field.Tag.Get(tagName))
+		if tag.PresenceProvider && presenceProvider != nil {
+			presenceProvider.Holder = xunsafe.NewField(field)
+		}
 		if isExported := field.PkgPath == ""; !isExported {
 			continue
 		}
 
-		tag := ParseTag(field.Tag.Get(tagName))
 		if err := tag.validateWithField(field); err != nil {
 			return nil, nil, err
 		}
@@ -59,8 +66,12 @@ func StructColumnMapper(src interface{}, tagName string, options ...option.Optio
 
 		if columnRestriction.CanUse(columnName) {
 			columns = append(columns, NewColumn(columnName, "", field.Type, tag))
-			getter := xunsafe.FieldByIndex(recordType, i).Addr
+			getter := xField.Addr
+			pos := len(getters)
 			getters = append(getters, getter)
+			if presenceProvider != nil {
+				filedPos[xField.Name] = pos
+			}
 		}
 	}
 
@@ -68,11 +79,26 @@ func StructColumnMapper(src interface{}, tagName string, options ...option.Optio
 	if len(identityColumns) > 0 {
 		for i, item := range identityColumns {
 			fieldIndex := item.Tag().FieldIndex
-			getter := xunsafe.FieldByIndex(recordType, fieldIndex).Addr
+			xField := xunsafe.FieldByIndex(recordType, fieldIndex)
+			getter := xField.Addr
+			pos := len(getters)
 			getters = append(getters, getter)
 			columns = append(columns, identityColumns[i])
+			if presenceProvider != nil {
+				if presenceProvider.IdentityIndex == 0 {
+					presenceProvider.IdentityIndex = pos
+				}
+				filedPos[xField.Name] = pos
+			}
 		}
 	}
+
+	if presenceProvider != nil && len(filedPos) > 0 {
+		if err := presenceProvider.Init(filedPos); err != nil {
+			return nil, nil, err
+		}
+	}
+
 	return columns, func(src interface{}, params []interface{}, offset, limit int) {
 		holderPtr := xunsafe.AsPointer(src)
 		end := offset + limit

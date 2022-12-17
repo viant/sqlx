@@ -19,11 +19,11 @@ type Service struct {
 }
 
 func (s *Service) Exec(ctx context.Context, any interface{}, options ...option.Option) (int64, error) {
-	recordsFn, _, err := io.Iterator(any)
-	if err != nil {
+	valueAt, count, err := io.Values(any)
+	if err != nil || count == 0 {
 		return 0, err
 	}
-	record := recordsFn()
+	record := valueAt(0)
 	var sess *session
 	if sess, err = s.ensureSession(record, options...); err != nil {
 		return 0, err
@@ -31,15 +31,30 @@ func (s *Service) Exec(ctx context.Context, any interface{}, options ...option.O
 	if err = sess.begin(ctx, s.db, options); err != nil {
 		return 0, err
 	}
-
-	if err = sess.prepare(ctx); err != nil {
-		return 0, err
+	var rowsAffected int64
+	dml := ""
+	for i := 0; i < count; i++ {
+		record := valueAt(i)
+		changed, err := s.tryUpdate(ctx, sess, record, &dml)
+		if err != nil {
+			return 0, err
+		}
+		rowsAffected += changed
 	}
-
-	rowsAffected, err := sess.update(ctx, record, recordsFn)
 	err = sess.end(err)
 	return rowsAffected, err
 
+}
+
+func (s *Service) tryUpdate(ctx context.Context, sess *session, record interface{}, dml *string) (int64, error) {
+	ok, err := sess.prepare(ctx, record, dml)
+	if err != nil {
+		return 0, err
+	}
+	if !ok {
+		return 0, nil
+	}
+	return sess.update(ctx, record)
 }
 
 func (s *Service) ensureSession(record interface{}, options ...option.Option) (*session, error) {
