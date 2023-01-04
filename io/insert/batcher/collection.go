@@ -21,6 +21,10 @@ func (c *Collection) ValuePointerAt(index int) interface{} {
 	return c.xSlice.ValuePointerAt(c.slicePtr, index)
 }
 
+func (c *Collection) Unwrap() interface{} {
+	return c.newSlice
+}
+
 // Len returns count of items in collection
 func (c *Collection) Len() int {
 	c.RWMutex.RLock()
