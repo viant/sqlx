@@ -1,4 +1,4 @@
-package metadata
+package metadata_test
 
 import (
 	"context"
@@ -8,6 +8,7 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/assert"
 	"github.com/viant/afs"
+	"github.com/viant/sqlx/metadata"
 	"github.com/viant/sqlx/metadata/database"
 	"github.com/viant/sqlx/metadata/info"
 	_ "github.com/viant/sqlx/metadata/product/mysql"
@@ -64,7 +65,7 @@ func TestAbstractService_DetectVersion(t *testing.T) {
 		if !assert.Nil(t, err, testCase.description) {
 			continue
 		}
-		meta := New()
+		meta := metadata.New()
 		product, err := meta.DetectProduct(ctx, db)
 		if !assert.Nil(t, err, testCase.description) {
 			continue
@@ -85,7 +86,7 @@ func TestAbstractService_Info(t *testing.T) {
 		kind    info.Kind
 		product *database.Product
 		options []option.Option
-		sink    Sink
+		sink    metadata.Sink
 		expect  interface{}
 	}{
 		{
@@ -542,7 +543,7 @@ func TestAbstractService_Info(t *testing.T) {
 		if !assert.Nil(t, err, testCase.description) {
 			continue
 		}
-		meta := New()
+		meta := metadata.New()
 		actual := testCase.sink
 		err = meta.Info(ctx, db, testCase.kind, actual, testCase.options...)
 		if !assert.Nil(t, err, testCase.description) {
@@ -568,7 +569,7 @@ func TestAbstractService_Execute(t *testing.T) {
 		kind    info.Kind
 		product *database.Product
 		options []option.Option
-		sink    Sink
+		sink    metadata.Sink
 	}{
 		{
 			testCase: testCase{
@@ -619,7 +620,7 @@ func TestAbstractService_Execute(t *testing.T) {
 		if !assert.Nil(t, err, testCase.description) {
 			continue
 		}
-		meta := New()
+		meta := metadata.New()
 		_, err = meta.Execute(ctx, db, testCase.kind, option.NewArgs("", "", ""))
 		assert.Nil(t, err, testCase.description)
 	}

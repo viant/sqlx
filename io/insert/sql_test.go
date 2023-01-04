@@ -57,7 +57,7 @@ func TestInsert_Build(t *testing.T) {
 	for _, testCase := range testCases {
 		builder, err := NewBuilder(testCase.table, testCase.columns, testCase.dialect, testCase.identity, testCase.batchSize)
 		assert.Nil(t, err, testCase.description)
-		actual := builder.Build(option.BatchSize(testCase.callBatchSize))
+		actual := builder.Build(nil, option.BatchSize(testCase.callBatchSize))
 		assert.EqualValues(t, testCase.expect, actual, testCase.description)
 	}
 

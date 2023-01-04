@@ -22,7 +22,7 @@ type Builder struct {
 }
 
 //Build builds update statement
-func (b *Builder) Build(options ...option.Option) string {
+func (b *Builder) Build(record interface{}, options ...option.Option) string {
 	batchSize := option.Options(options).BatchSize()
 	if batchSize == b.batchSize {
 		return b.sql
