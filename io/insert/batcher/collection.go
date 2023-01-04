@@ -21,6 +21,7 @@ func (c *Collection) ValuePointerAt(index int) interface{} {
 	return c.xSlice.ValuePointerAt(c.slicePtr, index)
 }
 
+//Unwrap unwrap collection
 func (c *Collection) Unwrap() interface{} {
 	return c.newSlice
 }
