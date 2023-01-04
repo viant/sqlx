@@ -12,8 +12,8 @@ import (
 
 type session struct {
 	*io.Transaction
-	option.PresenceProvider
-	rType reflect.Type
+	presenceProvider *option.PresenceProvider
+	rType            reflect.Type
 	*config.Config
 	binder        io.PlaceholderBinder
 	columns       io.Columns
@@ -23,12 +23,25 @@ type session struct {
 }
 
 func (s *session) init(record interface{}, options ...option.Option) (err error) {
-	if s.columns, s.binder, err = s.Mapper(record, s.TagName, append(options, &s.PresenceProvider)...); err != nil {
+	for _, anOption := range options {
+		switch actual := anOption.(type) {
+		case *option.PresenceProvider:
+			s.presenceProvider = actual
+		}
+	}
+
+	if s.presenceProvider == nil {
+		s.presenceProvider = &option.PresenceProvider{}
+	}
+
+	if s.columns, s.binder, err = s.Mapper(record, s.TagName, options...); err != nil {
 		return err
 	}
+
 	if identityIndex := s.columns.PrimaryKeys(); identityIndex != -1 {
 		s.identityIndex = identityIndex
 	}
+
 	s.Builder, err = NewBuilder(s.TableName, s.columns.Names(), s.identityIndex, s.Dialect)
 	return err
 }
@@ -44,7 +57,7 @@ func (s *session) begin(ctx context.Context, db *sql.DB, options []option.Option
 }
 
 func (s *session) prepare(ctx context.Context, record interface{}, dml *string) (bool, error) {
-	SQL := s.Builder.Build(record, &s.PresenceProvider)
+	SQL := s.Builder.Build(record, s.presenceProvider)
 	if SQL == "" {
 		return false, nil
 	}
@@ -71,7 +84,7 @@ func (s *session) update(ctx context.Context, record interface{}) (int64, error)
 	var placeholders = make([]interface{}, len(s.columns))
 	s.binder(record, placeholders, 0, len(s.columns))
 
-	placeholders = s.PresenceProvider.Placeholders(record, placeholders)
+	placeholders = s.presenceProvider.Placeholders(record, placeholders)
 	result, err := s.stmt.ExecContext(ctx, placeholders...)
 	if err != nil {
 		return 0, err

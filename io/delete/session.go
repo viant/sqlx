@@ -30,7 +30,12 @@ func (s *session) init(record interface{}) (err error) {
 	if s.columns, s.binder, err = s.Mapper(record, s.TagName, option.IdentityOnly(true)); err != nil {
 		return err
 	}
-	s.Builder, err = NewBuilder(s.TableName, s.columns.Names(), s.Dialect, s.batchSize)
+	recordlessBuilder, err := NewBuilder(s.TableName, s.columns.Names(), s.Dialect, s.batchSize)
+	if err != nil {
+		return err
+	}
+
+	s.Builder = io.NewBuilderAdapter(recordlessBuilder)
 	return err
 }
 
@@ -45,7 +50,7 @@ func (s *session) begin(ctx context.Context, db *sql.DB, options []option.Option
 }
 
 func (s *session) prepare(ctx context.Context, batchSize int) error {
-	SQL := s.Builder.Build(option.BatchSize(batchSize))
+	SQL := s.Builder.Build(nil, option.BatchSize(batchSize))
 	var err error
 	if s.stmt != nil {
 		if err = s.stmt.Close(); err != nil {

@@ -13,13 +13,15 @@ const (
 )
 
 //Builder represent delete DML builder
-type Builder struct {
-	id           string
-	batchSize    int
-	sql          string
-	valueSize    int
-	valuesOffset int
-}
+type (
+	Builder struct {
+		id           string
+		batchSize    int
+		sql          string
+		valueSize    int
+		valuesOffset int
+	}
+)
 
 //Build builds update statement
 func (b *Builder) Build(options ...option.Option) string {
