@@ -30,7 +30,12 @@ func (s *session) init(record interface{}) (err error) {
 	if s.columns, s.binder, err = s.Mapper(record, s.TagName, option.IdentityOnly(true)); err != nil {
 		return err
 	}
-	s.Builder, err = NewBuilder(s.TableName, s.columns.Names(), s.Dialect, s.batchSize)
+	recordlessBuilder, err := NewBuilder(s.TableName, s.columns.Names(), s.Dialect, s.batchSize)
+	if err != nil {
+		return err
+	}
+
+	s.Builder = io.NewBuilderAdapter(recordlessBuilder)
 	return err
 }
 

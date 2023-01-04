@@ -60,5 +60,4 @@ func TestInsert_Build(t *testing.T) {
 		actual := builder.Build(nil, option.BatchSize(testCase.callBatchSize))
 		assert.EqualValues(t, testCase.expect, actual, testCase.description)
 	}
-
 }
