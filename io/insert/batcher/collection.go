@@ -37,7 +37,7 @@ func (c *Collection) Append(value interface{}) {
 }
 
 // Reset set length collection to 0 (doesn't change capacity)
-func (c Collection) Reset() {
+func (c *Collection) Reset() {
 	c.RWMutex.Lock()
 	_ = c.appender.Trunc(0)
 	c.RWMutex.Unlock()
