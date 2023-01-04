@@ -32,6 +32,7 @@ func (s *session) init(record interface{}, options ...option.Option) (err error)
 
 	if s.presenceProvider == nil {
 		s.presenceProvider = &option.PresenceProvider{}
+		options = append(options, s.presenceProvider)
 	}
 
 	if s.columns, s.binder, err = s.Mapper(record, s.TagName, options...); err != nil {

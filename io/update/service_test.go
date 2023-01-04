@@ -93,7 +93,7 @@ func TestService_Exec(t *testing.T) {
 					Name: false,
 				}},
 			},
-			affected: 3,
+			affected: 2,
 		},
 	}
 

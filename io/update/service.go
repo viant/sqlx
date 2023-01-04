@@ -61,14 +61,16 @@ func (s *Service) ensureSession(record interface{}, options ...option.Option) (*
 	s.mux.Lock()
 	defer s.mux.Unlock()
 	rType := reflect.TypeOf(record)
+
 	if sess := s.initSession; sess != nil && sess.rType == rType {
 		return &session{
-			rType:         rType,
-			Config:        s.Config,
-			binder:        sess.binder,
-			columns:       sess.columns,
-			identityIndex: sess.identityIndex,
-			db:            sess.db,
+			rType:            rType,
+			Config:           s.Config,
+			binder:           sess.binder,
+			columns:          sess.columns,
+			identityIndex:    sess.identityIndex,
+			presenceProvider: sess.presenceProvider,
+			db:               sess.db,
 		}, nil
 	}
 	result := &session{
