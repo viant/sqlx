@@ -135,18 +135,18 @@ func (s *Service) Exec(ctx context.Context, any interface{}, options ...option.O
 
 func (s *Service) ensurePresetIDStrategy(options []option.Option, sess *session) ([]option.Option, error) {
 	presetIDStrategy := option.Options(options).PresetIDStrategy()
-	if presetIDStrategy != dialect.PresetIDStrategyUndefined {
+	switch presetIDStrategy {
+	case dialect.PresetIDStrategyIgnore:
 		return options, nil
-	}
-
-	if sess.Dialect.DefaultPresetIDStrategy == "" {
-		return nil, fmt.Errorf("empty DefaultPresetIDStrategy")
+	case "", dialect.PresetIDStrategyUndefined:
+		//undefined fallback to default dialect strategy
+	default:
+		return options, nil
 	}
 
 	if sess.Dialect.DefaultPresetIDStrategy != dialect.PresetIDStrategyUndefined {
 		options = append(options, sess.Dialect.DefaultPresetIDStrategy)
 	}
-
 	return options, nil
 }
 
