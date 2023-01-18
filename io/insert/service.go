@@ -163,7 +163,7 @@ func (s *Service) nextSequence(ctx context.Context, sess *session, record interf
 	}
 
 	switch presetIDStrategy {
-	case dialect.PresetIDStrategyUndefined:
+	case dialect.PresetIDStrategyUndefined, dialect.PresetIDStrategyIgnore:
 		sess.shallPresetIdentities = false
 		return nil, nil
 	case dialect.PresetIDWithMax:
