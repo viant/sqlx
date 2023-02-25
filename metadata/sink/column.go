@@ -1,5 +1,10 @@
 package sink
 
+import (
+	"strings"
+	"unicode"
+)
+
 //Column represents column metadata
 type Column struct {
 	Catalog         string  `sqlx:"TABLE_CATALOG"`
@@ -20,4 +25,26 @@ type Column struct {
 	IndexPosition   int     `sqlx:"INDEX_POSITION"`
 	Collation       *string `sqlx:"COLLATION"`
 	IsAutoincrement *bool   `sqlx:"IS_AUTOINCREMENT"`
+}
+
+func (c *Column) IsNullable() bool {
+	if c.Nullable == "" {
+		return false
+	}
+	switch unicode.ToLower(rune(c.Nullable[0])) {
+	case rune('y'), rune('t'), rune('1'):
+		return true
+	}
+	return true
+}
+
+func (c *Column) IsUnique() bool {
+	if c.Key == "" {
+		return false
+	}
+	switch strings.ToLower(c.Key) {
+	case "uni": //unique key
+		return true
+	}
+	return true
 }
