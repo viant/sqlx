@@ -16,6 +16,10 @@ type Tag struct {
 	Transient        bool
 	Ns               string
 	Generator        string
+	IsUnique         bool
+	Table            string
+	RefTable         string
+	RefColumn        string
 	NullifyEmpty     bool
 	PresenceProvider bool
 }
@@ -63,11 +67,17 @@ func ParseTag(tagString string) *Tag {
 				tag.PresenceProvider = true
 				tag.Transient = true
 			case "primarykey":
-				if strings.TrimSpace(nv[1]) == "true" {
-					tag.PrimaryKey = true
-				}
+				tag.PrimaryKey = strings.TrimSpace(nv[1]) == "true"
 			case "autoincrement":
 				tag.Autoincrement = true
+			case "unique":
+				tag.IsUnique = strings.TrimSpace(nv[1]) == "true"
+			case "table":
+				tag.Table = nv[1]
+			case "reftable":
+				tag.RefTable = nv[1]
+			case "refcolumn":
+				tag.RefColumn = nv[1]
 			case "generator":
 				generatorStrat := strings.TrimSpace(nv[1])
 				tag.Generator = generatorStrat
@@ -90,6 +100,8 @@ func ParseTag(tagString string) *Tag {
 				tag.PrimaryKey = true
 			case "primarykey":
 				tag.PrimaryKey = true
+			case "unique":
+				tag.IsUnique = true
 			case "nullifyempty":
 				tag.NullifyEmpty = true
 			}

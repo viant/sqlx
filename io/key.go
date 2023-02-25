@@ -47,7 +47,6 @@ func NormalizeKey(key interface{}) interface{} {
 			return ""
 		}
 		return string(actual)
-
 	case *[]byte:
 		if actual == nil {
 			return nil
