@@ -17,10 +17,13 @@ type Tag struct {
 	Ns               string
 	Generator        string
 	IsUnique         bool
+	Db               string
 	Table            string
+	RefDb            string
 	RefTable         string
 	RefColumn        string
 	NullifyEmpty     bool
+	NotNull          bool
 	PresenceProvider bool
 }
 
@@ -72,8 +75,14 @@ func ParseTag(tagString string) *Tag {
 				tag.Autoincrement = true
 			case "unique":
 				tag.IsUnique = strings.TrimSpace(nv[1]) == "true"
+			case "notnull":
+				tag.NotNull = strings.TrimSpace(nv[1]) == "true"
+			case "db":
+				tag.Db = nv[1]
 			case "table":
 				tag.Table = nv[1]
+			case "refdb":
+				tag.RefDb = nv[1]
 			case "reftable":
 				tag.RefTable = nv[1]
 			case "refcolumn":
@@ -104,6 +113,8 @@ func ParseTag(tagString string) *Tag {
 				tag.IsUnique = true
 			case "nullifyempty":
 				tag.NullifyEmpty = true
+			case "notnull":
+				tag.NotNull = true
 			}
 		}
 
