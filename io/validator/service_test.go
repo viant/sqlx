@@ -3,7 +3,6 @@ package validator
 import (
 	"context"
 	"database/sql"
-	"fmt"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/assert"
 	"github.com/viant/toolbox"
@@ -30,12 +29,12 @@ type UniqueRecord struct {
 
 type FkRecord struct {
 	Id     int  `sqlx:"name=ID,autoincrement,primaryKey"`
-	DeptId *int `sqlx:"name=name,refColumn=id,refTable=dept01" json:",omitempty"`
+	DeptId *int `sqlx:"name=name,refColumn=id,refTable=dept01,required" json:",omitempty"`
 }
 
 type NoNullRecord struct {
 	Id     int  `sqlx:"name=ID,autoincrement,primaryKey"`
-	Field1 *int `sqlx:"name=f1,notNull" json:",omitempty"`
+	Field1 *int `sqlx:"name=f1,required" json:",omitempty"`
 }
 
 type Record struct {
@@ -200,10 +199,28 @@ func TestNewValidation(t *testing.T) {
 			options:     []Option{WithPresence()},
 			expectError: false,
 		},
+		{
+			description: "fk validation passed - dept is required",
+			driver:      "sqlite3",
+			dsn:         "/tmp/sqllite.db",
+			initSQL: []string{
+				"CREATE TABLE IF NOT EXISTS dept01 (id INTEGER PRIMARY KEY, name TEXT, desc TEXT, unk TEXT)",
+				"CREATE TABLE IF NOT EXISTS v02 (id INTEGER PRIMARY KEY, dept_id INTEGER, desc TEXT, unk TEXT)",
+				"delete from v02",
+				"delete from dept01",
+				`insert into dept01 values(1, "Admin", "admin dept", "101")`,
+				`insert into v02 values(1, 2, "desc1", "101")`,
+			},
+			data: &FkRecord{
+				Id:     10,
+				DeptId: nil,
+			},
+			expectError: true,
+		},
 	}
 
 	//TODO add option for HAS detection
-	for _, testCase := range testCases[len(testCases)-1:] {
+	for _, testCase := range testCases {
 
 		db, err := sql.Open(testCase.driver, testCase.dsn)
 		if !assert.Nil(t, err, testCase.description) {
@@ -216,15 +233,10 @@ func TestNewValidation(t *testing.T) {
 			}
 		}
 		validator := New()
-		err = validator.Validate(context.Background(), db, testCase.data, testCase.options...)
+		err, _ = validator.Validate(context.Background(), db, testCase.data, testCase.options...)
 		if testCase.expectError {
-			vErr, ok := err.(*Error)
-			if !assert.True(t, ok, testCase.description) {
-				fmt.Printf("%v\n", err)
-				continue
-			}
-			if !assert.True(t, strings.Contains(vErr.Error(), testCase.expectErrorFragment), testCase.description) {
-				toolbox.Dump(vErr)
+			if !assert.True(t, strings.Contains(err.Error(), testCase.expectErrorFragment), testCase.description) {
+				toolbox.Dump(err)
 				continue
 			}
 			if !assert.NotNilf(t, err, testCase.description) {

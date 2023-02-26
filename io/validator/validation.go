@@ -1,97 +1,94 @@
 package validator
 
 import (
-	"github.com/viant/sqlx/io"
-	"github.com/viant/sqlx/option"
-	"github.com/viant/xunsafe"
+	"fmt"
 	"reflect"
-)
-
-const (
-	CheckKidUnique  = CheckKid("unique")
-	CheckKidRefKey  = CheckKid("refKey")
-	CheckKidNotNull = CheckKid("notnull")
+	"strings"
 )
 
 type (
-	CheckKid string
-
-	Check struct {
-		SQL        string
-		Field      *xunsafe.Field
-		ErrorMsg   string
-		CheckType  reflect.Type
-		CheckField *xunsafe.Field
+	Violation struct {
+		Path    string
+		Field   string
+		Value   interface{}
+		Message string
+		Reason  string
 	}
 
 	Validation struct {
-		Type     reflect.Type
-		Unique   []*Check
-		RefKey   []*Check
-		NoNull   []*Check
-		presence *option.PresenceProvider
+		Violation []*Violation
+		Failed    bool
 	}
 )
 
-func NewValidation(p reflect.Type, presence *option.PresenceProvider) (*Validation, error) {
-	var result = &Validation{Type: p}
-	sType := p
-	if sType.Kind() == reflect.Ptr {
-		sType = sType.Elem()
+func (e *Validation) AppendNotNull(path *Path, field, msg string) {
+	if msg == "" {
+		msg = fmt.Sprintf("Field validation for '%v' failed; value is null", field)
 	}
-	var opts []option.Option
-	if presence != nil {
-		opts = append(opts, presence)
-	}
-	columns, err := io.StructColumns(p, option.TagSqlx, opts...)
-	if err != nil {
-		return nil, err
-	}
-	for _, column := range columns {
-		tag := column.Tag()
-		if tag == nil {
-			continue
-		}
-		xField := xunsafe.NewField(sType.Field(tag.FieldIndex))
-
-		if tag.NotNull {
-			result.NoNull = append(result.NoNull, &Check{
-				Field:    xField,
-				ErrorMsg: tag.ErrorMgs,
-			})
-		}
-
-		if tag.IsUnique && tag.Table != "" {
-			checkType := reflect.StructOf([]reflect.StructField{{Name: xField.Name, Type: xField.Type, Tag: `sqlx:"Val"`}})
-			checkField := xunsafe.NewField(checkType.Field(0))
-			result.Unique = append(result.Unique, &Check{
-				SQL:        "SELECT " + column.Name() + " AS Val FROM " + schema(tag.Db) + tag.Table + " WHERE " + column.Name(),
-				CheckType:  checkType,
-				CheckField: checkField,
-				Field:      xField,
-				ErrorMsg:   tag.ErrorMgs,
-			})
-			continue
-		}
-
-		if tag.RefColumn != "" && tag.RefTable != "" {
-			checkType := reflect.StructOf([]reflect.StructField{{Name: xField.Name, Type: xField.Type, Tag: `sqlx:"Val"`}})
-			checkField := xunsafe.NewField(checkType.Field(0))
-			result.RefKey = append(result.RefKey, &Check{
-				SQL:        "SELECT " + tag.RefColumn + " AS Val FROM " + schema(tag.RefDb) + tag.RefTable + " WHERE " + tag.RefColumn,
-				CheckType:  checkType,
-				CheckField: checkField,
-				Field:      xField,
-				ErrorMsg:   tag.ErrorMgs,
-			})
-		}
-	}
-	return result, nil
+	e.Violation = append(e.Violation, &Violation{
+		Path:    path.String(),
+		Field:   field,
+		Message: msg,
+		Reason:  string(CheckKidNotNull),
+	})
 }
 
-func schema(db string) string {
-	if db == "" {
-		return db
+func (e *Validation) AppendUnique(path *Path, field string, value interface{}, msg string) {
+	value = derefIfNeeded(value)
+	if msg == "" {
+		msg = fmt.Sprintf("Field validation for '%v' failed; value '%v' is not unique", field, value)
+	} else {
+		msg = strings.Replace(msg, "$value", fmt.Sprintf("%v", value), 1)
 	}
-	return "." + db
+
+	e.Violation = append(e.Violation, &Violation{
+		Path:    path.String(),
+		Field:   field,
+		Value:   value,
+		Message: msg,
+		Reason:  string(CheckKidUnique),
+	})
+}
+
+func derefIfNeeded(value interface{}) interface{} {
+	v := reflect.ValueOf(value)
+	if v.Kind() == reflect.Ptr {
+		v = v.Elem()
+		value = v.Interface()
+	}
+	return value
+}
+
+func (e *Validation) AppendRef(path *Path, field string, value interface{}, msg string) {
+	value = derefIfNeeded(value)
+	if msg == "" {
+		msg = fmt.Sprintf("Field validation for '%v' failed; ref key '%v' does not exists ", field, value)
+	} else {
+		msg = strings.Replace(msg, "$value", fmt.Sprintf("%v", value), 1)
+	}
+	e.Violation = append(e.Violation, &Violation{
+		Path:    path.String(),
+		Field:   field,
+		Value:   value,
+		Message: msg,
+		Reason:  string(CheckKidRefKey),
+	})
+}
+
+func (e *Validation) String() string {
+	if e == nil || len(e.Violation) == 0 {
+		return ""
+	}
+	msg := strings.Builder{}
+	for i, v := range e.Violation {
+		if i > 0 {
+			msg.WriteString(",")
+		}
+		msg.WriteString(v.Message)
+	}
+	return msg.String()
+}
+
+func (e *Validation) Error() string {
+	return e.String()
 }

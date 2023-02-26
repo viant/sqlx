@@ -35,7 +35,7 @@ func (c *Column) IsNullable() bool {
 	case rune('y'), rune('t'), rune('1'):
 		return true
 	}
-	return true
+	return false
 }
 
 func (c *Column) IsUnique() bool {

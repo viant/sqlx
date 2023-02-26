@@ -14,68 +14,68 @@ import (
 
 type (
 	Service struct {
-		validations map[reflect.Type]*Validation
-		mux         sync.RWMutex
+		cheks map[reflect.Type]*Checks
+		mux   sync.RWMutex
 	}
 )
 
-func (s *Service) validationFor(t reflect.Type, presence *option.PresenceProvider) (*Validation, error) {
+func (s *Service) checksFor(t reflect.Type, presence *option.PresenceProvider) (*Checks, error) {
 	if t.Kind() == reflect.Ptr {
 		t = t.Elem()
 	}
 	s.mux.RLock()
-	validation, ok := s.validations[t]
+	checks, ok := s.cheks[t]
 	s.mux.RUnlock()
 	if ok {
-		return validation, nil
+		return checks, nil
 	}
 	var err error
-	if validation, err = NewValidation(t, presence); err != nil {
+	if checks, err = NewChecks(t, presence); err != nil {
 		return nil, err
 	}
 	s.mux.Lock()
-	s.validations[t] = validation
+	s.cheks[t] = checks
 	s.mux.Unlock()
-	return validation, nil
+	return checks, nil
 }
 
-func (s *Service) Validate(ctx context.Context, db *sql.DB, any interface{}, opts ...Option) error {
+func (s *Service) Validate(ctx context.Context, db *sql.DB, any interface{}, opts ...Option) (*Validation, error) {
 	options := NewOptions()
 	for _, opt := range opts {
 		opt(options)
 	}
 	valueAt, count, err := io.Values(any)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if count == 0 {
-		return nil
+		return nil, nil
 	}
 	record := valueAt(0)
-	validation, err := s.validationFor(reflect.TypeOf(record), options.PresenceProvider)
+	checks, err := s.checksFor(reflect.TypeOf(record), options.PresenceProvider)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	var error Error
+	var ret Validation
 	path := &Path{}
-	s.checkNotNull(ctx, path, valueAt, count, validation.NoNull, &error, options)
-	if err = s.checkUniques(ctx, path, db, valueAt, count, validation.Unique, &error, options); err != nil {
-		return err
+	s.checkNotNull(ctx, path, valueAt, count, checks.NoNull, &ret, options)
+	if err = s.checkUniques(ctx, path, db, valueAt, count, checks.Unique, &ret, options); err != nil {
+		return nil, err
 	}
-	if err = s.checkRefs(ctx, path, db, valueAt, count, validation.RefKey, &error, options); err != nil {
-		return err
+	if err = s.checkRefs(ctx, path, db, valueAt, count, checks.RefKey, &ret, options); err != nil {
+		return nil, err
 	}
-	if len(error.Violation) == 0 {
-		return nil
+	if len(ret.Violation) == 0 {
+		return nil, nil
 	}
-	return &error
+	ret.Failed = len(ret.Violation) > 0
+	return &ret, nil
 }
 
-func (s *Service) checkNotNull(ctx context.Context, path *Path, at io.ValueAccessor, count int, checks []*Check, violations *Error, options *Options) {
+func (s *Service) checkNotNull(ctx context.Context, path *Path, at io.ValueAccessor, count int, checks []*Check, violations *Validation, options *Options) {
 	if len(checks) == 0 || !options.CheckNotNull {
 		return
 	}
-
 	for _, check := range checks {
 		for i := 0; i < count; i++ {
 			itemPath := path.AppendIndex(i)
@@ -86,34 +86,15 @@ func (s *Service) checkNotNull(ctx context.Context, path *Path, at io.ValueAcces
 				continue
 			}
 			value := check.Field.Value(recordPtr)
-			switch actual := value.(type) {
-			case *int, *uint, *int64, *uint64:
-				ptr := (*int)(xunsafe.AsPointer(actual))
-				if ptr == nil {
-					violations.AppendNotNull(fieldPath, check.Field.Name, check.ErrorMsg)
-				}
-			case *uint8:
-				if actual == nil {
-					violations.AppendNotNull(fieldPath, check.Field.Name, check.ErrorMsg)
-				}
-			case *string:
-				if actual == nil {
-					violations.AppendNotNull(fieldPath, check.Field.Name, check.ErrorMsg)
-				}
-			case *time.Time:
-				if actual == nil {
-					violations.AppendNotNull(fieldPath, check.Field.Name, check.ErrorMsg)
-				}
-			default:
-				if value == nil {
-					violations.AppendNotNull(fieldPath, check.Field.Name, check.ErrorMsg)
-				}
+			if isNil(value) {
+				violations.AppendNotNull(fieldPath, check.Field.Name, check.ErrorMsg)
+				continue
 			}
 		}
 	}
 }
 
-func (s *Service) checkUniques(ctx context.Context, path *Path, db *sql.DB, at io.ValueAccessor, count int, checks []*Check, violations *Error, options *Options) error {
+func (s *Service) checkUniques(ctx context.Context, path *Path, db *sql.DB, at io.ValueAccessor, count int, checks []*Check, violations *Validation, options *Options) error {
 	if len(checks) == 0 || !options.CheckUnique {
 		return nil
 	}
@@ -125,18 +106,10 @@ func (s *Service) checkUniques(ctx context.Context, path *Path, db *sql.DB, at i
 	return nil
 }
 
-func (s *Service) checkUnique(ctx context.Context, path *Path, db *sql.DB, at io.ValueAccessor, count int, check *Check, violations *Error, options *Options) error {
-	var queryCtx = queryContext{SQL: check.SQL}
-	for i := 0; i < count; i++ {
-		itemPath := path.AppendIndex(i)
-		fieldPath := itemPath.AppendField(check.Field.Name)
-		record := at(i)
-		recordPtr := xunsafe.AsPointer(record)
-		if !options.IsFieldSet(recordPtr, int(check.Field.Index)) {
-			continue
-		}
-		value := check.Field.Value(recordPtr)
-		queryCtx.Append(value, check.Field.Name, fieldPath)
+func (s *Service) checkUnique(ctx context.Context, path *Path, db *sql.DB, at io.ValueAccessor, count int, check *Check, violations *Validation, options *Options) error {
+	queryCtx := s.buildUniqueMatchContext(check, count, path, at, options)
+	if len(queryCtx.values) == 0 {
+		return nil
 	}
 	//build query for all values that should be unique
 	reader, err := read.New(ctx, db, queryCtx.Query(), func() interface{} {
@@ -152,7 +125,9 @@ func (s *Service) checkUnique(ctx context.Context, path *Path, db *sql.DB, at io
 		index[mapKey(value)] = true
 		return nil
 	}, queryCtx.values...)
-	_ = reader.Stmt().Close()
+	if stmt := reader.Stmt(); stmt != nil {
+		_ = stmt.Close()
+	}
 	if err != nil {
 		return err
 	}
@@ -164,7 +139,26 @@ func (s *Service) checkUnique(ctx context.Context, path *Path, db *sql.DB, at io
 	return nil
 }
 
-func (s *Service) checkRefs(ctx context.Context, path *Path, db *sql.DB, at io.ValueAccessor, count int, checks []*Check, violations *Error, options *Options) error {
+func (s *Service) buildUniqueMatchContext(check *Check, count int, path *Path, at io.ValueAccessor, options *Options) *queryContext {
+	queryCtx := newQueryContext(check.SQL)
+	for i := 0; i < count; i++ {
+		itemPath := path.AppendIndex(i)
+		fieldPath := itemPath.AppendField(check.Field.Name)
+		record := at(i)
+		recordPtr := xunsafe.AsPointer(record)
+		if !options.IsFieldSet(recordPtr, int(check.Field.Index)) {
+			continue
+		}
+		value := check.Field.Value(recordPtr)
+		if isNil(value) && !check.Required {
+			continue //unique is null and not required skipping validation
+		}
+		queryCtx.Append(value, check.Field.Name, fieldPath)
+	}
+	return queryCtx
+}
+
+func (s *Service) checkRefs(ctx context.Context, path *Path, db *sql.DB, at io.ValueAccessor, count int, checks []*Check, violations *Validation, options *Options) error {
 	if len(checks) == 0 || !options.CheckRef {
 		return nil
 	}
@@ -177,18 +171,10 @@ func (s *Service) checkRefs(ctx context.Context, path *Path, db *sql.DB, at io.V
 
 }
 
-func (s *Service) checkRef(ctx context.Context, path *Path, db *sql.DB, at io.ValueAccessor, count int, check *Check, violations *Error, options *Options) error {
-	var queryCtx = queryContext{SQL: check.SQL}
-	for i := 0; i < count; i++ {
-		itemPath := path.AppendIndex(i)
-		fieldPath := itemPath.AppendField(check.Field.Name)
-		record := at(i)
-		recordPtr := xunsafe.AsPointer(record)
-		if !options.IsFieldSet(recordPtr, int(check.Field.Index)) {
-			continue
-		}
-		value := check.Field.Value(recordPtr)
-		queryCtx.Append(value, check.Field.Name, fieldPath)
+func (s *Service) checkRef(ctx context.Context, path *Path, db *sql.DB, at io.ValueAccessor, count int, check *Check, violations *Validation, options *Options) error {
+	queryCtx := s.buildCheckRefQueryContext(check, count, path, at, options, violations)
+	if len(queryCtx.values) == 0 {
+		return nil
 	}
 	//build query for all values that should be unique
 	reader, err := read.New(ctx, db, queryCtx.Query(), func() interface{} {
@@ -204,7 +190,9 @@ func (s *Service) checkRef(ctx context.Context, path *Path, db *sql.DB, at io.Va
 		index[mapKey(value)] = true
 		return nil
 	}, queryCtx.values...)
-	_ = reader.Stmt().Close()
+	if stmt := reader.Stmt(); stmt != nil {
+		_ = stmt.Close()
+	}
 	if err != nil {
 		return err
 	}
@@ -216,8 +204,42 @@ func (s *Service) checkRef(ctx context.Context, path *Path, db *sql.DB, at io.Va
 	return nil
 }
 
-func mapKey(value interface{}) interface{} {
+func (s *Service) buildCheckRefQueryContext(check *Check, count int, path *Path, at io.ValueAccessor, options *Options, violations *Validation) *queryContext {
+	queryCtx := newQueryContext(check.SQL)
+	for i := 0; i < count; i++ {
+		itemPath := path.AppendIndex(i)
+		fieldPath := itemPath.AppendField(check.Field.Name)
+		record := at(i)
+		recordPtr := xunsafe.AsPointer(record)
+		if !options.IsFieldSet(recordPtr, int(check.Field.Index)) {
+			continue
+		}
+		value := check.Field.Value(recordPtr)
+		if isNil(value) && !check.Required {
+			continue //ref key is null and not required skipping validation
+		}
+		queryCtx.Append(value, check.Field.Name, fieldPath)
+	}
+	return queryCtx
+}
 
+func isNil(value interface{}) bool {
+	switch actual := value.(type) {
+	case *int, *uint, *int64, *uint64:
+		ptr := (*int)(xunsafe.AsPointer(actual))
+		return ptr == nil
+	case *uint8:
+		return actual == nil
+	case *string:
+		return actual == nil
+	case *time.Time:
+		return actual == nil
+	default:
+		return value == nil
+	}
+}
+
+func mapKey(value interface{}) interface{} {
 	switch actual := value.(type) {
 	case *string:
 		if actual == nil {
@@ -242,5 +264,5 @@ func mapKey(value interface{}) interface{} {
 
 //New creates a new validation service
 func New() *Service {
-	return &Service{validations: map[reflect.Type]*Validation{}}
+	return &Service{cheks: map[reflect.Type]*Checks{}}
 }

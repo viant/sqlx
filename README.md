@@ -187,8 +187,10 @@ func ExampleService_Exec() {
 
 Validator service has ability to validate unique,foreign key and not null constraints, with the following tag:
 - unique,table
-- notNull
+- required
 - refColumn,refTable
+- errorMsg
+
 
 For example:
 ```go

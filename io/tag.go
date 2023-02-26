@@ -22,8 +22,8 @@ type Tag struct {
 	RefDb            string
 	RefTable         string
 	RefColumn        string
+	Required         bool
 	NullifyEmpty     bool
-	NotNull          bool
 	ErrorMgs         string
 	PresenceProvider bool
 }
@@ -76,8 +76,6 @@ func ParseTag(tagString string) *Tag {
 				tag.Autoincrement = true
 			case "unique":
 				tag.IsUnique = strings.TrimSpace(nv[1]) == "true"
-			case "notnull":
-				tag.NotNull = strings.TrimSpace(nv[1]) == "true"
 			case "db":
 				tag.Db = nv[1]
 			case "table":
@@ -88,6 +86,8 @@ func ParseTag(tagString string) *Tag {
 				tag.RefTable = nv[1]
 			case "refcolumn":
 				tag.RefColumn = nv[1]
+			case "required":
+				tag.Required = strings.TrimSpace(nv[1]) == "true"
 			case "errormsg":
 				tag.ErrorMgs = strings.ReplaceAll(nv[1], "$coma", ",")
 			case "generator":
@@ -116,8 +116,8 @@ func ParseTag(tagString string) *Tag {
 				tag.IsUnique = true
 			case "nullifyempty":
 				tag.NullifyEmpty = true
-			case "notnull":
-				tag.NotNull = true
+			case "required":
+				tag.Required = true
 			case "presence":
 				tag.PresenceProvider = true
 				tag.Transient = true

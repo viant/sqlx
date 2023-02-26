@@ -32,3 +32,7 @@ func (p *queryContext) Append(value interface{}, field string, path *Path) {
 func (p *queryContext) Query() string {
 	return p.SQL + " IN (" + strings.Join(p.placeholders, ",") + ")"
 }
+
+func newQueryContext(SQL string) *queryContext {
+	return &queryContext{index: map[interface{}]*queryValue{}, SQL: SQL}
+}
