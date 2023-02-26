@@ -3,6 +3,8 @@ package io
 import (
 	"database/sql"
 	"fmt"
+	"github.com/viant/sqlx/option"
+	"github.com/viant/xunsafe"
 	"reflect"
 	"time"
 )
@@ -129,23 +131,32 @@ func NamesToColumns(columns []string) []Column {
 }
 
 //StructColumns returns column for the struct
-func StructColumns(recordType reflect.Type, tagName string) ([]Column, error) {
+func StructColumns(recordType reflect.Type, tagName string, opts ...option.Option) ([]Column, error) {
 	var result []Column
 	if recordType.Kind() != reflect.Struct {
 		return nil, fmt.Errorf("expected struct, but had: %v", recordType.Name())
 	}
+	presenceProvider := option.Options(opts).PresenceProvider()
+	var fieldPos = make(map[string]int)
 	for i := 0; i < recordType.NumField(); i++ {
 		field := recordType.Field(i)
+		aTag := ParseTag(field.Tag.Get(tagName))
+		aTag.FieldIndex = i
+
+		if presenceProvider != nil {
+			if aTag.PresenceProvider {
+				presenceProvider.Holder = xunsafe.NewField(field)
+				continue
+			}
+			fieldPos[field.Name] = i
+		}
+		if aTag.Transient {
+			continue
+		}
 		if isExported := field.PkgPath == ""; !isExported {
 			continue
 		}
 
-		aTag := ParseTag(field.Tag.Get(tagName))
-		aTag.FieldIndex = i
-
-		if aTag.Transient || aTag.PresenceProvider {
-			continue
-		}
 		columnName := aTag.getColumnName(field)
 		aTag.PrimaryKey = aTag.isIdentity(columnName)
 
@@ -155,5 +166,9 @@ func StructColumns(recordType reflect.Type, tagName string) ([]Column, error) {
 			tag:      aTag,
 		})
 	}
-	return result, nil
+	var err error
+	if presenceProvider != nil && presenceProvider.Holder != nil {
+		err = presenceProvider.Init(fieldPos)
+	}
+	return result, err
 }

@@ -19,6 +19,7 @@ type testCase struct {
 	initSQL             []string
 	data                interface{}
 	expectError         bool
+	options             []Option
 	expectErrorFragment string
 }
 
@@ -30,6 +31,26 @@ type UniqueRecord struct {
 type FkRecord struct {
 	Id     int  `sqlx:"name=ID,autoincrement,primaryKey"`
 	DeptId *int `sqlx:"name=name,refColumn=id,refTable=dept01" json:",omitempty"`
+}
+
+type NoNullRecord struct {
+	Id     int  `sqlx:"name=ID,autoincrement,primaryKey"`
+	Field1 *int `sqlx:"name=f1,notNull" json:",omitempty"`
+}
+
+type Record struct {
+	Id     int        `sqlx:"name=ID,autoincrement,primaryKey"`
+	Name   *string    `sqlx:"name=name,unique,table=v01" json:",omitempty"`
+	DeptId *int       `sqlx:"name=name,refColumn=id,refTable=dept01" json:",omitempty"`
+	Field1 *int       `sqlx:"name=f1,notNull" json:",omitempty"`
+	Has    *RecordHas `sqlx:"presence=true"`
+}
+
+type RecordHas struct {
+	Id     bool
+	Name   bool
+	DeptId bool
+	Field1 bool
 }
 
 func TestNewValidation(t *testing.T) {
@@ -102,10 +123,87 @@ func TestNewValidation(t *testing.T) {
 			},
 			expectError: false,
 		},
+		{
+			description: "not null validation failure",
+			driver:      "sqlite3",
+			dsn:         "/tmp/sqllite.db",
+			initSQL:     []string{},
+			data: &NoNullRecord{
+				Id: 10,
+			},
+			expectError:         true,
+			expectErrorFragment: "null",
+		},
+		{
+			description: "not null validation passed",
+			driver:      "sqlite3",
+			dsn:         "/tmp/sqllite.db",
+			initSQL:     []string{},
+			data: &NoNullRecord{
+				Id:     10,
+				Field1: intPtr(1),
+			},
+			expectError: false,
+		},
+		{
+			description: "not null validation passed",
+			driver:      "sqlite3",
+			dsn:         "/tmp/sqllite.db",
+			initSQL:     []string{},
+			data: &NoNullRecord{
+				Id:     10,
+				Field1: intPtr(1),
+			},
+			expectError: false,
+		},
+
+		{
+			description: "fk validation failure with has",
+			driver:      "sqlite3",
+			dsn:         "/tmp/sqllite.db",
+			initSQL: []string{
+				"CREATE TABLE IF NOT EXISTS dept01 (id INTEGER PRIMARY KEY, name TEXT, desc TEXT, unk TEXT)",
+				"CREATE TABLE IF NOT EXISTS v02 (id INTEGER PRIMARY KEY, dept_id INTEGER, desc TEXT, unk TEXT)",
+				"delete from v02",
+				"delete from dept01",
+				`insert into dept01 values(1, "Admin", "admin dept", "101")`,
+				`insert into v02 values(1, 2, "desc1", "101")`,
+			},
+			data: &Record{
+				Id:     10,
+				DeptId: intPtr(2), //DeptId ignore since has does not flag it as set
+				Has: &RecordHas{
+					DeptId: true,
+				},
+			},
+			options:             []Option{WithPresence()},
+			expectError:         true,
+			expectErrorFragment: "does not exists",
+		},
+		{
+			description: "fk validation failure with not has flag",
+			driver:      "sqlite3",
+			dsn:         "/tmp/sqllite.db",
+			initSQL: []string{
+				"CREATE TABLE IF NOT EXISTS dept01 (id INTEGER PRIMARY KEY, name TEXT, desc TEXT, unk TEXT)",
+				"CREATE TABLE IF NOT EXISTS v02 (id INTEGER PRIMARY KEY, dept_id INTEGER, desc TEXT, unk TEXT)",
+				"delete from v02",
+				"delete from dept01",
+				`insert into dept01 values(1, "Admin", "admin dept", "101")`,
+				`insert into v02 values(1, 2, "desc1", "101")`,
+			},
+			data: &Record{
+				Id:     10,
+				DeptId: intPtr(2), //DeptId ignore since has does not flag it as set
+				Has:    &RecordHas{},
+			},
+			options:     []Option{WithPresence()},
+			expectError: false,
+		},
 	}
 
 	//TODO add option for HAS detection
-	for _, testCase := range testCases {
+	for _, testCase := range testCases[len(testCases)-1:] {
 
 		db, err := sql.Open(testCase.driver, testCase.dsn)
 		if !assert.Nil(t, err, testCase.description) {
@@ -118,7 +216,7 @@ func TestNewValidation(t *testing.T) {
 			}
 		}
 		validator := New()
-		err = validator.Validate(context.Background(), db, testCase.data)
+		err = validator.Validate(context.Background(), db, testCase.data, testCase.options...)
 		if testCase.expectError {
 			vErr, ok := err.(*Error)
 			if !assert.True(t, ok, testCase.description) {

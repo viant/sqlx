@@ -115,6 +115,9 @@ func ParseTag(tagString string) *Tag {
 				tag.NullifyEmpty = true
 			case "notnull":
 				tag.NotNull = true
+			case "presence":
+				tag.PresenceProvider = true
+				tag.Transient = true
 			}
 		}
 

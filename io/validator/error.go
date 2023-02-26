@@ -8,11 +8,11 @@ import (
 
 type (
 	Violation struct {
-		Path     string
-		Field    string
-		Value    interface{}
-		Message  string
-		FailedOn string
+		Path    string
+		Field   string
+		Value   interface{}
+		Message string
+		Reason  string
 	}
 
 	Error struct {
@@ -25,10 +25,10 @@ func (e *Error) AppendNotNull(path *Path, field, msg string) {
 		msg = fmt.Sprintf("Field validation for '%v' failed; value is null", field)
 	}
 	e.Violation = append(e.Violation, &Violation{
-		Path:     path.String(),
-		Field:    field,
-		Message:  msg,
-		FailedOn: string(CheckKidNotNull),
+		Path:    path.String(),
+		Field:   field,
+		Message: msg,
+		Reason:  string(CheckKidNotNull),
 	})
 }
 
@@ -38,11 +38,11 @@ func (e *Error) AppendUnique(path *Path, field string, value interface{}, msg st
 		msg = fmt.Sprintf("Field validation for '%v' failed; value '%v' is not unique", field, value)
 	}
 	e.Violation = append(e.Violation, &Violation{
-		Path:     path.String(),
-		Field:    field,
-		Value:    value,
-		Message:  msg,
-		FailedOn: string(CheckKidUnique),
+		Path:    path.String(),
+		Field:   field,
+		Value:   value,
+		Message: msg,
+		Reason:  string(CheckKidUnique),
 	})
 }
 
@@ -60,11 +60,11 @@ func (e *Error) AppendRef(path *Path, field string, value interface{}, msg strin
 		msg = fmt.Sprintf("Field validation for '%v' failed; ref key '%v' does not exists ", field, value)
 	}
 	e.Violation = append(e.Violation, &Violation{
-		Path:     path.String(),
-		Field:    field,
-		Value:    value,
-		Message:  msg,
-		FailedOn: string(CheckKidRefKey),
+		Path:    path.String(),
+		Field:   field,
+		Value:   value,
+		Message: msg,
+		Reason:  string(CheckKidRefKey),
 	})
 }
 

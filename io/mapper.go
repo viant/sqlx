@@ -12,11 +12,13 @@ type ColumnMapper func(src interface{}, tagName string, options ...option.Option
 
 //StructColumnMapper returns genertic column mapper
 func StructColumnMapper(src interface{}, tagName string, options ...option.Option) ([]Column, PlaceholderBinder, error) {
-	recordType := reflect.TypeOf(src)
+	recordType, ok := src.(reflect.Type)
+	if !ok {
+		recordType = reflect.TypeOf(src)
+	}
 	if recordType.Kind() == reflect.Ptr {
 		recordType = recordType.Elem()
 	}
-
 	identityOnly := option.Options(options).IdentityOnly()
 	var columnRestriction option.ColumnRestriction
 	if val := option.Options(options).Columns(); len(val) > 0 {

@@ -5,9 +5,11 @@ import (
 	"database/sql"
 	"github.com/viant/sqlx/io"
 	"github.com/viant/sqlx/io/read"
+	"github.com/viant/sqlx/option"
 	"github.com/viant/xunsafe"
 	"reflect"
 	"sync"
+	"time"
 )
 
 type (
@@ -17,7 +19,7 @@ type (
 	}
 )
 
-func (s *Service) validationFor(t reflect.Type) (*Validation, error) {
+func (s *Service) validationFor(t reflect.Type, presence *option.PresenceProvider) (*Validation, error) {
 	if t.Kind() == reflect.Ptr {
 		t = t.Elem()
 	}
@@ -28,7 +30,7 @@ func (s *Service) validationFor(t reflect.Type) (*Validation, error) {
 		return validation, nil
 	}
 	var err error
-	if validation, err = NewValidation(t); err != nil {
+	if validation, err = NewValidation(t, presence); err != nil {
 		return nil, err
 	}
 	s.mux.Lock()
@@ -50,7 +52,7 @@ func (s *Service) Validate(ctx context.Context, db *sql.DB, any interface{}, opt
 		return nil
 	}
 	record := valueAt(0)
-	validation, err := s.validationFor(reflect.TypeOf(record))
+	validation, err := s.validationFor(reflect.TypeOf(record), options.PresenceProvider)
 	if err != nil {
 		return err
 	}
@@ -73,14 +75,39 @@ func (s *Service) checkNotNull(ctx context.Context, path *Path, at io.ValueAcces
 	if len(checks) == 0 || !options.CheckNotNull {
 		return
 	}
+
 	for _, check := range checks {
 		for i := 0; i < count; i++ {
 			itemPath := path.AppendIndex(i)
 			fieldPath := itemPath.AppendField(check.Field.Name)
 			record := at(i)
 			recordPtr := xunsafe.AsPointer(record)
-			if value := check.Field.Value(recordPtr); value == nil {
-				violations.AppendNotNull(fieldPath, check.Field.Name, "")
+			if !options.IsFieldSet(recordPtr, int(check.Field.Index)) {
+				continue
+			}
+			value := check.Field.Value(recordPtr)
+			switch actual := value.(type) {
+			case *int, *uint, *int64, *uint64:
+				ptr := (*int)(xunsafe.AsPointer(actual))
+				if ptr == nil {
+					violations.AppendNotNull(fieldPath, check.Field.Name, "")
+				}
+			case *uint8:
+				if actual == nil {
+					violations.AppendNotNull(fieldPath, check.Field.Name, "")
+				}
+			case *string:
+				if actual == nil {
+					violations.AppendNotNull(fieldPath, check.Field.Name, "")
+				}
+			case *time.Time:
+				if actual == nil {
+					violations.AppendNotNull(fieldPath, check.Field.Name, "")
+				}
+			default:
+				if value == nil {
+					violations.AppendNotNull(fieldPath, check.Field.Name, "")
+				}
 			}
 		}
 	}
@@ -91,20 +118,23 @@ func (s *Service) checkUniques(ctx context.Context, path *Path, db *sql.DB, at i
 		return nil
 	}
 	for _, check := range checks {
-		if err := s.checkUnique(ctx, path, db, at, count, check, violations); err != nil {
+		if err := s.checkUnique(ctx, path, db, at, count, check, violations, options); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (s *Service) checkUnique(ctx context.Context, path *Path, db *sql.DB, at io.ValueAccessor, count int, check *Check, violations *Error) error {
+func (s *Service) checkUnique(ctx context.Context, path *Path, db *sql.DB, at io.ValueAccessor, count int, check *Check, violations *Error, options *Options) error {
 	var queryCtx = queryContext{SQL: check.SQL}
 	for i := 0; i < count; i++ {
 		itemPath := path.AppendIndex(i)
 		fieldPath := itemPath.AppendField(check.Field.Name)
 		record := at(i)
 		recordPtr := xunsafe.AsPointer(record)
+		if !options.IsFieldSet(recordPtr, int(check.Field.Index)) {
+			continue
+		}
 		value := check.Field.Value(recordPtr)
 		queryCtx.Append(value, check.Field.Name, fieldPath)
 	}
@@ -139,7 +169,7 @@ func (s *Service) checkRefs(ctx context.Context, path *Path, db *sql.DB, at io.V
 		return nil
 	}
 	for _, check := range checks {
-		if err := s.checkRef(ctx, path, db, at, count, check, violations); err != nil {
+		if err := s.checkRef(ctx, path, db, at, count, check, violations, options); err != nil {
 			return err
 		}
 	}
@@ -147,13 +177,16 @@ func (s *Service) checkRefs(ctx context.Context, path *Path, db *sql.DB, at io.V
 
 }
 
-func (s *Service) checkRef(ctx context.Context, path *Path, db *sql.DB, at io.ValueAccessor, count int, check *Check, violations *Error) error {
+func (s *Service) checkRef(ctx context.Context, path *Path, db *sql.DB, at io.ValueAccessor, count int, check *Check, violations *Error, options *Options) error {
 	var queryCtx = queryContext{SQL: check.SQL}
 	for i := 0; i < count; i++ {
 		itemPath := path.AppendIndex(i)
 		fieldPath := itemPath.AppendField(check.Field.Name)
 		record := at(i)
 		recordPtr := xunsafe.AsPointer(record)
+		if !options.IsFieldSet(recordPtr, int(check.Field.Index)) {
+			continue
+		}
 		value := check.Field.Value(recordPtr)
 		queryCtx.Append(value, check.Field.Name, fieldPath)
 	}
@@ -184,12 +217,24 @@ func (s *Service) checkRef(ctx context.Context, path *Path, db *sql.DB, at io.Va
 }
 
 func mapKey(value interface{}) interface{} {
+
 	switch actual := value.(type) {
 	case *string:
+		if actual == nil {
+			return ""
+		}
 		return *actual
 	case *int, *uint64, *int64, *uint:
 		intPtr := (*int)(xunsafe.AsPointer(actual))
+		if intPtr == nil {
+			return 0
+		}
 		return *intPtr
+	case *time.Time:
+		if actual == nil {
+			return time.Time{}
+		}
+		return actual
 	default:
 		return value
 	}

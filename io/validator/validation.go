@@ -24,22 +24,27 @@ type (
 	}
 
 	Validation struct {
-		Type   reflect.Type
-		Unique []*Check
-		RefKey []*Check
-		NoNull []*Check
+		Type     reflect.Type
+		Unique   []*Check
+		RefKey   []*Check
+		NoNull   []*Check
+		presence *option.PresenceProvider
 	}
 )
 
-func NewValidation(p reflect.Type) (*Validation, error) {
+func NewValidation(p reflect.Type, presence *option.PresenceProvider) (*Validation, error) {
 	var result = &Validation{Type: p}
-	columns, err := io.StructColumns(p, option.TagSqlx)
-	if err != nil {
-		return nil, err
-	}
 	sType := p
 	if sType.Kind() == reflect.Ptr {
 		sType = sType.Elem()
+	}
+	var opts []option.Option
+	if presence != nil {
+		opts = append(opts, presence)
+	}
+	columns, err := io.StructColumns(p, option.TagSqlx, opts...)
+	if err != nil {
+		return nil, err
 	}
 	for _, column := range columns {
 		tag := column.Tag()
@@ -47,6 +52,7 @@ func NewValidation(p reflect.Type) (*Validation, error) {
 			continue
 		}
 		xField := xunsafe.NewField(sType.Field(tag.FieldIndex))
+
 		if tag.NotNull {
 			result.NoNull = append(result.NoNull, &Check{
 				Field: xField,

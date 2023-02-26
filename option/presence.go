@@ -20,7 +20,7 @@ func (p *PresenceProvider) Has(ptr unsafe.Pointer, index int) bool {
 }
 
 func (p *PresenceProvider) Init(filedPos map[string]int) error {
-	if p.Holder == nil {
+	if p.Holder == nil || len(filedPos) == 0 {
 		return nil
 	}
 	if holder := p.Holder; holder != nil {
