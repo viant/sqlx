@@ -33,10 +33,13 @@ func (e *Error) AppendNotNull(path *Path, field, msg string) {
 }
 
 func (e *Error) AppendUnique(path *Path, field string, value interface{}, msg string) {
+	value = derefIfNeeded(value)
 	if msg == "" {
-		value = derefIfNeeded(value)
 		msg = fmt.Sprintf("Field validation for '%v' failed; value '%v' is not unique", field, value)
+	} else {
+		msg = strings.Replace(msg, "$value", fmt.Sprintf("%v", value), 1)
 	}
+
 	e.Violation = append(e.Violation, &Violation{
 		Path:    path.String(),
 		Field:   field,
@@ -56,8 +59,11 @@ func derefIfNeeded(value interface{}) interface{} {
 }
 
 func (e *Error) AppendRef(path *Path, field string, value interface{}, msg string) {
+	value = derefIfNeeded(value)
 	if msg == "" {
 		msg = fmt.Sprintf("Field validation for '%v' failed; ref key '%v' does not exists ", field, value)
+	} else {
+		msg = strings.Replace(msg, "$value", fmt.Sprintf("%v", value), 1)
 	}
 	e.Violation = append(e.Violation, &Violation{
 		Path:    path.String(),

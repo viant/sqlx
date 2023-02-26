@@ -19,6 +19,7 @@ type (
 	Check struct {
 		SQL        string
 		Field      *xunsafe.Field
+		ErrorMsg   string
 		CheckType  reflect.Type
 		CheckField *xunsafe.Field
 	}
@@ -55,7 +56,8 @@ func NewValidation(p reflect.Type, presence *option.PresenceProvider) (*Validati
 
 		if tag.NotNull {
 			result.NoNull = append(result.NoNull, &Check{
-				Field: xField,
+				Field:    xField,
+				ErrorMsg: tag.ErrorMgs,
 			})
 		}
 
@@ -67,6 +69,7 @@ func NewValidation(p reflect.Type, presence *option.PresenceProvider) (*Validati
 				CheckType:  checkType,
 				CheckField: checkField,
 				Field:      xField,
+				ErrorMsg:   tag.ErrorMgs,
 			})
 			continue
 		}
@@ -79,6 +82,7 @@ func NewValidation(p reflect.Type, presence *option.PresenceProvider) (*Validati
 				CheckType:  checkType,
 				CheckField: checkField,
 				Field:      xField,
+				ErrorMsg:   tag.ErrorMgs,
 			})
 		}
 	}

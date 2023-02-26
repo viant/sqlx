@@ -183,6 +183,31 @@ func ExampleService_Exec() {
 
 ```
 
+### Validator Service
+
+Validator service has ability to validate unique,foreign key and not null constraints, with the following tag:
+- unique,table
+- notNull
+- refColumn,refTable
+
+For example:
+```go
+
+type Record struct {
+    Id     int              `sqlx:"name=ID,autoincrement,primaryKey"`
+    Name   *string          `sqlx:"name=name,unique,table=myTable" json:",omitempty"`
+    DeptId *int             `sqlx:"name=name,refColumn=id,refTable=dep" json:",omitempty"`
+    StartDate *time.Time    `sqlx:"name=startData,notNull" json:",omitempty"`
+}
+var db *sql.Db = nil //populate you db
+var rec := &Record{}
+validator := New()
+err = validator.Validate(context.Background(), db, rec)
+
+```
+
+
+
 ### Updater Service
 
 ### Merger Service

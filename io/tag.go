@@ -24,6 +24,7 @@ type Tag struct {
 	RefColumn        string
 	NullifyEmpty     bool
 	NotNull          bool
+	ErrorMgs         string
 	PresenceProvider bool
 }
 
@@ -87,6 +88,8 @@ func ParseTag(tagString string) *Tag {
 				tag.RefTable = nv[1]
 			case "refcolumn":
 				tag.RefColumn = nv[1]
+			case "errormsg":
+				tag.ErrorMgs = strings.ReplaceAll(nv[1], "$coma", ",")
 			case "generator":
 				generatorStrat := strings.TrimSpace(nv[1])
 				tag.Generator = generatorStrat

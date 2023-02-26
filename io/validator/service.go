@@ -90,23 +90,23 @@ func (s *Service) checkNotNull(ctx context.Context, path *Path, at io.ValueAcces
 			case *int, *uint, *int64, *uint64:
 				ptr := (*int)(xunsafe.AsPointer(actual))
 				if ptr == nil {
-					violations.AppendNotNull(fieldPath, check.Field.Name, "")
+					violations.AppendNotNull(fieldPath, check.Field.Name, check.ErrorMsg)
 				}
 			case *uint8:
 				if actual == nil {
-					violations.AppendNotNull(fieldPath, check.Field.Name, "")
+					violations.AppendNotNull(fieldPath, check.Field.Name, check.ErrorMsg)
 				}
 			case *string:
 				if actual == nil {
-					violations.AppendNotNull(fieldPath, check.Field.Name, "")
+					violations.AppendNotNull(fieldPath, check.Field.Name, check.ErrorMsg)
 				}
 			case *time.Time:
 				if actual == nil {
-					violations.AppendNotNull(fieldPath, check.Field.Name, "")
+					violations.AppendNotNull(fieldPath, check.Field.Name, check.ErrorMsg)
 				}
 			default:
 				if value == nil {
-					violations.AppendNotNull(fieldPath, check.Field.Name, "")
+					violations.AppendNotNull(fieldPath, check.Field.Name, check.ErrorMsg)
 				}
 			}
 		}
@@ -158,7 +158,7 @@ func (s *Service) checkUnique(ctx context.Context, path *Path, db *sql.DB, at io
 	}
 	for k := range index {
 		if ctxElem := queryCtx.index[k]; ctxElem != nil {
-			violations.AppendUnique(ctxElem.path, ctxElem.field, k, "")
+			violations.AppendUnique(ctxElem.path, ctxElem.field, k, check.ErrorMsg)
 		}
 	}
 	return nil
@@ -210,7 +210,7 @@ func (s *Service) checkRef(ctx context.Context, path *Path, db *sql.DB, at io.Va
 	}
 	for k, ctxElem := range queryCtx.index { //all struct index values should have value in reference table
 		if !index[k] {
-			violations.AppendRef(ctxElem.path, ctxElem.field, k, "")
+			violations.AppendRef(ctxElem.path, ctxElem.field, k, check.ErrorMsg)
 		}
 	}
 	return nil
