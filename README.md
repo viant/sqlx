@@ -199,13 +199,12 @@ type Record struct {
     Id     int              `sqlx:"name=ID,autoincrement,primaryKey"`
     Name   *string          `sqlx:"name=name,unique,table=myTable" json:",omitempty"`
     DeptId *int             `sqlx:"name=name,refColumn=id,refTable=dep" json:",omitempty"`
-    StartDate *time.Time    `sqlx:"name=startData,notNull" json:",omitempty"`
+    StartDate *time.Time    `sqlx:"name=startData,required" json:",omitempty"`
 }
 var db *sql.Db = nil //populate you db
 var rec := &Record{}
 validator := New()
-err = validator.Validate(context.Background(), db, rec)
-
+validation, err = validator.Validate(context.Background(), db, rec)
 ```
 
 
