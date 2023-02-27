@@ -34,13 +34,11 @@ func (e *Validation) AppendNotNull(path *Path, field, msg string) {
 }
 
 func (e *Validation) AppendUnique(path *Path, field string, value interface{}, msg string) {
-	value = derefIfNeeded(value)
 	if msg == "" {
 		msg = fmt.Sprintf("Field validation for '%v' failed; value '%v' is not unique", field, value)
 	} else {
 		msg = strings.Replace(msg, "$value", fmt.Sprintf("%v", value), 1)
 	}
-
 	e.Violation = append(e.Violation, &Violation{
 		Path:    path.String(),
 		Field:   field,

@@ -6,6 +6,7 @@ import (
 	"github.com/viant/sqlx/option"
 	"github.com/viant/xunsafe"
 	"reflect"
+	"strings"
 	"time"
 )
 
@@ -116,7 +117,10 @@ func normalizeScanType(scanType reflect.Type) reflect.Type {
 func TypesToColumns(columns []*sql.ColumnType) []Column {
 	var result = make([]Column, len(columns))
 	for i := range columns {
-		result[i] = &columnType{ColumnType: columns[i], scanType: normalizeScanType(columns[i].ScanType())}
+		dbType := columns[i].DatabaseTypeName()
+		dbType = strings.Replace(dbType, "UNSIGNED", "", 1)
+		dbType = strings.TrimSpace(dbType)
+		result[i] = &columnType{databaseTypeName: dbType, ColumnType: columns[i], scanType: normalizeScanType(columns[i].ScanType())}
 	}
 	return result
 }

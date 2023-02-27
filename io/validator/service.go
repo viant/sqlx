@@ -14,8 +14,8 @@ import (
 
 type (
 	Service struct {
-		cheks map[reflect.Type]*Checks
-		mux   sync.RWMutex
+		checks map[reflect.Type]*Checks
+		mux    sync.RWMutex
 	}
 )
 
@@ -24,7 +24,7 @@ func (s *Service) checksFor(t reflect.Type, presence *option.PresenceProvider) (
 		t = t.Elem()
 	}
 	s.mux.RLock()
-	checks, ok := s.cheks[t]
+	checks, ok := s.checks[t]
 	s.mux.RUnlock()
 	if ok {
 		return checks, nil
@@ -34,12 +34,13 @@ func (s *Service) checksFor(t reflect.Type, presence *option.PresenceProvider) (
 		return nil, err
 	}
 	s.mux.Lock()
-	s.cheks[t] = checks
+	s.checks[t] = checks
 	s.mux.Unlock()
 	return checks, nil
 }
 
 func (s *Service) Validate(ctx context.Context, db *sql.DB, any interface{}, opts ...Option) (*Validation, error) {
+	var result = &Validation{}
 	options := NewOptions()
 	for _, opt := range opts {
 		opt(options)
@@ -49,7 +50,7 @@ func (s *Service) Validate(ctx context.Context, db *sql.DB, any interface{}, opt
 		return nil, err
 	}
 	if count == 0 {
-		return nil, nil
+		return result, nil
 	}
 	record := valueAt(0)
 	checks, err := s.checksFor(reflect.TypeOf(record), options.PresenceProvider)
@@ -65,24 +66,22 @@ func (s *Service) Validate(ctx context.Context, db *sql.DB, any interface{}, opt
 	if err = s.checkRefs(ctx, path, db, valueAt, count, checks.RefKey, &ret, options); err != nil {
 		return nil, err
 	}
-	if len(ret.Violation) == 0 {
-		return nil, nil
-	}
 	ret.Failed = len(ret.Violation) > 0
 	return &ret, nil
 }
 
 func (s *Service) checkNotNull(ctx context.Context, path *Path, at io.ValueAccessor, count int, checks []*Check, violations *Validation, options *Options) {
-	if len(checks) == 0 || !options.CheckNotNull {
+	if len(checks) == 0 || !options.Required {
 		return
 	}
+	presence := options.PresenceProvider
 	for _, check := range checks {
 		for i := 0; i < count; i++ {
 			itemPath := path.AppendIndex(i)
 			fieldPath := itemPath.AppendField(check.Field.Name)
 			record := at(i)
 			recordPtr := xunsafe.AsPointer(record)
-			if !options.IsFieldSet(recordPtr, int(check.Field.Index)) {
+			if !presence.IsFieldSet(recordPtr, int(check.Field.Index)) {
 				continue
 			}
 			value := check.Field.Value(recordPtr)
@@ -141,12 +140,13 @@ func (s *Service) checkUnique(ctx context.Context, path *Path, db *sql.DB, at io
 
 func (s *Service) buildUniqueMatchContext(check *Check, count int, path *Path, at io.ValueAccessor, options *Options) *queryContext {
 	queryCtx := newQueryContext(check.SQL)
+	presence := options.PresenceProvider
 	for i := 0; i < count; i++ {
 		itemPath := path.AppendIndex(i)
 		fieldPath := itemPath.AppendField(check.Field.Name)
 		record := at(i)
 		recordPtr := xunsafe.AsPointer(record)
-		if !options.IsFieldSet(recordPtr, int(check.Field.Index)) {
+		if !presence.IsFieldSet(recordPtr, int(check.Field.Index)) {
 			continue
 		}
 		value := check.Field.Value(recordPtr)
@@ -206,12 +206,13 @@ func (s *Service) checkRef(ctx context.Context, path *Path, db *sql.DB, at io.Va
 
 func (s *Service) buildCheckRefQueryContext(check *Check, count int, path *Path, at io.ValueAccessor, options *Options, violations *Validation) *queryContext {
 	queryCtx := newQueryContext(check.SQL)
+	presence := options.PresenceProvider
 	for i := 0; i < count; i++ {
 		itemPath := path.AppendIndex(i)
 		fieldPath := itemPath.AppendField(check.Field.Name)
 		record := at(i)
 		recordPtr := xunsafe.AsPointer(record)
-		if !options.IsFieldSet(recordPtr, int(check.Field.Index)) {
+		if !presence.IsFieldSet(recordPtr, int(check.Field.Index)) {
 			continue
 		}
 		value := check.Field.Value(recordPtr)
@@ -264,5 +265,5 @@ func mapKey(value interface{}) interface{} {
 
 //New creates a new validation service
 func New() *Service {
-	return &Service{cheks: map[reflect.Type]*Checks{}}
+	return &Service{checks: map[reflect.Type]*Checks{}}
 }

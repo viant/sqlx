@@ -13,6 +13,14 @@ type PresenceProvider struct {
 	IdentityIndex int
 }
 
+//IsFieldSet returns true if field has been set
+func (p *PresenceProvider) IsFieldSet(ptr unsafe.Pointer, index int) bool {
+	if p == nil || p.Holder == nil {
+		return true //we do not have field presence provider so we assume all fields are set
+	}
+	return p.Has(ptr, index)
+}
+
 //Has returns true if value on holder field with index has been set
 func (p *PresenceProvider) Has(ptr unsafe.Pointer, index int) bool {
 	hasPtr := p.Holder.ValuePointer(ptr)

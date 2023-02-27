@@ -30,7 +30,8 @@ type Column interface {
 
 type columnType struct {
 	*sql.ColumnType
-	scanType reflect.Type
+	scanType         reflect.Type
+	databaseTypeName string
 }
 
 func (t *columnType) ScanType() reflect.Type {
@@ -42,6 +43,14 @@ func (t *columnType) ScanType() reflect.Type {
 
 func (t *columnType) Tag() *Tag {
 	return nil
+}
+
+//DatabaseTypeName returns database type name Common type include "VARCHAR", "TEXT", "NVARCHAR", "DECIMAL", "BOOL", "INT", "BIGINT".
+func (c *columnType) DatabaseTypeName() string {
+	if c.databaseTypeName != "" {
+		return c.databaseTypeName
+	}
+	return c.ColumnType.DatabaseTypeName()
 }
 
 //column represents a column

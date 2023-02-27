@@ -26,6 +26,7 @@ type Tag struct {
 	NullifyEmpty     bool
 	ErrorMgs         string
 	PresenceProvider bool
+	Bit              bool
 }
 
 //CanExpand return true if field can expend fied struct fields
@@ -86,6 +87,8 @@ func ParseTag(tagString string) *Tag {
 				tag.RefTable = nv[1]
 			case "refcolumn":
 				tag.RefColumn = nv[1]
+			case "bit":
+				tag.Bit = strings.TrimSpace(nv[1]) == "true"
 			case "required":
 				tag.Required = strings.TrimSpace(nv[1]) == "true"
 			case "errormsg":
@@ -110,6 +113,8 @@ func ParseTag(tagString string) *Tag {
 			switch strings.ToLower(element) {
 			case "autoincrement":
 				tag.PrimaryKey = true
+			case "bit":
+				tag.Bit = true
 			case "primarykey":
 				tag.PrimaryKey = true
 			case "unique":

@@ -233,18 +233,19 @@ func TestNewValidation(t *testing.T) {
 			}
 		}
 		validator := New()
-		err, _ = validator.Validate(context.Background(), db, testCase.data, testCase.options...)
+		validation, _ := validator.Validate(context.Background(), db, testCase.data, testCase.options...)
 		if testCase.expectError {
-			if !assert.True(t, strings.Contains(err.Error(), testCase.expectErrorFragment), testCase.description) {
-				toolbox.Dump(err)
+			if !assert.True(t, strings.Contains(validation.Error(), testCase.expectErrorFragment), testCase.description) {
+				toolbox.Dump(validation)
 				continue
 			}
-			if !assert.NotNilf(t, err, testCase.description) {
+			if !assert.NotNilf(t, validation, testCase.description) {
 				continue
 			}
 			continue
 		}
-		if !assert.Nilf(t, err, testCase.description) {
+
+		if assert.False(t, validation.Failed, testCase.description) {
 			continue
 		}
 	}
