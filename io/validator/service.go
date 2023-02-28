@@ -66,7 +66,7 @@ func (s *Service) Validate(ctx context.Context, db *sql.DB, any interface{}, opt
 	if err = s.checkRefs(ctx, path, db, valueAt, count, checks.RefKey, &ret, options); err != nil {
 		return nil, err
 	}
-	ret.Failed = len(ret.Violation) > 0
+	ret.Failed = len(ret.Violations) > 0
 	return &ret, nil
 }
 

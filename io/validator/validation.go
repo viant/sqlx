@@ -16,8 +16,8 @@ type (
 	}
 
 	Validation struct {
-		Violation []*Violation
-		Failed    bool
+		Violations []*Violation
+		Failed     bool
 	}
 )
 
@@ -25,7 +25,7 @@ func (e *Validation) AppendNotNull(path *Path, field, msg string) {
 	if msg == "" {
 		msg = fmt.Sprintf("Field validation for '%v' failed; value is null", field)
 	}
-	e.Violation = append(e.Violation, &Violation{
+	e.Violations = append(e.Violations, &Violation{
 		Path:    path.String(),
 		Field:   field,
 		Message: msg,
@@ -39,7 +39,7 @@ func (e *Validation) AppendUnique(path *Path, field string, value interface{}, m
 	} else {
 		msg = strings.Replace(msg, "$value", fmt.Sprintf("%v", value), 1)
 	}
-	e.Violation = append(e.Violation, &Violation{
+	e.Violations = append(e.Violations, &Violation{
 		Path:    path.String(),
 		Field:   field,
 		Value:   value,
@@ -64,7 +64,7 @@ func (e *Validation) AppendRef(path *Path, field string, value interface{}, msg 
 	} else {
 		msg = strings.Replace(msg, "$value", fmt.Sprintf("%v", value), 1)
 	}
-	e.Violation = append(e.Violation, &Violation{
+	e.Violations = append(e.Violations, &Violation{
 		Path:    path.String(),
 		Field:   field,
 		Value:   value,
@@ -74,11 +74,11 @@ func (e *Validation) AppendRef(path *Path, field string, value interface{}, msg 
 }
 
 func (e *Validation) String() string {
-	if e == nil || len(e.Violation) == 0 {
+	if e == nil || len(e.Violations) == 0 {
 		return ""
 	}
 	msg := strings.Builder{}
-	for i, v := range e.Violation {
+	for i, v := range e.Violations {
 		if i > 0 {
 			msg.WriteString(",")
 		}
