@@ -9,6 +9,7 @@ type (
 		Required         bool
 		CheckUnique      bool
 		CheckRef         bool
+		Location         string
 		PresenceProvider *option.PresenceProvider
 	}
 	Option func(c *Options)
@@ -31,6 +32,13 @@ func WithUnique(flag bool) Option {
 func WithRef(flag bool) Option {
 	return func(c *Options) {
 		c.CheckRef = flag
+	}
+}
+
+//WithLocation creates with location option
+func WithLocation(location string) Option {
+	return func(c *Options) {
+		c.Location = location
 	}
 }
 

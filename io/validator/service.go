@@ -59,6 +59,9 @@ func (s *Service) Validate(ctx context.Context, db *sql.DB, any interface{}, opt
 	}
 	var ret Validation
 	path := &Path{}
+	if options.Location != "" {
+		path.AppendField(options.Location)
+	}
 	s.checkNotNull(ctx, path, valueAt, count, checks.NoNull, &ret, options)
 	if err = s.checkUniques(ctx, path, db, valueAt, count, checks.Unique, &ret, options); err != nil {
 		return nil, err
