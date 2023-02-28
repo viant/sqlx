@@ -12,7 +12,7 @@ type (
 		Field   string
 		Value   interface{}
 		Message string
-		Reason  string
+		Check   string
 	}
 
 	Validation struct {
@@ -29,7 +29,7 @@ func (e *Validation) AppendNotNull(path *Path, field, msg string) {
 		Path:    path.String(),
 		Field:   field,
 		Message: msg,
-		Reason:  string(CheckKidNotNull),
+		Check:   string(CheckKidNotNull),
 	})
 }
 
@@ -44,7 +44,7 @@ func (e *Validation) AppendUnique(path *Path, field string, value interface{}, m
 		Field:   field,
 		Value:   value,
 		Message: msg,
-		Reason:  string(CheckKidUnique),
+		Check:   string(CheckKidUnique),
 	})
 }
 
@@ -69,7 +69,7 @@ func (e *Validation) AppendRef(path *Path, field string, value interface{}, msg 
 		Field:   field,
 		Value:   value,
 		Message: msg,
-		Reason:  string(CheckKidRefKey),
+		Check:   string(CheckKidRefKey),
 	})
 }
 
