@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"fmt"
 	"github.com/viant/sqlx/option"
+	types "github.com/viant/sqlx/types"
+	"github.com/viant/xreflect"
 	"github.com/viant/xunsafe"
 	"reflect"
 	"strings"
@@ -12,6 +14,9 @@ import (
 
 //Columns represents columns
 type Columns []Column
+type foo struct {
+	Interface interface{}
+}
 
 //Autoincrement returns position of autoincrement column position or -1
 func (c Columns) Autoincrement() int {
@@ -37,6 +42,7 @@ func (c Columns) IdentityColumnPos() int {
 			return i
 		}
 	}
+
 	return -1
 }
 
@@ -89,6 +95,39 @@ var goNullFloat64Type = reflect.PtrTo(reflect.TypeOf(float64(0)))
 var sqlRawBytesType = reflect.TypeOf(sql.RawBytes{})
 var goRawBytesType = reflect.PtrTo(reflect.TypeOf(""))
 
+func ParseType(columnType string) (reflect.Type, bool) {
+	switch strings.ToLower(columnType) {
+	case "int", "integer", "bigint", "smallint", "unsiged tinyint", "tinyint", "int64", "int32", "int16", "int8", "uint", "uint8", "uint16", "uint32", "uint64", "binary":
+		return reflect.TypeOf(0), true
+	case "float", "float64", "numeric", "decimal", "double":
+		return reflect.TypeOf(0.0), true
+	case "bool", "boolean":
+		return reflect.TypeOf(false), true
+	case "bit", "bitbool":
+		return reflect.TypeOf(types.BitBool(true)), true
+	case "string", "varchar", "char", "text", "longtext", "longblob", "mediumblob", "mediumtext", "blob", "tinytext":
+		return reflect.TypeOf(""), true
+	case "date", "time", "timestamp", "datetime":
+		return reflect.TypeOf(time.Time{}), true
+	case "sql.rawbytes", "rawbytes":
+		return reflect.TypeOf(""), true
+	case "interface":
+		t := reflect.ValueOf(interface{}(foo{})).FieldByName("Interface").Type()
+		return t, true
+	}
+
+	return nil, false
+}
+
+func NormalizeColumnType(scanType reflect.Type, name string) reflect.Type {
+	rType, ok := ParseType(name)
+	if ok {
+		return normalizeTypeRange(rType)
+	}
+
+	return normalizeTypeRange(normalizeScanType(scanType))
+}
+
 func normalizeScanType(scanType reflect.Type) reflect.Type {
 	switch scanType {
 	case sqlNullStringType:
@@ -113,6 +152,33 @@ func normalizeScanType(scanType reflect.Type) reflect.Type {
 	return scanType
 }
 
+func normalizeTypeRange(rType reflect.Type) reflect.Type {
+	actualType := rType
+	ptrCounter := 0
+
+	for actualType.Kind() == reflect.Ptr {
+		actualType = actualType.Elem()
+		ptrCounter++
+	}
+
+	switch actualType.Kind() {
+	case reflect.Int8, reflect.Uint8, reflect.Int, reflect.Uint, reflect.Uint32, reflect.Int32, reflect.Uint16, reflect.Int16, reflect.Int64, reflect.Uint64:
+		return pointerify(xreflect.IntType, ptrCounter)
+	case reflect.Float64, reflect.Float32:
+		return pointerify(xreflect.Float64Type, ptrCounter)
+	}
+
+	return rType
+}
+
+func pointerify(rType reflect.Type, counter int) reflect.Type {
+	for i := 0; i < counter; i++ {
+		rType = reflect.PtrTo(rType)
+	}
+
+	return rType
+}
+
 //TypesToColumns converts []*sql.ColumnType type to []sqlx.column
 func TypesToColumns(columns []*sql.ColumnType) []Column {
 	var result = make([]Column, len(columns))
@@ -120,7 +186,7 @@ func TypesToColumns(columns []*sql.ColumnType) []Column {
 		dbType := columns[i].DatabaseTypeName()
 		dbType = strings.Replace(dbType, "UNSIGNED", "", 1)
 		dbType = strings.TrimSpace(dbType)
-		result[i] = &columnType{databaseTypeName: dbType, ColumnType: columns[i], scanType: normalizeScanType(columns[i].ScanType())}
+		result[i] = &columnType{databaseTypeName: dbType, ColumnType: columns[i], scanType: NormalizeColumnType(columns[i].ScanType(), columns[i].DatabaseTypeName())}
 	}
 	return result
 }
