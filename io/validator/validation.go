@@ -8,11 +8,11 @@ import (
 
 type (
 	Violation struct {
-		Path    string
-		Field   string
-		Value   interface{}
-		Message string
-		Check   string
+		Location string
+		Field    string
+		Value    interface{}
+		Message  string
+		Check    string
 	}
 
 	Validation struct {
@@ -23,28 +23,28 @@ type (
 
 func (e *Validation) AppendNotNull(path *Path, field, msg string) {
 	if msg == "" {
-		msg = fmt.Sprintf("Field validation for '%v' failed; value is null", field)
+		msg = fmt.Sprintf("value is null")
 	}
 	e.Violations = append(e.Violations, &Violation{
-		Path:    path.String(),
-		Field:   field,
-		Message: msg,
-		Check:   string(CheckKidNotNull),
+		Location: path.String(),
+		Field:    field,
+		Message:  msg,
+		Check:    string(CheckKidNotNull),
 	})
 }
 
 func (e *Validation) AppendUnique(path *Path, field string, value interface{}, msg string) {
 	if msg == "" {
-		msg = fmt.Sprintf("Field validation for '%v' failed; value '%v' is not unique", field, value)
+		msg = fmt.Sprintf("value '%v' is not unique", value)
 	} else {
 		msg = strings.Replace(msg, "$value", fmt.Sprintf("%v", value), 1)
 	}
 	e.Violations = append(e.Violations, &Violation{
-		Path:    path.String(),
-		Field:   field,
-		Value:   value,
-		Message: msg,
-		Check:   string(CheckKidUnique),
+		Location: path.String(),
+		Field:    field,
+		Value:    value,
+		Message:  msg,
+		Check:    string(CheckKidUnique),
 	})
 }
 
@@ -60,16 +60,16 @@ func derefIfNeeded(value interface{}) interface{} {
 func (e *Validation) AppendRef(path *Path, field string, value interface{}, msg string) {
 	value = derefIfNeeded(value)
 	if msg == "" {
-		msg = fmt.Sprintf("Field validation for '%v' failed; ref key '%v' does not exists ", field, value)
+		msg = fmt.Sprintf("ref key '%v' does not exists ", value)
 	} else {
 		msg = strings.Replace(msg, "$value", fmt.Sprintf("%v", value), 1)
 	}
 	e.Violations = append(e.Violations, &Violation{
-		Path:    path.String(),
-		Field:   field,
-		Value:   value,
-		Message: msg,
-		Check:   string(CheckKidRefKey),
+		Location: path.String(),
+		Field:    field,
+		Value:    value,
+		Message:  msg,
+		Check:    string(CheckKidRefKey),
 	})
 }
 
@@ -78,11 +78,12 @@ func (e *Validation) String() string {
 		return ""
 	}
 	msg := strings.Builder{}
+	msg.WriteString("Field validation for ")
 	for i, v := range e.Violations {
 		if i > 0 {
 			msg.WriteString(",")
 		}
-		msg.WriteString(v.Message)
+		msg.WriteString(v.Location)
 	}
 	return msg.String()
 }

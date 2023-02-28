@@ -374,7 +374,7 @@ func TestAbstractService_Info(t *testing.T) {
 			options: []option.Option{
 				option.NewArgs("", "mysql"),
 			},
-			expect: `[{"Name": "mysql","Path": "","Sequence": 0}]`,
+			expect: `[{"Name": "mysql","Location": "","Sequence": 0}]`,
 		},
 		{
 			testCase: testCase{
