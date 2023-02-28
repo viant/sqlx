@@ -12,13 +12,14 @@ require (
 	github.com/mattn/go-sqlite3 v1.14.13
 	github.com/pkg/errors v0.9.1
 	github.com/segmentio/parquet-go v0.0.0-20220902005228-5bd5f6114638
-	github.com/stretchr/testify v1.8.0
+	github.com/stretchr/testify v1.8.1
 	github.com/vertica/vertica-sql-go v1.2.2
 	github.com/viant/afs v1.16.1-0.20220601210902-dc23d64dda15
-	github.com/viant/assertly v0.9.0
+	github.com/viant/assertly v0.9.1-0.20220620174148-bab013f93a60
 	github.com/viant/bigquery v0.2.1-0.20220914154037-307a294f2482
 	github.com/viant/parsly v0.0.0-20220907184615-a27c125714a1
-	github.com/viant/toolbox v0.34.5
+	github.com/viant/toolbox v0.34.6-0.20221112031702-3e7cdde7f888
+	github.com/viant/xreflect v0.0.0-20230213170805-6e62ec0b61c2
 	github.com/viant/xunsafe v0.8.1-0.20221124153229-5feda0d224f1
 	google.golang.org/api v0.84.0
 )
@@ -45,12 +46,12 @@ require (
 	github.com/segmentio/encoding v0.3.5 // indirect
 	github.com/yuin/gopher-lua v0.0.0-20220504180219-658193537a64 // indirect
 	go.opencensus.io v0.23.0 // indirect
-	golang.org/x/crypto v0.0.0-20220622213112-05595931fe9d // indirect
-	golang.org/x/net v0.0.0-20220722155237-a158d28d115b // indirect
-	golang.org/x/oauth2 v0.0.0-20220608161450-d0670ef3b1eb // indirect
+	golang.org/x/crypto v0.3.0 // indirect
+	golang.org/x/net v0.2.0 // indirect
+	golang.org/x/oauth2 v0.2.0 // indirect
 	golang.org/x/sync v0.0.0-20220722155255-886fb9371eb4 // indirect
-	golang.org/x/sys v0.0.0-20220722155257-8c9f86f7a55f // indirect
-	golang.org/x/text v0.3.7 // indirect
+	golang.org/x/sys v0.2.0 // indirect
+	golang.org/x/text v0.4.0 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
 	google.golang.org/genproto v0.0.0-20220616135557-88e70c0c3a90 // indirect
 	google.golang.org/grpc v1.47.0 // indirect

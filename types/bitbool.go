@@ -28,6 +28,6 @@ func (b *BitBool) Scan(src interface{}) error {
 	if !ok {
 		return errors.New("bad []byte type assertion")
 	}
-	*b = v[0] == 1
+	*b = v[0] == '1'
 	return nil
 }
