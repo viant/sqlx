@@ -2,9 +2,19 @@ package io
 
 //NormalizeKey converts non nil numeric value to int or return nil
 func NormalizeKey(key interface{}) interface{} {
-	if key == nil {
-		return nil
+	for {
+		if key == nil {
+			return nil
+		}
+
+		asIfacePtr, ok := key.(*interface{})
+		if ok {
+			key = *asIfacePtr
+		} else {
+			break
+		}
 	}
+
 	switch actual := key.(type) {
 	case *int64:
 		if actual == nil {
