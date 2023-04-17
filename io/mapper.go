@@ -1,10 +1,13 @@
 package io
 
 import (
+	"database/sql"
+	"encoding/json"
 	"fmt"
 	"github.com/viant/sqlx/option"
 	"github.com/viant/xunsafe"
 	"reflect"
+	"unsafe"
 )
 
 //ColumnMapper maps src to columns and its placeholders
@@ -69,6 +72,17 @@ func StructColumnMapper(src interface{}, tagName string, options ...option.Optio
 		if columnRestriction.CanUse(columnName) {
 			columns = append(columns, NewColumn(columnName, "", field.Type, tag))
 			getter := xField.Addr
+			var err error
+			if IsStruct(xField.Type) {
+				if getter, err = structGetter(tag, field, getter, recordType); err != nil {
+					return nil, nil, err
+				}
+			}
+
+			if getter == nil {
+				getter = xField.Addr
+			}
+
 			pos := len(getters)
 			getters = append(getters, getter)
 			if presenceProvider != nil {
@@ -77,23 +91,7 @@ func StructColumnMapper(src interface{}, tagName string, options ...option.Optio
 		}
 	}
 
-	//make sure identity columns are at the end
-	if len(identityColumns) > 0 {
-		for i, item := range identityColumns {
-			fieldIndex := item.Tag().FieldIndex
-			xField := xunsafe.FieldByIndex(recordType, fieldIndex)
-			getter := xField.Addr
-			pos := len(getters)
-			getters = append(getters, getter)
-			columns = append(columns, identityColumns[i])
-			if presenceProvider != nil {
-				if presenceProvider.IdentityIndex == 0 {
-					presenceProvider.IdentityIndex = pos
-				}
-				filedPos[xField.Name] = pos
-			}
-		}
-	}
+	appendIdentityColumns(identityColumns, recordType, &getters, &columns, presenceProvider, filedPos)
 
 	if presenceProvider != nil && len(filedPos) > 0 {
 		if err := presenceProvider.Init(filedPos); err != nil {
@@ -108,4 +106,63 @@ func StructColumnMapper(src interface{}, tagName string, options ...option.Optio
 			params[i] = ptr(holderPtr)
 		}
 	}, nil
+}
+
+func IsStruct(t reflect.Type) bool {
+	switch t.Kind() {
+	case reflect.Struct:
+		return true
+	case reflect.Ptr:
+		return IsStruct(t.Elem())
+	}
+	return false
+}
+
+func structGetter(tag *Tag, field reflect.StructField, getter func(structPtr unsafe.Pointer) interface{}, recordType reflect.Type) (func(structPtr unsafe.Pointer) interface{}, error) {
+	if tag.Encoding != EncodingJSON {
+		return nil, nil
+	}
+
+	fType := field.Type
+	isPointer := false
+	if fType.Kind() == reflect.Ptr {
+		fType = fType.Elem()
+		isPointer = true
+	}
+	getter = func(structPtr unsafe.Pointer) interface{} {
+		xField := xunsafe.FieldByName(recordType, field.Name)
+		holderPtr := xField.ValuePointer(structPtr)
+
+		if isPointer && holderPtr == nil {
+			return sql.NullString{}
+		}
+		value := xField.Interface(structPtr)
+		marshaled, err := json.Marshal(value)
+		if err != nil {
+			return err.Error()
+		}
+
+		return marshaled
+	}
+	return getter, nil
+}
+
+func appendIdentityColumns(identityColumns []Column, recordType reflect.Type, getters *[]xunsafe.Getter, columns *[]Column, presenceProvider *option.PresenceProvider, filedPos map[string]int) {
+	//make sure identity columns are at the end
+	if len(identityColumns) > 0 {
+		for i, item := range identityColumns {
+			fieldIndex := item.Tag().FieldIndex
+			xField := xunsafe.FieldByIndex(recordType, fieldIndex)
+			getter := xField.Addr
+			pos := len(*getters)
+			*getters = append(*getters, getter)
+			*columns = append(*columns, identityColumns[i])
+			if presenceProvider != nil {
+				if presenceProvider.IdentityIndex == 0 {
+					presenceProvider.IdentityIndex = pos
+				}
+				filedPos[xField.Name] = pos
+			}
+		}
+	}
 }
