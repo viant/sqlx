@@ -6,6 +6,10 @@ import (
 	"strings"
 )
 
+const (
+	EncodingJSON = "JSON"
+)
+
 //Tag represent field tag
 type Tag struct {
 	Column           string
@@ -27,6 +31,7 @@ type Tag struct {
 	ErrorMgs         string
 	PresenceProvider bool
 	Bit              bool
+	Encoding         string
 }
 
 //CanExpand return true if field can expend fied struct fields
@@ -103,6 +108,8 @@ func ParseTag(tagString string) *Tag {
 			case "nullifyempty":
 				nullifyEmpty := strings.TrimSpace(nv[1])
 				tag.NullifyEmpty = nullifyEmpty == "true" || nullifyEmpty == ""
+			case "enc":
+				tag.Encoding = nv[1]
 			}
 			continue
 		case 1:

@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/assert"
+	"github.com/viant/assertly"
+	"github.com/viant/sqlx/io/read"
 	"github.com/viant/sqlx/io/update"
 	_ "github.com/viant/sqlx/metadata/product/sqlite"
 	"github.com/viant/sqlx/option"
@@ -127,4 +129,216 @@ outer:
 		assert.EqualValues(t, testCase.affected, affected, testCase.description)
 	}
 
+}
+
+func TestService_Exec_encodingJSON(t *testing.T) {
+	type Config struct {
+		Driver string
+		DSN    string
+	}
+
+	config := &Config{
+		Driver: "sqlite3",
+		DSN:    "/tmp/sqllite.db",
+	}
+
+	type PreferenceHas struct {
+		Id        bool
+		Object    bool
+		ClassName bool
+	}
+
+	type Foo struct {
+		Id    int
+		Name  string
+		Price float64
+		Info  map[string]int
+	}
+
+	type entity struct {
+		Id        int            `sqlx:"name=ID,autoincrement,primaryKey,required"`
+		Object    *Foo           `sqlx:"name=OBJECT,enc=JSON" json:",omitempty"`
+		ClassName string         `sqlx:"name=CLASS_NAME" json:",omitempty" `
+		Has       *PreferenceHas `presenceIndex:"true" typeName:"PreferenceHas" json:"-" sqlx:"presence=true"`
+	}
+
+	type expectedEntity struct {
+		Id        int            `sqlx:"name=ID,autoincrement,primaryKey,required"`
+		Object    sql.NullString `sqlx:"name=OBJECT,enc=JSON" json:",omitempty" `
+		ClassName string         `sqlx:"name=CLASS_NAME" json:",omitempty" `
+	}
+
+	var useCases = []struct {
+		description string
+		table       string
+		driver      string
+		dsn         string
+		options     []option.Option
+		records     interface{}
+		expect      interface{}
+		initSQL     []string
+		affected    int64
+		ID          int
+	}{
+		{
+			description: "01 update",
+			driver:      config.Driver,
+			dsn:         config.DSN,
+			table:       "t1",
+			initSQL: []string{
+				"DROP TABLE IF EXISTS t1",
+				"CREATE TABLE t1 (ID INTEGER PRIMARY KEY, OBJECT TEXT, CLASS_NAME TEXT)",
+				`INSERT INTO t1 (ID, OBJECT, CLASS_NAME) VALUES (1, '{"Id":1,"Name":"Foo","Price":125.5}', 'com.class.abc.Foo')`,
+			},
+			ID: 1,
+			records: []interface{}{
+				&entity{
+					Id: 1,
+					Object: &Foo{
+						Id:    1,
+						Name:  "Foo",
+						Price: 125.5,
+						Info:  map[string]int{"k1": 2, "K2": 3},
+					},
+					ClassName: "UPDATED CLASSNAME",
+					Has: &PreferenceHas{
+						Id:        true,
+						Object:    true,
+						ClassName: true,
+					},
+				},
+			},
+			affected: 1,
+			expect: []interface{}{
+				&expectedEntity{
+					Id: 1,
+					Object: sql.NullString{
+						String: `{"Id":1,"Name":"Foo","Price":125.5,"Info":{"K2":3,"k1":2}}`,
+						Valid:  true,
+					},
+					ClassName: "UPDATED CLASSNAME",
+				},
+			},
+		},
+		{
+			description: "02 update - nil Object",
+			driver:      config.Driver,
+			dsn:         config.DSN,
+			table:       "t1",
+			initSQL: []string{
+				"DROP TABLE IF EXISTS t1",
+				"CREATE TABLE t1 (ID INTEGER PRIMARY KEY, OBJECT TEXT, CLASS_NAME TEXT)",
+				`INSERT INTO t1 (ID, OBJECT, CLASS_NAME) VALUES (1, '{"Id":1,"Name":"Foo","Price":125.5}', 'com.class.abc.Foo')`,
+			},
+			ID: 1,
+			records: []interface{}{
+				&entity{
+					Id:        1,
+					Object:    nil,
+					ClassName: "UPDATED CLASSNAME",
+					Has: &PreferenceHas{
+						Id:        true,
+						Object:    true,
+						ClassName: true,
+					},
+				},
+			},
+			affected: 1,
+			expect: []interface{}{
+				&expectedEntity{
+					Id: 1,
+					Object: sql.NullString{
+						String: ``,
+						Valid:  false,
+					},
+					ClassName: "UPDATED CLASSNAME",
+				},
+			},
+		},
+		{
+			description: "02 update - zero-value Object", //"nullifyEmpty=true"`
+			driver:      config.Driver,
+			dsn:         config.DSN,
+			table:       "t1",
+			initSQL: []string{
+				"DROP TABLE IF EXISTS t1",
+				"CREATE TABLE t1 (ID INTEGER PRIMARY KEY, OBJECT TEXT, CLASS_NAME TEXT)",
+				`INSERT INTO t1 (ID, OBJECT, CLASS_NAME) VALUES (1, '{"Id":1,"Name":"Foo","Price":125.5}', 'com.class.abc.Foo')`,
+			},
+			ID: 1,
+			records: []interface{}{
+				&entity{
+					Id: 1,
+					Object: &Foo{
+						Id:    0,
+						Name:  "",
+						Price: 0,
+						Info:  nil,
+					},
+					ClassName: "UPDATED CLASSNAME",
+					Has: &PreferenceHas{
+						Id:        true,
+						Object:    true,
+						ClassName: true,
+					},
+				},
+			},
+			affected: 1,
+			expect: []interface{}{
+				&expectedEntity{
+					Id: 1,
+					Object: sql.NullString{
+						String: `{"Id":0,"Name":"","Price":0,"Info":null}`,
+						Valid:  true,
+					},
+					ClassName: "UPDATED CLASSNAME",
+				},
+			},
+		},
+	}
+
+outer:
+
+	for _, testCase := range useCases {
+		var db *sql.DB
+
+		db, err := sql.Open(testCase.driver, testCase.dsn)
+		if !assert.Nil(t, err, testCase.description) {
+			continue
+		}
+		for _, SQL := range testCase.initSQL {
+			_, err := db.Exec(SQL)
+			if !assert.Nil(t, err, testCase.description) {
+				continue outer
+			}
+		}
+		if !assert.Nil(t, err, testCase.description) {
+			continue
+		}
+
+		updater, err := update.New(context.TODO(), db, testCase.table, testCase.options...)
+		if !assert.Nil(t, err, testCase.description) {
+			continue
+		}
+		affected, err := updater.Exec(context.TODO(), testCase.records)
+		assert.Nil(t, err, testCase.description)
+		assert.EqualValues(t, testCase.affected, affected, testCase.description)
+
+		ctx := context.Background()
+		actualRow := func() interface{} { return &expectedEntity{} }
+		actual := []*expectedEntity{}
+
+		reader, err := read.New(ctx, db, "SELECT * FROM t1 WHERE id = ?", actualRow)
+		assert.Nil(t, err, testCase.description)
+
+		err = reader.QuerySingle(ctx, func(row interface{}) error {
+			actual = append(actual, row.(*expectedEntity))
+			return nil
+		}, testCase.ID)
+		assert.Nil(t, err, testCase.description)
+
+		assert.NotNil(t, actual, testCase.description)
+		assertly.AssertValues(t, testCase.expect, actual)
+		assertly.AssertValues(t, actual, testCase.expect)
+	}
 }
