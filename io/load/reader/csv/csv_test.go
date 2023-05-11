@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/stretchr/testify/assert"
 	"github.com/viant/assertly"
+	"github.com/viant/sqlx/io"
 	"github.com/viant/toolbox"
 	"reflect"
 	"testing"
@@ -169,6 +170,31 @@ func TestCsv_Marshal(t *testing.T) {
 			rType: reflect.TypeOf(Foo{}),
 			expected: `"ID","Name","Price"
 1,"Foo - 1",125.5`,
+		},
+		{
+			description: "basic with config for float64 and float32 with prec 64",
+			rType:       reflect.TypeOf(Foo{}),
+			input: []Foo{
+				{
+					ID:    1,
+					Name:  "Foo - 1",
+					Price: 125.5,
+				},
+			},
+			expected: `"ID","Name","Price"
+1,"Foo - 1",125.5000000000000000000000000000000000000000000000000000000000000000`,
+			config: &Config{
+				StringifierConfig: io.StringifierConfig{
+					Fields:     nil,
+					CaseFormat: 0,
+					StringifierFloat32Config: io.StringifierFloat32Config{
+						Precision: "64",
+					},
+					StringifierFloat64Config: io.StringifierFloat64Config{
+						Precision: "64",
+					},
+				},
+			},
 		},
 		{
 			description: "ptr",
