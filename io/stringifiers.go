@@ -268,7 +268,7 @@ func getStringifierConfig(options []interface{}) *StringifierConfig {
 }
 
 func float64Stringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue string, wasPointer bool, options ...interface{}) FieldStringifierFn {
-	prec := 64
+	prec := -1
 	sConfig := getStringifierConfig(options)
 
 	if sConfig != nil {
@@ -298,7 +298,7 @@ func float64Stringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue s
 }
 
 func float32Stringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue string, wasPointer bool, options ...interface{}) FieldStringifierFn {
-	prec := 64
+	prec := -1
 	sConfig := getStringifierConfig(options)
 
 	if sConfig != nil {

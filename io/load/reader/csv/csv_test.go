@@ -168,7 +168,7 @@ func TestCsv_Marshal(t *testing.T) {
 			},
 			rType: reflect.TypeOf(Foo{}),
 			expected: `"ID","Name","Price"
-1,"Foo - 1",125.5000000000000000000000000000000000000000000000000000000000000000`,
+1,"Foo - 1",125.5`,
 		},
 		{
 			description: "ptr",
@@ -181,7 +181,7 @@ func TestCsv_Marshal(t *testing.T) {
 			},
 			rType: reflect.TypeOf(&Foo{}),
 			expected: `"ID","Name","Price"
-1,"Foo - 1",125.5000000000000000000000000000000000000000000000000000000000000000`,
+1,"Foo - 1",125.5`,
 		},
 		{
 			description: "one to one",
@@ -198,7 +198,7 @@ func TestCsv_Marshal(t *testing.T) {
 			},
 			rType: reflect.TypeOf(&Boo{}),
 			expected: `"ID","Name","Foo.ID","Foo.Name","Foo.Price"
-1,"Boo",2,"Foo",125.0000000000000000000000000000000000000000000000000000000000000000`,
+1,"Boo",2,"Foo",125`,
 		},
 		{
 			description: "nulls",
@@ -234,8 +234,8 @@ func TestCsv_Marshal(t *testing.T) {
 			},
 			rType: reflect.TypeOf(&BooSlice{}),
 			expected: `"ID","Name","Foos.ID","Foos.Name","Foos.Price"
-1,"Boo",2,"Foo - 1",125.0000000000000000000000000000000000000000000000000000000000000000
-1,"Boo",3,"Foo - 2",250.0000000000000000000000000000000000000000000000000000000000000000`,
+1,"Boo",2,"Foo - 1",125
+1,"Boo",3,"Foo - 2",250`,
 		},
 		{
 			description: "multi slices",
@@ -325,24 +325,24 @@ func TestCsv_Marshal(t *testing.T) {
 			},
 			rType: reflect.TypeOf(&multiSlices{}),
 			expected: `"ID","Name","Foos.ID","Foos.Name","Foos.Price","BooSlices.ID","BooSlices.Name","BooSlices.Foos.ID","BooSlices.Foos.Name","BooSlices.Foos.Price","Boo.ID","Boo.Name","Boo.Foo.ID","Boo.Foo.Name","Boo.Foo.Price"
-1,"multiSlice with foos",2,"Foo - 1",125.0000000000000000000000000000000000000000000000000000000000000000,123,"boo - 123",234,"foo - 234",0.0000000000000000000000000000000000000000000000000000000000000000,null,null,null,null,null
-1,"multiSlice with foos",3,"Foo - 2",250.0000000000000000000000000000000000000000000000000000000000000000,123,"boo - 123",234,"foo - 234",0.0000000000000000000000000000000000000000000000000000000000000000,null,null,null,null,null
-1,"multiSlice with foos",567,"Foo - 567",12345.0000000000000000000000000000000000000000000000000000000000000000,123,"boo - 123",234,"foo - 234",0.0000000000000000000000000000000000000000000000000000000000000000,null,null,null,null,null
-1,"multiSlice with foos",987,"Foo - 987",0.0000000000000000000000000000000000000000000000000000000000000000,123,"boo - 123",234,"foo - 234",0.0000000000000000000000000000000000000000000000000000000000000000,null,null,null,null,null
-1,"multiSlice with foos",987,"Foo - 987",0.0000000000000000000000000000000000000000000000000000000000000000,123,"boo - 123",345,"foo - 345",0.0000000000000000000000000000000000000000000000000000000000000000,null,null,null,null,null
-1,"multiSlice with foos",3,"Foo - 2",250.0000000000000000000000000000000000000000000000000000000000000000,123,"boo - 123",345,"foo - 345",0.0000000000000000000000000000000000000000000000000000000000000000,null,null,null,null,null
-1,"multiSlice with foos",567,"Foo - 567",12345.0000000000000000000000000000000000000000000000000000000000000000,123,"boo - 123",345,"foo - 345",0.0000000000000000000000000000000000000000000000000000000000000000,null,null,null,null,null
-1,"multiSlice with foos",987,"Foo - 987",0.0000000000000000000000000000000000000000000000000000000000000000,123,"boo - 123",345,"foo - 345",0.0000000000000000000000000000000000000000000000000000000000000000,null,null,null,null,null
-1,"multiSlice with foos",987,"Foo - 987",0.0000000000000000000000000000000000000000000000000000000000000000,2345,"boo - 2345",2346,"foo - 2346",0.0000000000000000000000000000000000000000000000000000000000000000,null,null,null,null,null
-1,"multiSlice with foos",3,"Foo - 2",250.0000000000000000000000000000000000000000000000000000000000000000,2345,"boo - 2345",2346,"foo - 2346",0.0000000000000000000000000000000000000000000000000000000000000000,null,null,null,null,null
-1,"multiSlice with foos",567,"Foo - 567",12345.0000000000000000000000000000000000000000000000000000000000000000,2345,"boo - 2345",2346,"foo - 2346",0.0000000000000000000000000000000000000000000000000000000000000000,null,null,null,null,null
-1,"multiSlice with foos",987,"Foo - 987",0.0000000000000000000000000000000000000000000000000000000000000000,2345,"boo - 2345",2346,"foo - 2346",0.0000000000000000000000000000000000000000000000000000000000000000,null,null,null,null,null
-1,"multiSlice with foos",987,"Foo - 987",0.0000000000000000000000000000000000000000000000000000000000000000,2345,"boo - 2345",2347,"foo - 2347",0.0000000000000000000000000000000000000000000000000000000000000000,null,null,null,null,null
-1,"multiSlice with foos",3,"Foo - 2",250.0000000000000000000000000000000000000000000000000000000000000000,2345,"boo - 2345",2347,"foo - 2347",0.0000000000000000000000000000000000000000000000000000000000000000,null,null,null,null,null
-1,"multiSlice with foos",567,"Foo - 567",12345.0000000000000000000000000000000000000000000000000000000000000000,2345,"boo - 2345",2347,"foo - 2347",0.0000000000000000000000000000000000000000000000000000000000000000,null,null,null,null,null
-1,"multiSlice with foos",987,"Foo - 987",0.0000000000000000000000000000000000000000000000000000000000000000,2345,"boo - 2345",2347,"foo - 2347",0.0000000000000000000000000000000000000000000000000000000000000000,null,null,null,null,null
-2,"multiSlice without foos",null,null,null,5,"Boo slice - name",6,"Foo under Boo slice - 1",567.0000000000000000000000000000000000000000000000000000000000000000,4,"Boo - name",null,null,null
-2,"multiSlice without foos",null,null,null,5,"Boo slice - name",7,"Foo under Boo slice - 2",567.0000000000000000000000000000000000000000000000000000000000000000,4,"Boo - name",null,null,null`,
+1,"multiSlice with foos",2,"Foo - 1",125,123,"boo - 123",234,"foo - 234",0,null,null,null,null,null
+1,"multiSlice with foos",3,"Foo - 2",250,123,"boo - 123",234,"foo - 234",0,null,null,null,null,null
+1,"multiSlice with foos",567,"Foo - 567",12345,123,"boo - 123",234,"foo - 234",0,null,null,null,null,null
+1,"multiSlice with foos",987,"Foo - 987",0,123,"boo - 123",234,"foo - 234",0,null,null,null,null,null
+1,"multiSlice with foos",987,"Foo - 987",0,123,"boo - 123",345,"foo - 345",0,null,null,null,null,null
+1,"multiSlice with foos",3,"Foo - 2",250,123,"boo - 123",345,"foo - 345",0,null,null,null,null,null
+1,"multiSlice with foos",567,"Foo - 567",12345,123,"boo - 123",345,"foo - 345",0,null,null,null,null,null
+1,"multiSlice with foos",987,"Foo - 987",0,123,"boo - 123",345,"foo - 345",0,null,null,null,null,null
+1,"multiSlice with foos",987,"Foo - 987",0,2345,"boo - 2345",2346,"foo - 2346",0,null,null,null,null,null
+1,"multiSlice with foos",3,"Foo - 2",250,2345,"boo - 2345",2346,"foo - 2346",0,null,null,null,null,null
+1,"multiSlice with foos",567,"Foo - 567",12345,2345,"boo - 2345",2346,"foo - 2346",0,null,null,null,null,null
+1,"multiSlice with foos",987,"Foo - 987",0,2345,"boo - 2345",2346,"foo - 2346",0,null,null,null,null,null
+1,"multiSlice with foos",987,"Foo - 987",0,2345,"boo - 2345",2347,"foo - 2347",0,null,null,null,null,null
+1,"multiSlice with foos",3,"Foo - 2",250,2345,"boo - 2345",2347,"foo - 2347",0,null,null,null,null,null
+1,"multiSlice with foos",567,"Foo - 567",12345,2345,"boo - 2345",2347,"foo - 2347",0,null,null,null,null,null
+1,"multiSlice with foos",987,"Foo - 987",0,2345,"boo - 2345",2347,"foo - 2347",0,null,null,null,null,null
+2,"multiSlice without foos",null,null,null,5,"Boo slice - name",6,"Foo under Boo slice - 1",567,4,"Boo - name",null,null,null
+2,"multiSlice without foos",null,null,null,5,"Boo slice - name",7,"Foo under Boo slice - 2",567,4,"Boo - name",null,null,null`,
 		},
 		{
 			description: "depth configs",
@@ -382,8 +382,8 @@ func TestCsv_Marshal(t *testing.T) {
 			},
 			rType: reflect.TypeOf(&BooSlice{}),
 			expected: `"ID","Name","Foos"
-1,"Boo",'Foos.ID'#'Foos.Name'#'Foos.Price'|2#'Foo - 1'#125.0000000000000000000000000000000000000000000000000000000000000000|3#'Foo - 2'#250.0000000000000000000000000000000000000000000000000000000000000000
-4,"Boo - 4",'Foos.ID'#'Foos.Name'#'Foos.Price'|5#'Foo - 5'#125.0000000000000000000000000000000000000000000000000000000000000000|6#'Foo - 6'#250.0000000000000000000000000000000000000000000000000000000000000000`,
+1,"Boo",'Foos.ID'#'Foos.Name'#'Foos.Price'|2#'Foo - 1'#125|3#'Foo - 2'#250
+4,"Boo - 4",'Foos.ID'#'Foos.Name'#'Foos.Price'|5#'Foo - 5'#125|6#'Foo - 6'#250`,
 			depthsConfigs: []*Config{
 				{
 					ObjectSeparator: "|",
