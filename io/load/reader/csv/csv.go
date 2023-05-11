@@ -184,6 +184,12 @@ func (m *Marshaller) Unmarshal(b []byte, dest interface{}) error {
 
 func (m *Marshaller) newField(path string, holder string, field reflect.StructField, parentType reflect.Type, fieldPath string) *Field {
 	xField := xunsafe.NewField(field)
+
+	var stringifierConfig *io2.StringifierConfig
+	if m.config != nil {
+		stringifierConfig = &m.config.StringifierConfig
+	}
+
 	return &Field{
 		path:        path,
 		xField:      xField,
@@ -191,7 +197,7 @@ func (m *Marshaller) newField(path string, holder string, field reflect.StructFi
 		name:        field.Name,
 		header:      fieldPath,
 		holder:      holder,
-		stringifier: io2.Stringifier(xField, false, m.config.NullValue),
+		stringifier: io2.Stringifier(xField, false, m.config.NullValue, stringifierConfig),
 	}
 }
 

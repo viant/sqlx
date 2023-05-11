@@ -252,15 +252,39 @@ func boolStringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue stri
 	}
 }
 
-//TODO: Float precision
-func float64Stringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue string, wasPointer bool) FieldStringifierFn {
+func getStringifierConfig(options []interface{}) *StringifierConfig {
+	if len(options) == 0 {
+		return nil
+	}
+
+	for _, candidate := range options {
+		switch candidate.(type) {
+		case *StringifierConfig:
+			return candidate.(*StringifierConfig)
+		}
+	}
+
+	return nil
+}
+
+func float64Stringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue string, wasPointer bool, options ...interface{}) FieldStringifierFn {
+	prec := -1
+	sConfig := getStringifierConfig(options)
+
+	if sConfig != nil {
+		aPrec, err := strconv.Atoi(sConfig.StringifierFloat64Config.Precision)
+		if err == nil {
+			prec = aPrec
+		}
+	}
+
 	if wasPointer {
 		return func(pointer unsafe.Pointer) (string, bool) {
 			valuePtr := field.Float64Ptr(pointer)
 			if valuePtr == nil || (nullifyZeroValue && *valuePtr == 0) {
 				return nullValue, false
 			}
-			return strconv.FormatFloat(*valuePtr, 'f', 64, 64), false
+			return strconv.FormatFloat(*valuePtr, 'f', prec, 64), false
 		}
 	}
 
@@ -269,19 +293,28 @@ func float64Stringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue s
 		if value == 0.0 && nullifyZeroValue {
 			return nullValue, false
 		}
-		return strconv.FormatFloat(value, 'f', 64, 64), false
+		return strconv.FormatFloat(value, 'f', prec, 64), false
 	}
 }
 
-//TODO: Float precision
-func float32Stringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue string, wasPointer bool) FieldStringifierFn {
+func float32Stringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue string, wasPointer bool, options ...interface{}) FieldStringifierFn {
+	prec := -1
+	sConfig := getStringifierConfig(options)
+
+	if sConfig != nil {
+		aPrec, err := strconv.Atoi(sConfig.StringifierFloat32Config.Precision)
+		if err == nil {
+			prec = aPrec
+		}
+	}
+
 	if wasPointer {
 		return func(pointer unsafe.Pointer) (string, bool) {
 			valuePtr := field.Float32Ptr(pointer)
 			if valuePtr == nil || (nullifyZeroValue && *valuePtr == 0) {
 				return nullValue, false
 			}
-			return strconv.FormatFloat(float64(*valuePtr), 'f', 64, 64), false
+			return strconv.FormatFloat(float64(*valuePtr), 'f', prec, 64), false
 		}
 	}
 
@@ -290,7 +323,7 @@ func float32Stringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue s
 		if value == 0.0 && nullifyZeroValue {
 			return nullValue, false
 		}
-		return strconv.FormatFloat(float64(value), 'f', 64, 64), false
+		return strconv.FormatFloat(float64(value), 'f', prec, 64), false
 	}
 }
 
