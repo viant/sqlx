@@ -24,9 +24,23 @@ type (
 	}
 
 	FieldStringifierFn = func(pointer unsafe.Pointer) (string, bool)
-	StringifierConfig  struct {
-		Fields     []string
-		CaseFormat format.Case
+
+	// StringifierConfig represents stringifier config
+	StringifierConfig struct {
+		Fields                   []string
+		CaseFormat               format.Case
+		StringifierFloat32Config StringifierFloat32Config
+		StringifierFloat64Config StringifierFloat64Config
+	}
+
+	// StringifierFloat32Config represents stringifier float32 config
+	StringifierFloat32Config struct {
+		Precision string
+	}
+
+	// StringifierFloat64Config represents stringifier float64 config
+	StringifierFloat64Config struct {
+		Precision string
 	}
 
 	Parallel bool
@@ -144,7 +158,7 @@ func TypeStringifier(rType reflect.Type, nullValue string, omitTransient bool, o
 		}
 
 		stringifiers = append(stringifiers, &fieldStringifier{
-			stringify: stringifierEnclosured(xunsafe.NewField(field), tag.NullifyEmpty, nullValue),
+			stringify: stringifierEnclosured(xunsafe.NewField(field), tag.NullifyEmpty, nullValue, options...),
 			fieldName: field.Name,
 		})
 	}
@@ -163,14 +177,14 @@ func TypeStringifier(rType reflect.Type, nullValue string, omitTransient bool, o
 	return o
 }
 
-func stringifierEnclosured(xField *xunsafe.Field, nullifyEmpty bool, nullValue string) FieldStringifierFn {
-	preparedStringifier := Stringifier(xField, nullifyEmpty, nullValue)
+func stringifierEnclosured(xField *xunsafe.Field, nullifyEmpty bool, nullValue string, options ...interface{}) FieldStringifierFn {
+	preparedStringifier := Stringifier(xField, nullifyEmpty, nullValue, options...)
 	return func(val unsafe.Pointer) (value string, wasString bool) {
 		return preparedStringifier(val)
 	}
 }
 
-func Stringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue string) FieldStringifierFn {
+func Stringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue string, options ...interface{}) FieldStringifierFn {
 	wasPointer := field.Type.Kind() == reflect.Ptr
 	var rType reflect.Type
 	if wasPointer {
@@ -205,9 +219,9 @@ func Stringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue string) 
 	case reflect.Bool:
 		return boolStringifier(field, nullifyZeroValue, nullValue, wasPointer)
 	case reflect.Float64:
-		return float64Stringifier(field, nullifyZeroValue, nullValue, wasPointer)
+		return float64Stringifier(field, nullifyZeroValue, nullValue, wasPointer, options...)
 	case reflect.Float32:
-		return float32Stringifier(field, nullifyZeroValue, nullValue, wasPointer)
+		return float32Stringifier(field, nullifyZeroValue, nullValue, wasPointer, options...)
 	default:
 		return defaultStringifier(field, nullifyZeroValue, nullValue)
 	}
