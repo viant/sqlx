@@ -57,6 +57,9 @@ func (s *session) prepare(ctx context.Context, batchSize int) error {
 			return fmt.Errorf("failed to close stetement: %w", err)
 		}
 	}
+	if showSQL {
+		fmt.Println(SQL)
+	}
 	if s.Transaction != nil {
 		s.stmt, err = s.Transaction.Prepare(SQL)
 		return err

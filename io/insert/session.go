@@ -94,6 +94,9 @@ func (s *session) prepare(ctx context.Context, record interface{}, batchSize int
 		}
 		s.stmt = nil
 	}
+	if showSQL {
+		fmt.Println(SQL)
+	}
 	if s.Transaction != nil {
 		s.stmt, err = s.Transaction.Prepare(SQL)
 		return err

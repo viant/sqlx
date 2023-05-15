@@ -3,6 +3,7 @@ package update
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"github.com/viant/sqlx/io"
 	"github.com/viant/sqlx/io/config"
 	"github.com/viant/sqlx/option"
@@ -48,6 +49,9 @@ func (s *Service) Exec(ctx context.Context, any interface{}, options ...option.O
 
 func (s *Service) tryUpdate(ctx context.Context, sess *session, record interface{}, dml *string) (int64, error) {
 	ok, err := sess.prepare(ctx, record, dml)
+	if showSQL {
+		fmt.Println(dml)
+	}
 	if err != nil {
 		return 0, err
 	}

@@ -77,3 +77,9 @@ func NewBuilder(table string, columns []string, dialect *info.Dialect, batchSize
 	result.valuesOffset = strings.Index(result.sql, inFragment) + len(inFragment)
 	return result, nil
 }
+
+var showSQL bool
+
+func ShowSQL(b bool) {
+	showSQL = b
+}

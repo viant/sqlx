@@ -358,6 +358,9 @@ func (r *Reader) ensureStmt(ctx context.Context) error {
 	}
 
 	stmt, err := r.db.PrepareContext(ctx, r.query)
+	if showSQL {
+		fmt.Println(r.query)
+	}
 	if err != nil {
 		return err
 	}
