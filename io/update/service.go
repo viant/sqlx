@@ -58,6 +58,11 @@ func (s *Service) tryUpdate(ctx context.Context, sess *session, record interface
 	if !ok {
 		return 0, nil
 	}
+	if updatable, ok := record.(Updatable); ok {
+		if err := updatable.OnUpdate(ctx); err != nil {
+			return 0, err
+		}
+	}
 	return sess.update(ctx, record)
 }
 
