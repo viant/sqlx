@@ -77,11 +77,15 @@ func (n *Transient) Handle(ctx context.Context, db *sql.DB, target interface{}, 
 	if transientDML == nil {
 		return false, fmt.Errorf("transientDML was empty")
 	}
-	_, err = tx.ExecContext(ctx, transientDML.Query, transientDML.Args...)
-	if err != nil {
-		return false, err
-	}
 
+	_, err = tx.ExecContext(ctx, transientDML.Query, transientDML.Args...)
+	if err != nil { //temp workaround of cascading sequencer
+		tx.Exec("SET foreign_key_checks = 0")
+		if _, err = tx.ExecContext(ctx, transientDML.Query, transientDML.Args...); err != nil {
+			return false, err
+		}
+		tx.Exec("SET foreign_key_checks = 1")
+	}
 	*targetSequence = sequence
 
 	return false, nil
