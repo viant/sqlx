@@ -10,6 +10,7 @@ import (
 	"github.com/viant/sqlx/metadata/info/dialect"
 	"github.com/viant/sqlx/metadata/sink"
 	"github.com/viant/sqlx/option"
+	"strconv"
 )
 
 // Transient represents struct used to setting new autoincrement value
@@ -78,17 +79,19 @@ func (n *Transient) Handle(ctx context.Context, db *sql.DB, target interface{}, 
 		return false, fmt.Errorf("transientDML was empty")
 	}
 
+	n.turnFkKeyCheck(tx, 0)
 	_, err = tx.ExecContext(ctx, transientDML.Query, transientDML.Args...)
+	n.turnFkKeyCheck(tx, 1)
 	if err != nil { //temp workaround of cascading sequencer
-		tx.Exec("SET foreign_key_checks = 0")
-		if _, err = tx.ExecContext(ctx, transientDML.Query, transientDML.Args...); err != nil {
-			return false, err
-		}
-		tx.Exec("SET foreign_key_checks = 1")
+		return false, err
 	}
 	*targetSequence = sequence
 
 	return false, nil
+}
+
+func (n *Transient) turnFkKeyCheck(tx *sql.Tx, sw int) (sql.Result, error) {
+	return tx.Exec("SET foreign_key_checks = " + strconv.Itoa(sw))
 }
 
 func (n *Transient) lock(ctx context.Context, meta *metadata.Service, db *sql.DB, options option.Options) error {
