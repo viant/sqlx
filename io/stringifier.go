@@ -222,6 +222,8 @@ func Stringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue string, 
 		return float64Stringifier(field, nullifyZeroValue, nullValue, wasPointer, options...)
 	case reflect.Float32:
 		return float32Stringifier(field, nullifyZeroValue, nullValue, wasPointer, options...)
+	case reflect.Interface:
+		return interfaceStringifier(field, nullifyZeroValue, nullValue, wasPointer)
 	default:
 		return defaultStringifier(field, nullifyZeroValue, nullValue)
 	}

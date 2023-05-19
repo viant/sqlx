@@ -39,7 +39,7 @@ func intStringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue strin
 			if intPtr == nil || (nullifyZeroValue && *intPtr == 0) {
 				return nullValue, false
 			}
-			return strconv.Itoa(*intPtr), false
+			return strconv.FormatInt(int64(*intPtr), 10), false
 		}
 	}
 
@@ -48,7 +48,7 @@ func intStringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue strin
 		if intValue == 0 && nullifyZeroValue {
 			return nullValue, false
 		}
-		return strconv.Itoa(intValue), false
+		return strconv.FormatInt(int64(intValue), 10), false
 	}
 }
 
@@ -59,7 +59,7 @@ func int8Stringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue stri
 			if intPtr == nil || (nullifyZeroValue && *intPtr == 0) {
 				return nullValue, false
 			}
-			return strconv.Itoa(int(*intPtr)), false
+			return strconv.FormatInt(int64(*intPtr), 10), false
 		}
 	}
 
@@ -68,7 +68,7 @@ func int8Stringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue stri
 		if intValue == 0 && nullifyZeroValue {
 			return nullValue, false
 		}
-		return strconv.Itoa(int(intValue)), false
+		return strconv.FormatInt(int64(intValue), 10), false
 	}
 }
 
@@ -79,7 +79,7 @@ func int16Stringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue str
 			if intPtr == nil || (nullifyZeroValue && *intPtr == 0) {
 				return nullValue, false
 			}
-			return strconv.Itoa(int(*intPtr)), false
+			return strconv.FormatInt(int64(*intPtr), 10), false
 		}
 	}
 
@@ -88,7 +88,7 @@ func int16Stringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue str
 		if intValue == 0 && nullifyZeroValue {
 			return nullValue, false
 		}
-		return strconv.Itoa(int(intValue)), false
+		return strconv.FormatInt(int64(intValue), 10), false
 	}
 }
 
@@ -99,7 +99,7 @@ func int32Stringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue str
 			if intPtr == nil || (nullifyZeroValue && *intPtr == 0) {
 				return nullValue, false
 			}
-			return strconv.Itoa(int(*intPtr)), false
+			return strconv.FormatInt(int64(*intPtr), 10), false
 		}
 	}
 
@@ -108,7 +108,7 @@ func int32Stringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue str
 		if intValue == 0 && nullifyZeroValue {
 			return nullValue, false
 		}
-		return strconv.Itoa(int(intValue)), false
+		return strconv.FormatInt(int64(intValue), 10), false
 	}
 }
 
@@ -119,7 +119,7 @@ func int64Stringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue str
 			if intPtr == nil || (nullifyZeroValue && *intPtr == 0) {
 				return nullValue, false
 			}
-			return strconv.Itoa(int(*intPtr)), false
+			return strconv.FormatInt(int64(*intPtr), 10), false
 		}
 	}
 
@@ -128,7 +128,7 @@ func int64Stringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue str
 		if intValue == 0 && nullifyZeroValue {
 			return nullValue, false
 		}
-		return strconv.Itoa(int(intValue)), false
+		return strconv.FormatInt(int64(intValue), 10), false
 	}
 }
 
@@ -139,7 +139,7 @@ func uintStringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue stri
 			if intPtr == nil || (nullifyZeroValue && *intPtr == 0) {
 				return nullValue, false
 			}
-			return strconv.Itoa(int(*intPtr)), false
+			return strconv.FormatUint(uint64(*intPtr), 10), false
 		}
 	}
 
@@ -148,7 +148,7 @@ func uintStringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue stri
 		if intValue == 0 && nullifyZeroValue {
 			return nullValue, false
 		}
-		return strconv.Itoa(int(intValue)), false
+		return strconv.FormatUint(uint64(intValue), 10), false
 	}
 }
 
@@ -159,7 +159,7 @@ func uint8Stringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue str
 			if intPtr == nil || (nullifyZeroValue && *intPtr == 0) {
 				return nullValue, false
 			}
-			return strconv.Itoa(int(*intPtr)), false
+			return strconv.FormatUint(uint64(*intPtr), 10), false
 		}
 	}
 
@@ -168,7 +168,7 @@ func uint8Stringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue str
 		if intValue == 0 && nullifyZeroValue {
 			return nullValue, false
 		}
-		return strconv.Itoa(int(intValue)), false
+		return strconv.FormatUint(uint64(intValue), 10), false
 	}
 }
 
@@ -179,7 +179,7 @@ func uint16Stringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue st
 			if intPtr == nil || (nullifyZeroValue && *intPtr == 0) {
 				return nullValue, false
 			}
-			return strconv.Itoa(int(*intPtr)), false
+			return strconv.FormatUint(uint64(*intPtr), 10), false
 		}
 	}
 
@@ -188,7 +188,7 @@ func uint16Stringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue st
 		if intValue == 0 && nullifyZeroValue {
 			return nullValue, false
 		}
-		return strconv.Itoa(int(intValue)), false
+		return strconv.FormatUint(uint64(intValue), 10), false
 	}
 }
 
@@ -199,7 +199,7 @@ func uint32Stringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue st
 			if intPtr == nil || (nullifyZeroValue && *intPtr == 0) {
 				return nullValue, false
 			}
-			return strconv.Itoa(int(*intPtr)), false
+			return strconv.FormatUint(uint64(*intPtr), 10), false
 		}
 	}
 
@@ -208,7 +208,7 @@ func uint32Stringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue st
 		if intValue == 0 && nullifyZeroValue {
 			return nullValue, false
 		}
-		return strconv.Itoa(int(intValue)), false
+		return strconv.FormatUint(uint64(intValue), 10), false
 	}
 }
 
@@ -219,7 +219,7 @@ func uint64Stringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue st
 			if intPtr == nil || (nullifyZeroValue && *intPtr == 0) {
 				return nullValue, false
 			}
-			return strconv.Itoa(int(*intPtr)), false
+			return strconv.FormatUint(*intPtr, 10), false
 		}
 	}
 
@@ -228,7 +228,7 @@ func uint64Stringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue st
 		if intValue == 0 && nullifyZeroValue {
 			return nullValue, false
 		}
-		return strconv.Itoa(int(intValue)), false
+		return strconv.FormatUint(intValue, 10), false
 	}
 }
 
@@ -358,4 +358,59 @@ func defaultStringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue s
 		i := field.Value(pointer)
 		return fmt.Sprintf("%v", i), false
 	}
+}
+
+func interfaceStringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue string, wasPointer bool, options ...interface{}) FieldStringifierFn {
+	return func(pointer unsafe.Pointer) (string, bool) {
+
+		var iface interface{}
+
+		switch actual := field.Interface(pointer).(type) {
+		case *interface{}:
+			iface = *actual
+		default:
+			iface = actual
+		}
+
+		if iface == nil { // interface with no type, no value
+			return nullifiedInterface(nullifyZeroValue, nullValue)
+		}
+
+		valUPtr := xunsafe.AsPointer(iface)
+
+		if valUPtr == nil { // interface with type but no value
+			return nullifiedInterface(nullifyZeroValue, nullValue)
+		}
+
+		rType := reflect.TypeOf(iface)
+		if rType.Kind() == reflect.Ptr {
+			rType = rType.Elem()
+		}
+
+		// important to set offset to 0 and pointer (struct upointer) to interface value upointer
+		// because struct addr can be greater than value addr and offset can't be negative
+		fakeField := reflect.StructField{
+			Name:      field.Name,
+			PkgPath:   field.PkgPath(),
+			Type:      rType,
+			Tag:       field.Tag,
+			Offset:    0,
+			Index:     []int{int(field.Index)},
+			Anonymous: field.Anonymous,
+		}
+
+		fakeXField := xunsafe.NewField(fakeField)
+
+		var internalFn FieldStringifierFn
+		internalFn = Stringifier(fakeXField, nullifyZeroValue, nullValue, options...)
+
+		return internalFn(valUPtr)
+	}
+}
+
+func nullifiedInterface(nullifyZeroValue bool, nullValue string) (string, bool) {
+	if nullifyZeroValue {
+		return nullValue, false
+	}
+	return "", false
 }
