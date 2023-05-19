@@ -94,6 +94,9 @@ func (s *session) prepare(ctx context.Context, record interface{}, batchSize int
 		}
 		s.stmt = nil
 	}
+	if showSQL {
+		fmt.Println(SQL)
+	}
 	if s.Transaction != nil {
 		s.stmt, err = s.Transaction.Prepare(SQL)
 		return err
@@ -115,6 +118,11 @@ func (s *session) insert(ctx context.Context, recValues []interface{}, valueAt i
 	var record interface{}
 	for i := 0; i < size; i++ {
 		record = valueAt(i)
+		if insertable, ok := record.(Insertable); ok {
+			if err := insertable.OnInsert(ctx); err != nil {
+				return 0, 0, err
+			}
+		}
 		offset := s.inBatchCount * len(s.columns)
 		s.binder(record, recValues[offset:], 0, len(s.columns))
 		if s.identityColumnPos != nil {

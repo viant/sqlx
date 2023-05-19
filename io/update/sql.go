@@ -75,3 +75,9 @@ func NewBuilder(table string, columns []string, identityIndex int, dialect *info
 	result.buffer.Grow(estBufferSize)
 	return result, nil
 }
+
+var showSQL bool
+
+func ShowSQL(b bool) {
+	showSQL = b
+}

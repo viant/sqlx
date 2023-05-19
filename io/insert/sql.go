@@ -86,3 +86,9 @@ func estimateBufferSize(table string, columns []string, batchSize int) int {
 	}
 	return len(table) + len(insertIntoFragment) + 10 + estimateSize*batchSize
 }
+
+var showSQL bool
+
+func ShowSQL(b bool) {
+	showSQL = b
+}

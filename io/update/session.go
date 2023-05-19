@@ -72,6 +72,9 @@ func (s *session) prepare(ctx context.Context, record interface{}, dml *string) 
 			return false, fmt.Errorf("failed to close stetement: %w", err)
 		}
 	}
+	if showSQL {
+		fmt.Println(SQL)
+	}
 	if s.Transaction != nil {
 		s.stmt, err = s.Transaction.Prepare(SQL)
 		return err == nil, err
