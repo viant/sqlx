@@ -88,7 +88,7 @@ func TestTypeStringifier(t *testing.T) {
 			wasStrings:    []bool{false, false, false, false, false, false, false, false, false, false, true, false, false, false},
 		},
 		{
-			description:   "primitives as interfaces",
+			description:   "primitives min max",
 			rType:         reflect.TypeOf(IntegersMinMax{}),
 			exampleObject: fnIntegersMinMax(),
 			nullValue:     "null",
@@ -96,7 +96,7 @@ func TestTypeStringifier(t *testing.T) {
 			wasStrings:    []bool{false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false},
 		},
 		{
-			description:   "primitives as interfaces",
+			description:   "primitives pointers min max",
 			rType:         reflect.TypeOf(IntegersPtrMinMax{}),
 			exampleObject: fnIntegersPtrMinMax(),
 			nullValue:     "null",
