@@ -27,7 +27,7 @@ func (p *PresenceProvider) Has(ptr unsafe.Pointer, index int) bool {
 	return p.Fields[index].Bool(hasPtr)
 }
 
-func (p *PresenceProvider) Init(filedPos map[string]int) error {
+func (p *PresenceProvider) Init(filedPos, transientPos map[string]int) error {
 	if p.Holder == nil || len(filedPos) == 0 {
 		return nil
 	}
@@ -41,7 +41,10 @@ func (p *PresenceProvider) Init(filedPos map[string]int) error {
 			presentField := holderType.Field(i)
 			pos, ok := filedPos[presentField.Name]
 			if !ok {
-				return fmt.Errorf("failed to match presence field %v", presentField.Name)
+				if _, ok := transientPos[presentField.Name]; ok {
+					continue
+				}
+				return fmt.Errorf("failed to match presence field %v %v", presentField.Name, filedPos)
 			}
 			p.Fields[pos] = xunsafe.NewField(presentField)
 		}

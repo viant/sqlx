@@ -208,6 +208,8 @@ func StructColumns(recordType reflect.Type, tagName string, opts ...option.Optio
 	}
 	presenceProvider := option.Options(opts).PresenceProvider()
 	var fieldPos = make(map[string]int)
+	var transientPos = make(map[string]int)
+
 	for i := 0; i < recordType.NumField(); i++ {
 		field := recordType.Field(i)
 		aTag := ParseTag(field.Tag.Get(tagName))
@@ -218,9 +220,10 @@ func StructColumns(recordType reflect.Type, tagName string, opts ...option.Optio
 				presenceProvider.Holder = xunsafe.NewField(field)
 				continue
 			}
-			fieldPos[field.Name] = i
+			fieldPos[field.Name] = int(field.Index[0])
 		}
 		if aTag.Transient {
+			transientPos[field.Name] = int(field.Index[0])
 			continue
 		}
 		if isExported := field.PkgPath == ""; !isExported {
@@ -238,7 +241,7 @@ func StructColumns(recordType reflect.Type, tagName string, opts ...option.Optio
 	}
 	var err error
 	if presenceProvider != nil && presenceProvider.Holder != nil {
-		err = presenceProvider.Init(fieldPos)
+		err = presenceProvider.Init(fieldPos, transientPos)
 	}
 	return result, err
 }

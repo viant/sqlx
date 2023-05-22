@@ -92,6 +92,8 @@ func ParseTag(tagString string) *Tag {
 				tag.RefTable = nv[1]
 			case "refcolumn":
 				tag.RefColumn = nv[1]
+			case "transient":
+				tag.Transient = strings.TrimSpace(nv[1]) == "true"
 			case "bit":
 				tag.Bit = strings.TrimSpace(nv[1]) == "true"
 			case "required":
@@ -130,6 +132,8 @@ func ParseTag(tagString string) *Tag {
 				tag.NullifyEmpty = true
 			case "required":
 				tag.Required = true
+			case "-":
+				tag.Transient = true
 			case "presence":
 				tag.PresenceProvider = true
 				tag.Transient = true

@@ -37,6 +37,8 @@ func StructColumnMapper(src interface{}, tagName string, options ...option.Optio
 	var getters []xunsafe.Getter
 
 	var filedPos = make(map[string]int)
+	var transientPos = make(map[string]int)
+
 	for i := 0; i < recordType.NumField(); i++ {
 		field := recordType.Field(i)
 
@@ -53,6 +55,7 @@ func StructColumnMapper(src interface{}, tagName string, options ...option.Optio
 			return nil, nil, err
 		}
 		if tag.Transient {
+			transientPos[field.Name] = int(field.Index[0])
 			continue
 		}
 
@@ -94,7 +97,7 @@ func StructColumnMapper(src interface{}, tagName string, options ...option.Optio
 	appendIdentityColumns(identityColumns, recordType, &getters, &columns, presenceProvider, filedPos)
 
 	if presenceProvider != nil && len(filedPos) > 0 {
-		if err := presenceProvider.Init(filedPos); err != nil {
+		if err := presenceProvider.Init(filedPos, transientPos); err != nil {
 			return nil, nil, err
 		}
 	}
