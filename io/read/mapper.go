@@ -1,10 +1,12 @@
 package read
 
 import (
+	"fmt"
 	"github.com/viant/sqlx/io"
 	"github.com/viant/sqlx/option"
 	"github.com/viant/xunsafe"
 	"reflect"
+	"strings"
 )
 
 //RowMapper represents a target values mapped to pointer of slice
@@ -14,15 +16,20 @@ type RowMapper func(target interface{}) ([]interface{}, error)
 type NewRowMapper func(columns []io.Column, targetType reflect.Type, tagName string, resolver io.Resolve, options []option.Option) (RowMapper, error)
 
 type Mapper struct {
-	fields []io.Field
-	record []interface{}
+	fields         []io.Field
+	record         []interface{}
+	willWrapFields bool
 }
 
 func NewMapper(fields []io.Field) *Mapper {
-	return &Mapper{
+	m := &Mapper{
 		fields: fields,
 		record: make([]interface{}, len(fields)),
 	}
+
+	m.init()
+
+	return m
 }
 
 func (m *Mapper) MapToRow(target interface{}) ([]interface{}, error) {
@@ -34,18 +41,40 @@ func (m *Mapper) MapToRow(target interface{}) ([]interface{}, error) {
 	return m.record, nil
 }
 
+func (m *Mapper) MapToSQLRow(target interface{}) ([]interface{}, error) {
+	ptr := xunsafe.AsPointer(target)
+	for i, mapped := range m.fields {
+		m.record[i] = mapped.Addr(ptr)
+		if mapped.Tag.Encoding == io.EncodingJSON {
+			m.record[i] = &io.JSONEncodedValue{Val: m.record[i]}
+		}
+	}
+
+	return m.record, nil
+}
+
+func (m *Mapper) init() {
+	for _, field := range m.fields {
+		m.willWrapFields = m.willWrapFields || field.Encoding != ""
+	}
+}
+
 //newRowMapper creates a new record mapped
 func newRowMapper(columns []io.Column, targetType reflect.Type, tagName string, resolver io.Resolve, options []option.Option) (RowMapper, error) {
+	if strings.Contains(targetType.String(), "Products") {
+		fmt.Println("")
+	}
+
 	if tagName == "" {
 		tagName = option.TagSqlx
 	}
 
 	switch targetType.Kind() {
 	case reflect.Struct:
-		return NewStructMapper(columns, targetType, tagName, resolver, options...)
+		return NewSQLStructMapper(columns, targetType, tagName, resolver, options...)
 	case reflect.Ptr:
 		if targetType.Elem().Kind() == reflect.Struct {
-			return NewStructMapper(columns, targetType.Elem(), tagName, resolver, options...)
+			return NewSQLStructMapper(columns, targetType.Elem(), tagName, resolver, options...)
 		}
 	}
 	return GenericRowMapper(columns)
@@ -53,6 +82,29 @@ func newRowMapper(columns []io.Column, targetType reflect.Type, tagName string, 
 
 //NewStructMapper creates a new record mapper for supplied struct type
 func NewStructMapper(columns []io.Column, recordType reflect.Type, tagName string, resolver io.Resolve, options ...option.Option) (RowMapper, error) {
+	mapper, err := getMapper(columns, recordType, tagName, resolver, options)
+	if err != nil {
+		return nil, err
+	}
+
+	return mapper.MapToRow, nil
+}
+
+//NewSQLStructMapper creates a new record mapper for supplied struct and prepares them to scan / send values with sql.DB
+func NewSQLStructMapper(columns []io.Column, recordType reflect.Type, tagName string, resolver io.Resolve, options ...option.Option) (RowMapper, error) {
+	mapper, err := getMapper(columns, recordType, tagName, resolver, options)
+	if err != nil {
+		return nil, err
+	}
+
+	if mapper.willWrapFields {
+		return mapper.MapToSQLRow, nil
+	}
+
+	return mapper.MapToRow, nil
+}
+
+func getMapper(columns []io.Column, recordType reflect.Type, tagName string, resolver io.Resolve, options []option.Option) (*Mapper, error) {
 	cache, entry, err := mapperCacheEntry(columns, recordType, options, resolver)
 	if err != nil {
 		return nil, err
@@ -67,7 +119,8 @@ func NewStructMapper(columns []io.Column, recordType reflect.Type, tagName strin
 		cache.Put(entry, matched)
 	}
 
-	return NewMapper(matched).MapToRow, nil
+	mapper := NewMapper(matched)
+	return mapper, nil
 }
 
 func mapperCacheEntry(columns []io.Column, recordType reflect.Type, options []option.Option, resolver io.Resolve) (*MapperCache, *MapperCacheEntry, error) {

@@ -2,6 +2,7 @@ package io
 
 import (
 	"database/sql"
+	"database/sql/driver"
 	"encoding/json"
 	"fmt"
 	"github.com/viant/sqlx/option"
@@ -9,6 +10,55 @@ import (
 	"reflect"
 	"unsafe"
 )
+
+type JSONEncodedValue struct {
+	Val interface{}
+}
+
+func (j *JSONEncodedValue) Value() (driver.Value, error) {
+	marshal, err := json.Marshal(j.Val)
+	if err != nil {
+		return nil, err
+	}
+
+	return string(marshal), nil
+}
+
+func (j *JSONEncodedValue) Scan(v interface{}) error {
+	if v == nil {
+		return nil
+	}
+
+	switch actual := v.(type) {
+	case []byte:
+		if len(actual) == 0 {
+			return nil
+		}
+
+		return json.Unmarshal(actual, j.Val)
+
+	case string:
+		if len(actual) == 0 {
+			return nil
+		}
+
+		return json.Unmarshal([]byte(actual), j.Val)
+
+	default:
+		dst := reflect.ValueOf(j.Val)
+		src := reflect.ValueOf(v)
+		elem := dst.Elem()
+		elemType := elem.Type()
+
+		if src.Type().ConvertibleTo(elemType) {
+			elem.Set(src.Convert(elemType))
+			return nil
+		}
+
+		return fmt.Errorf("unconvertible %v into %v", src.Type().String(), dst.String())
+
+	}
+}
 
 //ColumnMapper maps src to columns and its placeholders
 type ColumnMapper func(src interface{}, tagName string, options ...option.Option) ([]Column, PlaceholderBinder, error)
@@ -97,7 +147,7 @@ func fieldGetter(tag *Tag, field *xunsafe.Field, recordType reflect.Type) (xunsa
 
 	switch tag.Encoding {
 	case EncodingJSON:
-		return structGetter(tag, field, recordType), nil
+		return jsonFieldEncodder(tag, field, recordType), nil
 	default:
 		return nil, fmt.Errorf("unsupported column encoding type %v", tag.Encoding)
 	}
@@ -217,7 +267,7 @@ func IsStruct(t reflect.Type) bool {
 	return false
 }
 
-func structGetter(tag *Tag, field *xunsafe.Field, recordType reflect.Type) func(structPtr unsafe.Pointer) interface{} {
+func jsonFieldEncodder(tag *Tag, field *xunsafe.Field, recordType reflect.Type) func(structPtr unsafe.Pointer) interface{} {
 	fType := field.Type
 	isPointer := false
 	if fType.Kind() == reflect.Ptr {
@@ -226,17 +276,18 @@ func structGetter(tag *Tag, field *xunsafe.Field, recordType reflect.Type) func(
 	}
 
 	return func(structPtr unsafe.Pointer) interface{} {
-		holderPtr := field.ValuePointer(structPtr)
+		holderPtr := field.Pointer(structPtr)
 		if isPointer && holderPtr == nil {
 			return sql.NullString{}
 		}
 
 		value := field.Interface(structPtr)
-		marshaled, err := json.Marshal(value)
-		if err != nil {
-			return err.Error()
-		}
-
-		return marshaled
+		return &JSONEncodedValue{Val: value}
+		//marshaled, err := json.Marshal(value)
+		//if err != nil {
+		//	return err.Error()
+		//}
+		//
+		//return marshaled
 	}
 }

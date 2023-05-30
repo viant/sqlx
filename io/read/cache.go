@@ -192,7 +192,7 @@ func (c *MapperCache) Put(entry *MapperCacheEntry, fields []io.Field) {
 		if field.MatchesType {
 			fieldsCopy[i] = fields[i] //copying because Resolve is "stateful". It is required to override fields that will be resolved.
 		} else {
-			fieldsCopy[i] = io.Field{Column: field.Column}
+			fieldsCopy[i] = io.Field{Column: field.Column, Tag: fieldsCopy[i].Tag}
 		}
 	}
 
