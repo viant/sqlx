@@ -53,7 +53,14 @@ func NewChecks(p reflect.Type, presence *option.PresenceProvider) (*Checks, erro
 		if tag == nil {
 			continue
 		}
-		xField := xunsafe.NewField(sType.Field(tag.FieldIndex))
+
+		fielder, ok := column.(io.Fielder)
+		if !ok {
+			continue
+		}
+
+		fields := fielder.Fields()
+		xField := fields[len(fields)-1]
 
 		if tag.Required {
 			result.NoNull = append(result.NoNull, &Check{

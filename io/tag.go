@@ -16,7 +16,6 @@ type Tag struct {
 	Autoincrement    bool
 	PrimaryKey       bool
 	Sequence         string
-	FieldIndex       int
 	Transient        bool
 	Ns               string
 	Generator        string

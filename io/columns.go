@@ -2,11 +2,9 @@ package io
 
 import (
 	"database/sql"
-	"fmt"
 	"github.com/viant/sqlx/option"
-	types "github.com/viant/sqlx/types"
+	"github.com/viant/sqlx/types"
 	"github.com/viant/xreflect"
-	"github.com/viant/xunsafe"
 	"reflect"
 	"strings"
 	"time"
@@ -14,9 +12,6 @@ import (
 
 //Columns represents columns
 type Columns []Column
-type foo struct {
-	Interface interface{}
-}
 
 //Autoincrement returns position of autoincrement column position or -1
 func (c Columns) Autoincrement() int {
@@ -36,9 +31,9 @@ func (c Columns) IdentityColumnPos() int {
 	if len(c) == 0 {
 		return -1
 	}
-	for i, item := range c {
 
-		if tag := item.Tag(); tag.isIdentity(item.Name()) {
+	for i, item := range c {
+		if IsIdentityColumn(item) {
 			return i
 		}
 	}
@@ -98,21 +93,21 @@ var goRawBytesType = reflect.PtrTo(reflect.TypeOf(""))
 func ParseType(columnType string) (reflect.Type, bool) {
 	switch strings.ToLower(columnType) {
 	case "int", "integer", "bigint", "smallint", "unsiged tinyint", "tinyint", "int64", "int32", "int16", "int8", "uint", "uint8", "uint16", "uint32", "uint64", "binary":
-		return reflect.TypeOf(0), true
+		return xreflect.IntType, true
 	case "float", "float64", "numeric", "decimal", "double":
-		return reflect.TypeOf(0.0), true
+		return xreflect.Float64Type, true
 	case "bool", "boolean":
-		return reflect.TypeOf(false), true
+		return xreflect.BoolType, true
 	case "bit", "bitbool":
 		return reflect.TypeOf(types.BitBool(true)), true
 	case "string", "varchar", "char", "text", "longtext", "longblob", "mediumblob", "mediumtext", "blob", "tinytext":
 		return reflect.TypeOf(""), true
 	case "date", "time", "timestamp", "datetime":
-		return reflect.TypeOf(time.Time{}), true
+		return xreflect.TimeType, true
 	case "sql.rawbytes", "rawbytes":
 		return reflect.TypeOf(""), true
 	case "interface":
-		t := reflect.ValueOf(interface{}(foo{})).FieldByName("Interface").Type()
+		t := xreflect.InterfaceType
 		return t, true
 	}
 
@@ -202,46 +197,18 @@ func NamesToColumns(columns []string) []Column {
 
 //StructColumns returns column for the struct
 func StructColumns(recordType reflect.Type, tagName string, opts ...option.Option) ([]Column, error) {
-	var result []Column
-	if recordType.Kind() != reflect.Struct {
-		return nil, fmt.Errorf("expected struct, but had: %v", recordType.Name())
+	columns, _, err := StructColumnMapper(recordType, tagName, opts...)
+	if err != nil {
+		return nil, err
 	}
-	presenceProvider := option.Options(opts).PresenceProvider()
-	var fieldPos = make(map[string]int)
-	var transientPos = make(map[string]int)
 
-	for i := 0; i < recordType.NumField(); i++ {
-		field := recordType.Field(i)
-		aTag := ParseTag(field.Tag.Get(tagName))
-		aTag.FieldIndex = i
+	return columns, nil
+}
 
-		if presenceProvider != nil {
-			if aTag.PresenceProvider {
-				presenceProvider.Holder = xunsafe.NewField(field)
-				continue
-			}
-			fieldPos[field.Name] = int(field.Index[0])
-		}
-		if aTag.Transient {
-			transientPos[field.Name] = int(field.Index[0])
-			continue
-		}
-		if isExported := field.PkgPath == ""; !isExported {
-			continue
-		}
-
-		columnName := aTag.getColumnName(field)
-		aTag.PrimaryKey = aTag.isIdentity(columnName)
-
-		result = append(result, &column{
-			name:     columnName,
-			scanType: field.Type,
-			tag:      aTag,
-		})
+func IsIdentityColumn(col Column) bool {
+	if col.Tag() == nil {
+		return false
 	}
-	var err error
-	if presenceProvider != nil && presenceProvider.Holder != nil {
-		err = presenceProvider.Init(fieldPos, transientPos)
-	}
-	return result, err
+
+	return col.Tag().isIdentity(col.Name())
 }

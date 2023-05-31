@@ -29,9 +29,11 @@ func (b *Builder) Build(record interface{}, options ...option.Option) string {
 	if b.dialect.CanReturning && len(b.id) > 0 {
 		suffix = " RETURNING " + b.id
 	}
+
 	if batchSize == b.batchSize {
 		return b.sql + suffix
 	}
+
 	limit := b.offsets[batchSize-1]
 	return b.sql[:limit] + suffix
 }
@@ -44,8 +46,17 @@ func NewBuilder(table string, columns []string, dialect *info.Dialect, identity 
 	sqlBuilder := strings.Builder{}
 	sqlBuilder.Grow(estimateBufferSize(table, columns, batchSize))
 	var offsets []uint32
+
 	sqlBuilder.WriteString(insertIntoFragment)
+
+	escapeRune := dialect.SpecialKeywordEscapeQuote
+	if escapeRune == 0 {
+		escapeRune = '"'
+	}
+
+	sqlBuilder.WriteByte(escapeRune)
 	sqlBuilder.WriteString(table)
+	sqlBuilder.WriteByte(escapeRune)
 	sqlBuilder.WriteString("(")
 	for i, column := range columns {
 		if i > 0 {

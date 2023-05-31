@@ -28,7 +28,7 @@ func TestInsert_Build(t *testing.T) {
 			},
 			batchSize:     1,
 			callBatchSize: 1,
-			expect:        "INSERT INTO foo(c1,cN) VALUES (?,?)",
+			expect:        `INSERT INTO "foo"(c1,cN) VALUES (?,?)`,
 		},
 		{
 			description: "batchSize size 5",
@@ -39,7 +39,7 @@ func TestInsert_Build(t *testing.T) {
 			},
 			batchSize:     5,
 			callBatchSize: 5,
-			expect:        "INSERT INTO foo(c1,cN) VALUES (?,?),(?,?),(?,?),(?,?),(?,?)",
+			expect:        `INSERT INTO "foo"(c1,cN) VALUES (?,?),(?,?),(?,?),(?,?),(?,?)`,
 		},
 		{
 			description: "batchSize size 5",
@@ -50,7 +50,7 @@ func TestInsert_Build(t *testing.T) {
 			},
 			batchSize:     5,
 			callBatchSize: 3,
-			expect:        "INSERT INTO foo(c1,cN) VALUES (?,?),(?,?),(?,?)",
+			expect:        `INSERT INTO "foo"(c1,cN) VALUES (?,?),(?,?),(?,?)`,
 		},
 	}
 
