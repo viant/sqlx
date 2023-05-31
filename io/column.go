@@ -2,6 +2,7 @@ package io
 
 import (
 	"database/sql"
+	"github.com/viant/xunsafe"
 	"reflect"
 )
 
@@ -17,16 +18,27 @@ type ColumnDecimalPrecision int64
 //ColumnNullable represents column nullable option
 type ColumnNullable bool
 
-//Column represents a column
-type Column interface {
-	Name() string
-	Length() (length int64, ok bool)
-	DecimalSize() (precision, scale int64, ok bool)
-	ScanType() reflect.Type
-	Nullable() (nullable, ok bool)
-	DatabaseTypeName() string
-	Tag() *Tag
-}
+type (
+	//Column represents a column
+	Column interface {
+		Name() string
+		Length() (length int64, ok bool)
+		DecimalSize() (precision, scale int64, ok bool)
+		ScanType() reflect.Type
+		Nullable() (nullable, ok bool)
+		DatabaseTypeName() string
+		Tag() *Tag
+	}
+
+	ColumnWithFields interface {
+		Column
+		Fielder
+	}
+
+	Fielder interface {
+		Fields() []*xunsafe.Field
+	}
+)
 
 type columnType struct {
 	*sql.ColumnType
@@ -34,14 +46,14 @@ type columnType struct {
 	databaseTypeName string
 }
 
-func (t *columnType) ScanType() reflect.Type {
-	if t.scanType == nil {
-		t.scanType = ensureScanType(t.DatabaseTypeName(), t.ColumnType.ScanType())
+func (c *columnType) ScanType() reflect.Type {
+	if c.scanType == nil {
+		c.scanType = ensureScanType(c.DatabaseTypeName(), c.ColumnType.ScanType())
 	}
-	return t.scanType
+	return c.scanType
 }
 
-func (t *columnType) Tag() *Tag {
+func (c *columnType) Tag() *Tag {
 	return nil
 }
 
@@ -54,17 +66,24 @@ func (c *columnType) DatabaseTypeName() string {
 }
 
 //column represents a column
-type column struct {
-	name             string
-	databaseTypeName string
-	length           *int64
-	decimalPrecision *int64
-	decimalScale     *int64
-	nullable         *bool
-	position         int
-	scanType         reflect.Type
-	tag              *Tag
-}
+type (
+	column struct {
+		name             string
+		databaseTypeName string
+		length           *int64
+		decimalPrecision *int64
+		decimalScale     *int64
+		nullable         *bool
+		position         int
+		scanType         reflect.Type
+		tag              *Tag
+	}
+
+	columnWithFields struct {
+		*column
+		fields []*xunsafe.Field
+	}
+)
 
 func (c *column) Name() string {
 	return c.name
@@ -108,9 +127,6 @@ func (c *column) DatabaseTypeName() string {
 }
 
 func (c *column) applyOptions(opts []interface{}) {
-	if len(opts) == 0 {
-		return
-	}
 	for _, opt := range opts {
 		switch actual := opt.(type) {
 		case ColumnLength:
@@ -133,12 +149,51 @@ func (c *column) applyOptions(opts []interface{}) {
 
 //NewColumn creates a column
 func NewColumn(name, databaseTypeName string, rType reflect.Type, opts ...interface{}) Column {
+	result := newColumn(name, databaseTypeName, rType, opts)
+
+	var fields []*xunsafe.Field
+	for _, opt := range opts {
+		switch actual := opt.(type) {
+		case *xunsafe.Field:
+			fields = append(fields, actual)
+		case []*xunsafe.Field:
+			fields = append(fields, actual...)
+		}
+	}
+
+	if len(fields) > 0 {
+		return newColumnWithFields(result, fields)
+	}
+
+	return result
+}
+
+func newColumnWithFields(result *column, fields []*xunsafe.Field) Column {
+	return &columnWithFields{
+		fields: fields,
+		column: result,
+	}
+}
+
+func newColumn(name string, databaseTypeName string, rType reflect.Type, opts []interface{}) *column {
 	result := &column{
 		name:             name,
 		databaseTypeName: databaseTypeName,
 		scanType:         rType,
 	}
+
 	result.applyOptions(opts)
 	result.scanType = ensureScanType(result.databaseTypeName, result.scanType)
 	return result
+}
+
+func NewColumnWithFields(name string, databaseTypeName string, rType reflect.Type, fields []*xunsafe.Field, opts ...interface{}) ColumnWithFields {
+	return &columnWithFields{
+		column: newColumn(name, databaseTypeName, rType, opts),
+		fields: fields,
+	}
+}
+
+func (c *columnWithFields) Fields() []*xunsafe.Field {
+	return c.fields
 }

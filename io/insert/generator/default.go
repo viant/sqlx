@@ -132,7 +132,7 @@ func (d *Default) prepare(ctx context.Context, rType reflect.Type, table string)
 
 	ioColumns = append(ioColumns, io.NewColumn(sqlxOrderColumn, "", reflect.TypeOf(0)))
 
-	queryMapper, err := read.NewStructMapper(ioColumns, rType.Elem(), option.TagSqlx, resolveSqlxPosition)
+	queryMapper, err := read.NewSQLStructMapper(ioColumns, rType.Elem(), option.TagSqlx, resolveSqlxPosition)
 
 	if err != nil {
 		return nil, nil, err

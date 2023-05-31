@@ -27,6 +27,30 @@ func TestService_Exec(t *testing.T) {
 		Bar  float64
 	}
 
+	type entityWithStringID struct {
+		ID   string `sqlx:"name=foo_id"`
+		Name string `sqlx:"foo_name"`
+		Desc string `sqlx:"-"`
+		Bar  float64
+	}
+
+	type Audit struct {
+		CreatedAt string `sqlx:"name=created_at"`
+		UpdatedAt string `sqlx:"name=updated_at"`
+	}
+
+	type EntityValue struct {
+		Bar  float64
+		Name string `sqlx:"foo_name"`
+	}
+
+	type entityWithCompositeColumns struct {
+		ID string `sqlx:"name=foo_id"`
+		Audit
+		EntityValue
+		Desc string `sqlx:"-"`
+	}
+
 	var useCases = []struct {
 		description string
 		table       string
@@ -141,10 +165,82 @@ func TestService_Exec(t *testing.T) {
 				dialect.PresetIDWithMax,
 			},
 		},
+		{
+			description: "String ID ",
+			driver:      "sqlite3",
+			dsn:         "/tmp/sqllite.db",
+			table:       "t3",
+			initSQL: []string{
+				"DROP TABLE IF EXISTS t3",
+				"CREATE TABLE t3 (foo_id VARCHAR(5) PRIMARY KEY, foo_name TEXT, Bar INTEGER)",
+			},
+			records: []*entityWithStringID{
+				{ID: "12345", Name: "John1", Desc: "description", Bar: 17},
+				{ID: "12346", Name: "John2", Desc: "description", Bar: 18},
+				{ID: "12347", Name: "John3", Desc: "description", Bar: 19},
+			},
+			affected: 3,
+			lastID:   3,
+			options: []option.Option{
+				option.BatchSize(2),
+				dialect.PresetIDWithMax,
+			},
+		},
+		{
+			description: "composite objects",
+			driver:      "sqlite3",
+			dsn:         "/tmp/sqllite.db",
+			table:       "t3",
+			initSQL: []string{
+				"DROP TABLE IF EXISTS t3",
+				`CREATE TABLE t3 (
+foo_id VARCHAR(5) PRIMARY KEY, 
+foo_name TEXT, 
+created_at TEXT,
+updated_at TEXT,
+Bar INTEGER
+                )`,
+			},
+			records: []*entityWithCompositeColumns{
+				{
+					ID: "12345", EntityValue: EntityValue{
+						Name: "John1",
+						Bar:  17,
+					},
+					Desc: "description",
+					Audit: Audit{
+						CreatedAt: "time.Now()",
+						UpdatedAt: "time.Now()",
+					},
+				},
+				{
+					ID: "12346",
+					EntityValue: EntityValue{
+						Name: "John2",
+						Bar:  18,
+					},
+					Desc: "description",
+				},
+				{
+					ID: "12347",
+					EntityValue: EntityValue{
+						Name: "John3",
+						Bar:  19,
+					}, Desc: "description",
+				},
+			},
+			affected: 3,
+			lastID:   3,
+			options: []option.Option{
+				option.BatchSize(2),
+				dialect.PresetIDWithMax,
+			},
+		},
 	}
 
 outer:
 
+	//for _, testCase := range useCases[len(useCases)-1:] {
 	for _, testCase := range useCases {
 
 		//ctx := context.Background()

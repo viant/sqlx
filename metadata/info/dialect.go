@@ -24,8 +24,9 @@ type Dialect struct {
 	QuoteCharacter    byte
 	// TODO: check if column has a space or exist in keywords in this case use quote if keyword is specified
 	// i.e. normalized column on the dialect
-	Keywords                map[string]bool
-	DefaultPresetIDStrategy dialect.PresetIDStrategy
+	Keywords                  map[string]bool
+	DefaultPresetIDStrategy   dialect.PresetIDStrategy
+	SpecialKeywordEscapeQuote byte
 }
 
 //Dialects represents dialects
@@ -64,10 +65,6 @@ func (d *Dialect) EnsurePlaceholders(SQL string) string {
 		resultPos += copy(result[resultPos:], SQL[sqlPos:])
 	}
 	return string(result[:resultPos])
-}
-
-func (d *Dialect) name() {
-
 }
 
 func (d *Dialect) countPlaceholdersLen(start, numOfPlaceholders int) int {

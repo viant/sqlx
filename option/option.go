@@ -245,14 +245,12 @@ func (o Options) MaxIDSQLBuilder() func() *sqlx.SQL {
 
 // PresetIDStrategy returns PresetIDStrategy option
 func (o Options) PresetIDStrategy() dialect.PresetIDStrategy {
-	if len(o) == 0 {
-		return dialect.PresetIDStrategyUndefined
-	}
 	for _, candidate := range o {
 		if value, ok := candidate.(dialect.PresetIDStrategy); ok {
 			return value
 		}
 	}
+
 	return dialect.PresetIDStrategyUndefined
 }
 

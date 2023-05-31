@@ -268,15 +268,16 @@ RELEASE_LOCK('$Args[0].$Args[1].$Args[2]')  AS SUCCESS`,
 	}
 
 	registry.RegisterDialect(&info.Dialect{
-		Product:          mySQL5,
-		Placeholder:      "?",
-		Transactional:    true,
-		Insert:           dialect.InsertWithMultiValues,
-		Upsert:           dialect.UpsertTypeInsertOrUpdate,
-		Load:             dialect.LoadTypeLocalData,
-		QuoteCharacter:   '\'',
-		CanAutoincrement: true,
-		CanLastInsertID:  true, // in reality true but multi-insert gives us the id from the first row, not the last one
+		Product:                   mySQL5,
+		Placeholder:               "?",
+		Transactional:             true,
+		Insert:                    dialect.InsertWithMultiValues,
+		Upsert:                    dialect.UpsertTypeInsertOrUpdate,
+		Load:                      dialect.LoadTypeLocalData,
+		SpecialKeywordEscapeQuote: '`',
+		QuoteCharacter:            '\'',
+		CanAutoincrement:          true,
+		CanLastInsertID:           true, // in reality true but multi-insert gives us the id from the first row, not the last one
 		// TODO: provide real autoincrement function
 		AutoincrementFunc:       "autoincrement",
 		DefaultPresetIDStrategy: dialect.PresetIDWithTransientTransaction,

@@ -31,6 +31,7 @@ func (p *PresenceProvider) Init(filedPos, transientPos map[string]int) error {
 	if p.Holder == nil || len(filedPos) == 0 {
 		return nil
 	}
+
 	if holder := p.Holder; holder != nil {
 		p.Fields = make([]*xunsafe.Field, len(filedPos))
 		holderType := holder.Type
@@ -46,6 +47,7 @@ func (p *PresenceProvider) Init(filedPos, transientPos map[string]int) error {
 				}
 				return fmt.Errorf("failed to match presence field %v %v", presentField.Name, filedPos)
 			}
+
 			p.Fields[pos] = xunsafe.NewField(presentField)
 		}
 	}
