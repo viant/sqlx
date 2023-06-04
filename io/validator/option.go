@@ -10,14 +10,14 @@ type (
 		CheckUnique      bool
 		CheckRef         bool
 		Location         string
-		PresenceProvider *option.PresenceProvider
+		PresenceProvider *option.SetMarker
 	}
 	Option func(c *Options)
 )
 
 func WithPresence() Option {
 	return func(c *Options) {
-		c.PresenceProvider = &option.PresenceProvider{}
+		c.PresenceProvider = &option.SetMarker{}
 	}
 }
 

@@ -48,7 +48,8 @@ func (s *Service) NextSequence(ctx context.Context, any interface{}, recordCount
 
 	batchSize := option.Options(options).BatchSize()
 	record := valueAt(0)
-	sess, err := s.NewSession(ctx, record, batchSize)
+	db := option.Options(options).Db()
+	sess, err := s.NewSession(ctx, record, db, batchSize)
 	if err != nil {
 		return nil, err
 	}
@@ -83,12 +84,17 @@ func (s *Service) Exec(ctx context.Context, any interface{}, options ...option.O
 		return 0, 0, nil
 	}
 	batchSize := option.Options(options).BatchSize()
+
 	record := valueAt(0)
 	if record == nil {
 		return 0, 0, fmt.Errorf("invalid record/s %T %v", any, any)
 	}
+	db := option.Options(options).Db()
+	if db == nil {
+		db = s.db
+	}
 
-	sess, err := s.NewSession(ctx, record, batchSize)
+	sess, err := s.NewSession(ctx, record, db, batchSize)
 	if err != nil {
 		return 0, 0, err
 	}
@@ -106,7 +112,7 @@ func (s *Service) Exec(ctx context.Context, any interface{}, options ...option.O
 
 	var batchRecordBuffer = make([]interface{}, batchSize*len(sess.columns))
 	var identities = make([]interface{}, batchSize)
-	defGenerator, err := generator.NewDefault(ctx, sess.Dialect, s.db, sess.info)
+	defGenerator, err := generator.NewDefault(ctx, sess.Dialect, sess.db, sess.info)
 	if err != nil {
 		return 0, 0, err
 	}
@@ -115,7 +121,7 @@ func (s *Service) Exec(ctx context.Context, any interface{}, options ...option.O
 		return 0, 0, err
 	}
 
-	if err = sess.begin(ctx, s.db, options); err != nil {
+	if err = sess.begin(ctx, sess.db, options); err != nil {
 		return 0, 0, err
 	}
 
@@ -130,18 +136,21 @@ func (s *Service) Exec(ctx context.Context, any interface{}, options ...option.O
 }
 
 // NewSession creates a new session
-func (s *Service) NewSession(ctx context.Context, record interface{}, batchSize int) (*session, error) {
+func (s *Service) NewSession(ctx context.Context, record interface{}, db *sql.DB, batchSize int) (*session, error) {
 	s.mux.Lock()
 	defer s.mux.Unlock()
 	rType := reflect.TypeOf(record)
 	if sess := s.cachedSession; sess != nil && sess.rType == rType && sess.batchSize == batchSize {
+		if db == nil {
+			db = sess.db
+		}
 		return &session{
 			recordUpdaters: s.cachedSession.recordUpdaters,
 			rType:          rType,
 			Config:         sess.Config,
 			binder:         sess.binder,
 			columns:        sess.columns,
-			db:             sess.db,
+			db:             db,
 			batchSize:      sess.batchSize,
 			info:           sess.info,
 		}, nil

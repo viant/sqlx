@@ -79,19 +79,19 @@ func (n *Transient) Handle(ctx context.Context, db *sql.DB, target interface{}, 
 		return false, fmt.Errorf("transientDML was empty")
 	}
 
-	n.turnFkKeyCheck(tx, 0)
+	_ = n.turnFkKeyCheck(tx, 0)
 	_, err = tx.ExecContext(ctx, transientDML.Query, transientDML.Args...)
-	n.turnFkKeyCheck(tx, 1)
+	_ = n.turnFkKeyCheck(tx, 1)
 	if err != nil { //temp workaround of cascading sequencer
 		return false, err
 	}
 	*targetSequence = sequence
-
 	return false, nil
 }
 
-func (n *Transient) turnFkKeyCheck(tx *sql.Tx, sw int) (sql.Result, error) {
-	return tx.Exec("SET foreign_key_checks = " + strconv.Itoa(sw))
+func (n *Transient) turnFkKeyCheck(tx *sql.Tx, flag int) error {
+	_, err := tx.Exec("SET foreign_key_checks = " + strconv.Itoa(flag))
+	return err
 }
 
 func (n *Transient) lock(ctx context.Context, meta *metadata.Service, db *sql.DB, options option.Options) error {

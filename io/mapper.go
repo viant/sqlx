@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/viant/sqlx/option"
+	"github.com/viant/structology"
 	"github.com/viant/xunsafe"
 	"reflect"
 	"unsafe"
@@ -66,7 +67,7 @@ type ColumnMapper func(src interface{}, tagName string, options ...option.Option
 type columnMapperBuilder struct {
 	columns           []ColumnWithFields
 	identityColumns   []ColumnWithFields
-	presenceProvider  *option.PresenceProvider
+	setMarker         *option.SetMarker
 	columnRestriction option.ColumnRestriction
 	identityOnly      bool
 }
@@ -89,7 +90,6 @@ func StructColumnMapper(src interface{}, tagName string, options ...option.Optio
 
 	for i := 0; i < recordType.NumField(); i++ {
 		field := recordType.Field(i)
-
 		if err = builder.appendColumns(field, tagName); err != nil {
 			return nil, nil, err
 		}
@@ -112,8 +112,8 @@ func StructColumnMapper(src interface{}, tagName string, options ...option.Optio
 		}
 
 		if aTag.isIdentity(col.Name()) {
-			if builder.presenceProvider != nil {
-				builder.presenceProvider.IdentityIndex = i
+			if builder.setMarker != nil {
+				builder.setMarker.IdentityIndex = i
 			}
 		}
 
@@ -125,8 +125,10 @@ func StructColumnMapper(src interface{}, tagName string, options ...option.Optio
 		getters = append(getters, getter)
 	}
 
-	if builder.presenceProvider != nil {
-		if err = builder.presenceProvider.Init(filedPos, transientFields); err != nil {
+	//	marker, _ := structology.NewMarker(recordType, structology.)
+
+	if builder.setMarker != nil {
+		if builder.setMarker.Marker, err = structology.NewMarker(recordType, structology.WithIndex(filedPos)); err != nil {
 			return nil, nil, err
 		}
 	}
@@ -168,13 +170,13 @@ func newColumnBuilder(options []option.Option, recordType reflect.Type) (*column
 		columnRestriction = val.Restriction()
 	}
 
-	presenceProvider := option.Options(options).PresenceProvider()
+	setMarker := option.Options(options).SetMarker()
 	if recordType.Kind() != reflect.Struct {
 		return nil, fmt.Errorf("invalid record type: %v", recordType.Kind())
 	}
 
 	builder := &columnMapperBuilder{
-		presenceProvider:  presenceProvider,
+		setMarker:         setMarker,
 		identityOnly:      option.Options(options).IdentityOnly(),
 		columnRestriction: columnRestriction,
 	}
@@ -194,15 +196,9 @@ func (b *columnMapperBuilder) appendColumns(field reflect.StructField, tagName s
 	}
 
 	holders = append(holders, xField)
-
-	if tag.PresenceProvider && b.presenceProvider != nil {
-		b.presenceProvider.Holder = xunsafe.NewField(field)
-	}
-
 	if isExported := field.PkgPath == ""; !isExported {
 		return nil
 	}
-
 	if err := tag.validateWithField(field); err != nil {
 		return err
 	}

@@ -28,7 +28,7 @@ func (s *Service) Exec(ctx context.Context, any interface{}, options ...option.O
 	if sess, err = s.ensureSession(record, options...); err != nil {
 		return 0, err
 	}
-	if err = sess.begin(ctx, s.db, options); err != nil {
+	if err = sess.begin(ctx, sess.db, options); err != nil {
 		return 0, err
 	}
 	var rowsAffected int64
@@ -66,21 +66,25 @@ func (s *Service) ensureSession(record interface{}, options ...option.Option) (*
 	s.mux.Lock()
 	defer s.mux.Unlock()
 	rType := reflect.TypeOf(record)
-
 	if sess := s.initSession; sess != nil && sess.rType == rType {
+		db := option.Options(options).Db()
+		if db == nil {
+			db = sess.db
+		}
 		return &session{
-			rType:            rType,
-			Config:           s.Config,
-			binder:           sess.binder,
-			columns:          sess.columns,
-			identityIndex:    sess.identityIndex,
-			presenceProvider: sess.presenceProvider,
-			db:               sess.db,
+			rType:         rType,
+			Config:        s.Config,
+			binder:        sess.binder,
+			columns:       sess.columns,
+			identityIndex: sess.identityIndex,
+			setMarker:     sess.setMarker,
+			db:            db,
 		}, nil
 	}
 	result := &session{
 		rType:  rType,
 		Config: s.Config,
+		db:     s.db,
 	}
 	err := result.init(record, options...)
 	if err == nil {

@@ -19,7 +19,7 @@ type (
 	}
 )
 
-func (s *Service) checksFor(t reflect.Type, presence *option.PresenceProvider) (*Checks, error) {
+func (s *Service) checksFor(t reflect.Type, presence *option.SetMarker) (*Checks, error) {
 	if t.Kind() == reflect.Ptr {
 		t = t.Elem()
 	}
@@ -84,7 +84,7 @@ func (s *Service) checkNotNull(ctx context.Context, path *Path, at io.ValueAcces
 			fieldPath := itemPath.AppendField(check.Field.Name)
 			record := at(i)
 			recordPtr := xunsafe.AsPointer(record)
-			if !presence.IsFieldSet(recordPtr, int(check.Field.Index)) {
+			if !presence.IsSet(recordPtr, int(check.Field.Index)) {
 				continue
 			}
 			value := check.Field.Value(recordPtr)
@@ -149,7 +149,7 @@ func (s *Service) buildUniqueMatchContext(check *Check, count int, path *Path, a
 		fieldPath := itemPath.AppendField(check.Field.Name)
 		record := at(i)
 		recordPtr := xunsafe.AsPointer(record)
-		if !presence.IsFieldSet(recordPtr, int(check.Field.Index)) {
+		if !presence.IsSet(recordPtr, int(check.Field.Index)) {
 			continue
 		}
 		value := check.Field.Value(recordPtr)
@@ -209,13 +209,13 @@ func (s *Service) checkRef(ctx context.Context, path *Path, db *sql.DB, at io.Va
 
 func (s *Service) buildCheckRefQueryContext(check *Check, count int, path *Path, at io.ValueAccessor, options *Options, violations *Validation) *queryContext {
 	queryCtx := newQueryContext(check.SQL)
-	presence := options.PresenceProvider
+	setMarker := options.PresenceProvider
 	for i := 0; i < count; i++ {
 		itemPath := path.AppendIndex(i)
 		fieldPath := itemPath.AppendField(check.Field.Name)
 		record := at(i)
 		recordPtr := xunsafe.AsPointer(record)
-		if !presence.IsFieldSet(recordPtr, int(check.Field.Index)) {
+		if !setMarker.IsSet(recordPtr, int(check.Field.Index)) {
 			continue
 		}
 		value := check.Field.Value(recordPtr)

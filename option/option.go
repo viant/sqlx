@@ -90,6 +90,20 @@ func (o Options) BatchSize() int {
 	return 1
 }
 
+//Db returns *sql.Db or nil
+func (o Options) Db() *sql.DB {
+	if len(o) == 0 {
+		return nil
+	}
+	for _, candidate := range o {
+		switch actual := candidate.(type) {
+		case *sql.DB:
+			return actual
+		}
+	}
+	return nil
+}
+
 //IdentityOnly returns identity only option value or false
 func (o Options) IdentityOnly() bool {
 	if len(o) == 0 {
@@ -104,14 +118,14 @@ func (o Options) IdentityOnly() bool {
 	return false
 }
 
-//PresenceProvider returns PresenceProvider option value or false
-func (o Options) PresenceProvider() *PresenceProvider {
+//SetMarker returns SetMarker option value or false
+func (o Options) SetMarker() *SetMarker {
 	if len(o) == 0 {
 		return nil
 	}
 	for _, candidate := range o {
 		switch actual := candidate.(type) {
-		case *PresenceProvider:
+		case *SetMarker:
 			return actual
 		}
 	}

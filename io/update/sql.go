@@ -25,15 +25,15 @@ type Builder struct {
 
 //Build builds update statement
 func (b *Builder) Build(record interface{}, options ...option.Option) string {
-	presenceProvider := option.Options(options).PresenceProvider()
+	presenceProvider := option.Options(options).SetMarker()
 	b.buffer.Reset()
 	ptr := xunsafe.AsPointer(record)
 	b.buffer.WriteString(b.sqlPrefix)
 
 	hasCount := 0
-	presenceAware := presenceProvider != nil && presenceProvider.Holder != nil
+	presenceAware := presenceProvider != nil && presenceProvider.Marker != nil
 	for i := 0; i < b.identityIndex; i++ {
-		if presenceAware && !presenceProvider.Has(ptr, i) {
+		if presenceAware && !presenceProvider.IsSet(ptr, i) {
 			continue
 		}
 		if hasCount > 0 {

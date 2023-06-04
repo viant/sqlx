@@ -30,11 +30,11 @@ type (
 		Unique   []*Check
 		RefKey   []*Check
 		NoNull   []*Check
-		presence *option.PresenceProvider
+		presence *option.SetMarker
 	}
 )
 
-func NewChecks(p reflect.Type, presence *option.PresenceProvider) (*Checks, error) {
+func NewChecks(p reflect.Type, presence *option.SetMarker) (*Checks, error) {
 	var result = &Checks{Type: p}
 	sType := p
 	if sType.Kind() == reflect.Ptr {

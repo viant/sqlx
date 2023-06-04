@@ -25,7 +25,7 @@ func TestService_Exec(t *testing.T) {
 		Id   int             `sqlx:"name=foo_id,primaryKey=true,generator=autoincrement"`
 		Name string          `sqlx:"foo_name"`
 		Desc string          `sqlx:"desc"`
-		Has  *recordPresence `sqlx:"presence=true"`
+		Has  *recordPresence `sqlx:"-" setMarker:"true"`
 	}
 
 	type entity struct {
@@ -66,7 +66,7 @@ func TestService_Exec(t *testing.T) {
 			affected: 3,
 		},
 
-		//TODO: Fix this testcase, it doesn't check if field was set because the tag was replaced with io.PresenceProvider
+		//TODO: Fix this testcase, it doesn't check if field was set because the tag was replaced with io.SetMarker
 		{
 			description: "Update selective fields",
 			driver:      "sqlite3",
@@ -159,7 +159,7 @@ func TestService_Exec_encodingJSON(t *testing.T) {
 		Id        int            `sqlx:"name=ID,autoincrement,primaryKey,required"`
 		Object    *Foo           `sqlx:"name=OBJECT,enc=JSON" json:",omitempty"`
 		ClassName string         `sqlx:"name=CLASS_NAME" json:",omitempty" `
-		Has       *PreferenceHas `presenceIndex:"true" typeName:"PreferenceHas" json:"-" sqlx:"presence=true"`
+		Has       *PreferenceHas `sqlx:"-" setMarker:"true" typeName:"PreferenceHas" json:"-" `
 	}
 
 	var useCases = []struct {
