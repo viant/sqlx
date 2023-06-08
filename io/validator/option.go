@@ -6,18 +6,18 @@ import (
 
 type (
 	Options struct {
-		Required         bool
-		CheckUnique      bool
-		CheckRef         bool
-		Location         string
-		PresenceProvider *option.SetMarker
+		Required    bool
+		CheckUnique bool
+		CheckRef    bool
+		Location    string
+		SetMarker   *option.SetMarker
 	}
 	Option func(c *Options)
 )
 
-func WithPresence() Option {
+func WithSetMarker() Option {
 	return func(c *Options) {
-		c.PresenceProvider = &option.SetMarker{}
+		c.SetMarker = &option.SetMarker{}
 	}
 }
 

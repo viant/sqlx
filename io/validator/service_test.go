@@ -177,7 +177,7 @@ func TestNewValidation(t *testing.T) {
 					DeptId: true,
 				},
 			},
-			options:             []Option{WithPresence()},
+			options:             []Option{WithSetMarker()},
 			expectError:         true,
 			expectErrorFragment: "does not exists",
 		},
@@ -198,7 +198,7 @@ func TestNewValidation(t *testing.T) {
 				DeptId: intPtr(2), //DeptId ignore since has does not flag it as set
 				Has:    &RecordHas{},
 			},
-			options:     []Option{WithPresence()},
+			options:     []Option{WithSetMarker()},
 			expectError: false,
 		},
 		{

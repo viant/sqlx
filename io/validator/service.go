@@ -53,7 +53,7 @@ func (s *Service) Validate(ctx context.Context, db *sql.DB, any interface{}, opt
 		return result, nil
 	}
 	record := valueAt(0)
-	checks, err := s.checksFor(reflect.TypeOf(record), options.PresenceProvider)
+	checks, err := s.checksFor(reflect.TypeOf(record), options.SetMarker)
 	if err != nil {
 		return nil, err
 	}
@@ -77,7 +77,7 @@ func (s *Service) checkNotNull(ctx context.Context, path *Path, at io.ValueAcces
 	if len(checks) == 0 || !options.Required {
 		return
 	}
-	presence := options.PresenceProvider
+	presence := options.SetMarker
 	for _, check := range checks {
 		for i := 0; i < count; i++ {
 			itemPath := path.AppendIndex(i)
@@ -143,7 +143,7 @@ func (s *Service) checkUnique(ctx context.Context, path *Path, db *sql.DB, at io
 
 func (s *Service) buildUniqueMatchContext(check *Check, count int, path *Path, at io.ValueAccessor, options *Options) *queryContext {
 	queryCtx := newQueryContext(check.SQL)
-	presence := options.PresenceProvider
+	presence := options.SetMarker
 	for i := 0; i < count; i++ {
 		itemPath := path.AppendIndex(i)
 		fieldPath := itemPath.AppendField(check.Field.Name)
@@ -209,7 +209,7 @@ func (s *Service) checkRef(ctx context.Context, path *Path, db *sql.DB, at io.Va
 
 func (s *Service) buildCheckRefQueryContext(check *Check, count int, path *Path, at io.ValueAccessor, options *Options, violations *Validation) *queryContext {
 	queryCtx := newQueryContext(check.SQL)
-	setMarker := options.PresenceProvider
+	setMarker := options.SetMarker
 	for i := 0; i < count; i++ {
 		itemPath := path.AppendIndex(i)
 		fieldPath := itemPath.AppendField(check.Field.Name)
