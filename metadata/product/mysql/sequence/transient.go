@@ -37,7 +37,7 @@ func (n *Transient) Handle(ctx context.Context, db *sql.DB, target interface{}, 
 	if err != nil {
 		return false, err
 	}
-	defer io.MergeErrorIfNeeded(tx.Rollback, &err)
+	defer io.RunWithError(tx.Rollback, &err)
 
 	lockingOptions := option.Options{argsOps, tx}
 	product := option.Options.Product(options)
@@ -49,7 +49,7 @@ func (n *Transient) Handle(ctx context.Context, db *sql.DB, target interface{}, 
 		return false, err
 	}
 	fn := func() error { return n.unlock(ctx, meta, db, lockingOptions) }
-	defer io.MergeErrorIfNeeded(fn, &err)
+	defer io.RunWithError(fn, &err)
 
 	sequence := sink.Sequence{}
 	arguments := argsOps.Unwrap()

@@ -172,7 +172,7 @@ func TestSequence_NextValue_Gen(t *testing.T) {
 						SQL := "SELECT AUTO_INCREMENT FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = '" + dsnSchema + "' AND TABLE_NAME = '" + testCase.table + "'"
 						rows, err := tx.QueryContext(ctx, SQL)
 						assert.Nil(t, err, testCase.description)
-						var onDone2 = func(err error) { io.MergeErrorIfNeeded(rows.Close, &err) }
+						var onDone2 = func(err error) { io.RunWithError(rows.Close, &err) }
 						if rows.Next() {
 							err = rows.Scan(&testCase.expected)
 							if !assert.Nil(t, err, testCase.description) {

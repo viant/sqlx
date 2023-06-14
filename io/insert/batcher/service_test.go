@@ -257,7 +257,7 @@ func loadExpected(ctx context.Context, t *testing.T, testCase *collectTestCase, 
 	SQL := "SELECT foo_id, foo_name, bar FROM " + testCase.table + " ORDER BY foo_id"
 	var rows *sql.Rows
 	rows, err = db.QueryContext(ctx, SQL)
-	onDone := func(err error) { io.MergeErrorIfNeeded(rows.Close, &err) }
+	onDone := func(err error) { io.RunWithError(rows.Close, &err) }
 	assert.Nil(t, err, testCase.description)
 	recordsFromDB := make([]*entity, len(testRecords))
 

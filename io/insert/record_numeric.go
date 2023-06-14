@@ -11,6 +11,7 @@ import (
 	"github.com/viant/sqlx/metadata/sink"
 	"github.com/viant/sqlx/option"
 	"reflect"
+	"sync/atomic"
 )
 
 type numericSequencer struct {
@@ -19,6 +20,7 @@ type numericSequencer struct {
 
 	position              int
 	sequence              *sink.Sequence
+	sequenceValue         *int64
 	detectedPreset        bool
 	shallPresetIdentities bool
 }
@@ -35,18 +37,17 @@ func (n *numericSequencer) updateRecord(ctx context.Context, sess *session, reco
 
 		return nil
 	}
-
-	nextValue := n.sequence.NextValue(int64(recordCount))
+	if n.sequenceValue == nil {
+		seqValue := n.sequence.MinValue(int64(recordCount))
+		n.sequenceValue = &seqValue
+	}
+	nextValue := atomic.LoadInt64(n.sequenceValue)
+	atomic.AddInt64(n.sequenceValue, n.sequence.IncrementBy)
 	return assign(columnValue, nextValue)
 }
 
 func (n *numericSequencer) prepare(_ context.Context, options []option.Option, sess *session, _ io.ValueAccessor, _ int) ([]option.Option, error) {
 	return nil, nil
-}
-
-func (n *numericSequencer) getPresetInsertMode(sess *session, record interface{}, batchRecordBuffer []interface{}) (bool, error) {
-	sess.binder(record, batchRecordBuffer, 0, len(sess.columns))
-	return isZero(batchRecordBuffer[n.position]), nil
 }
 
 func (n *numericSequencer) nextSequence(ctx context.Context, sess *session, record interface{}, batchRecordBuffer []interface{}, recordCount int, options []option.Option) (*sink.Sequence, error) {
@@ -67,7 +68,7 @@ func (n *numericSequencer) nextSequence(ctx context.Context, sess *session, reco
 	case dialect.PresetIDWithMax:
 		options = append(options, n.maxIDSQLBuilder(sess))
 	case dialect.PresetIDWithTransientTransaction:
-		options = append(options, n.transientDMLBuilder(sess, record, batchRecordBuffer, int64(recordCount)))
+		options = append(options, dialect.PresetIDWithTransientTransaction, n.transientDMLBuilder(sess, record, batchRecordBuffer, int64(recordCount)))
 	}
 
 	sequenceName := n.getSequenceName(sess)
@@ -101,8 +102,7 @@ func (n *numericSequencer) transientDMLBuilder(sess *session, record interface{}
 		if diff := sequence.Value - oldValue; diff < recordCount {
 			return nil, fmt.Errorf("new next value for sequenceName %d is too small, expected >= %d but had ", sequence.Value, oldValue+recordCount)
 		}
-
-		passedValue := sequence.Value - 1 // decreasing is required for transient insert approach
+		passedValue := sequence.Value - sequence.IncrementBy // decreasing is required for transient insert approach //TODO confirm this should be decrement by increment by
 		values[len(sess.columns)-1] = &passedValue
 
 		resetAutoincrementSQL := &sqlx.SQL{
@@ -143,13 +143,13 @@ func (n *numericSequencer) getColumn() io.Column {
 	return n.column
 }
 
-func (n *numericSequencer) prepareSequenceIfNeeded(ctx context.Context, sess *session, record interface{}, columnValue *interface{}, size int, identitiesBatched []interface{}, options []option.Option) error {
+func (n *numericSequencer) prepareSequenceIfNeeded(ctx context.Context, sess *session, record interface{}, columnValue *interface{}, recordCount int, identitiesBatched []interface{}, options []option.Option) error {
 	if n.detectedPreset {
 		return nil
 	}
 
 	n.detectedPreset = true
-	if size == 0 {
+	if recordCount == 0 {
 		return nil
 	}
 
@@ -158,10 +158,11 @@ func (n *numericSequencer) prepareSequenceIfNeeded(ctx context.Context, sess *se
 
 	if isColumnZeroValue {
 		var err error
-		n.sequence, err = n.nextSequence(ctx, sess, record, identitiesBatched, size, options)
+		n.sequence, err = n.nextSequence(ctx, sess, record, identitiesBatched, recordCount, options)
 		if err != nil {
 			return err
 		}
+
 	} else {
 		n.updateSequence(ctx, n.getSequenceName(sess))
 	}

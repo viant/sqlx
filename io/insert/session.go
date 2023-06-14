@@ -126,7 +126,7 @@ func (s *session) insert(ctx context.Context, recValues []interface{}, valueAt i
 		for _, updater := range s.recordUpdaters {
 			idIndex := offset + updater.columnPosition()
 			identitiesBatched[inBatchCount] = recValues[idIndex]
-			if err = updater.updateRecord(ctx, s, record, &recValues[idIndex], size, identitiesBatched, nil); err != nil {
+			if err = updater.updateRecord(ctx, s, record, &recValues[idIndex], size, recValues[offset:idIndex+1], nil); err != nil {
 				return 0, 0, err
 			}
 		}
@@ -196,7 +196,7 @@ func (s *session) flushQuery(ctx context.Context, values []interface{}, identiti
 	if err != nil {
 		return 0, 0, err
 	}
-	defer io.MergeErrorIfNeeded(rows.Close, &err)
+	defer io.RunWithError(rows.Close, &err)
 	rows.NextResultSet()
 	newLastInsertedID = 0
 

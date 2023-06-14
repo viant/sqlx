@@ -22,7 +22,6 @@ func (p *SetMarker) Placeholders(record interface{}, placeholders []interface{})
 		}
 		result = append(result, placeholders[i])
 	}
-
 	for i := p.IdentityIndex; i < len(placeholders); i++ {
 		result = append(result, placeholders[i])
 	}

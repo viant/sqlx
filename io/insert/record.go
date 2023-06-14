@@ -9,7 +9,7 @@ import (
 
 type recordUpdater interface {
 	prepare(ctx context.Context, options []option.Option, sess *session, at io.ValueAccessor, count int) ([]option.Option, error)
-	updateRecord(ctx context.Context, sess *session, record interface{}, columnValue *interface{}, recordCount int, identitiesBatched []interface{}, options []option.Option) error
+	updateRecord(ctx context.Context, sess *session, record interface{}, columnValue *interface{}, recordCount int, recValues []interface{}, options []option.Option) error
 	columnPosition() int
 	getColumn() io.Column
 	afterFlush(ctx context.Context, values []interface{}, identities []interface{}, affected int64, lastInsertedID int64) (int64, error)
