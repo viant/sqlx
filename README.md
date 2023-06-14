@@ -8,6 +8,7 @@ Please refer to [`CHANGELOG.md`](CHANGELOG.md) if you encounter breaking changes
   - [Dictionary metadata](#dictionary-metadata)
   - [Reader Service](#reader-service)
   - [Inserter Service](#inserter-service)
+  - [Validator Service](#validator-service)
   - [Updater Service](#updater-service)
   - [Merger Service](#merger-service)
   - [Loader Service](#loader-service)
