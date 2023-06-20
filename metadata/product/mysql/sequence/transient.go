@@ -83,6 +83,7 @@ func (n *Transient) Handle(ctx context.Context, db *sql.DB, target interface{}, 
 	_, err = tx.ExecContext(ctx, transientDML.Query, transientDML.Args...)
 	_ = n.turnFkKeyCheck(tx, 1)
 	if err != nil { //temp workaround of cascading sequencer
+		err = fmt.Errorf("unable to get sequence values using transient dml %v due to: %w", transientDML, err)
 		return false, err
 	}
 	*targetSequence = sequence
