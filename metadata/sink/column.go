@@ -48,3 +48,31 @@ func (c *Column) IsUnique() bool {
 	}
 	return true
 }
+
+//Autoincrement returns true if column autoincrement
+func (s *Column) Autoincrement() bool {
+	if s.IsAutoincrement != nil && *s.IsAutoincrement {
+		return true
+	}
+	if s.Default == nil {
+		return false
+	}
+	text := strings.ToLower(*s.Default)
+	return strings.Contains(text, "autoincrement") || strings.Contains(text, "auto_increment")
+}
+
+type Columns []Column
+
+type columnName string
+
+func (_ columnName) Key(column *Column) string {
+	return strings.ToLower(column.Name)
+}
+
+func (c Columns) By(fn func(c *Column) string) map[string]Column {
+	var result = make(map[string]Column)
+	for i, column := range c {
+		result[fn(&column)] = c[i]
+	}
+	return result
+}
