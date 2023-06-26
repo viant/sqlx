@@ -34,7 +34,7 @@ func TestService_Exec(t *testing.T) {
 		Desc string `sqlx:"-"`
 		Bar  float64
 	}
-	var useCases = []struct {
+	var testCases = []struct {
 		description string
 		table       string
 		driver      string
@@ -102,7 +102,7 @@ func TestService_Exec(t *testing.T) {
 outer:
 
 	//for _, testCase := range useCases[len(useCases)-1:] {
-	for _, testCase := range useCases {
+	for _, testCase := range testCases {
 
 		//ctx := context.Background()
 		var db *sql.DB

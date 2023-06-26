@@ -127,7 +127,7 @@ func StructColumnMapper(src interface{}, tagName string, options ...option.Optio
 
 	//	marker, _ := structology.NewMarker(recordType, structology.)
 
-	if builder.setMarker != nil {
+	if builder.setMarker != nil && structology.HasSetMarker(recordType) {
 		if builder.setMarker.Marker, err = structology.NewMarker(recordType, structology.WithIndex(filedPos)); err != nil {
 			return nil, nil, err
 		}

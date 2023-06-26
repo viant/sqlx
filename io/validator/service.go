@@ -19,7 +19,7 @@ type (
 	}
 )
 
-func (s *Service) checksFor(t reflect.Type, presence *option.SetMarker) (*Checks, error) {
+func (s *Service) checksFor(t reflect.Type, setMarker *option.SetMarker) (*Checks, error) {
 	if t.Kind() == reflect.Ptr {
 		t = t.Elem()
 	}
@@ -30,7 +30,7 @@ func (s *Service) checksFor(t reflect.Type, presence *option.SetMarker) (*Checks
 		return checks, nil
 	}
 	var err error
-	if checks, err = NewChecks(t, presence); err != nil {
+	if checks, err = NewChecks(t, setMarker); err != nil {
 		return nil, err
 	}
 	s.mux.Lock()
@@ -77,14 +77,14 @@ func (s *Service) checkNotNull(ctx context.Context, path *Path, at io.ValueAcces
 	if len(checks) == 0 || !options.Required {
 		return
 	}
-	presence := options.SetMarker
+	setMarker := options.SetMarker
 	for _, check := range checks {
 		for i := 0; i < count; i++ {
 			itemPath := path.AppendIndex(i)
 			fieldPath := itemPath.AppendField(check.Field.Name)
 			record := at(i)
 			recordPtr := xunsafe.AsPointer(record)
-			if !presence.IsSet(recordPtr, int(check.Field.Index)) {
+			if setMarker != nil && !setMarker.IsSet(recordPtr, int(setMarker.Marker.Index(check.Field.Name))) {
 				continue
 			}
 			value := check.Field.Value(recordPtr)
@@ -143,13 +143,13 @@ func (s *Service) checkUnique(ctx context.Context, path *Path, db *sql.DB, at io
 
 func (s *Service) buildUniqueMatchContext(check *Check, count int, path *Path, at io.ValueAccessor, options *Options) *queryContext {
 	queryCtx := newQueryContext(check.SQL)
-	presence := options.SetMarker
+	setMarker := options.SetMarker
 	for i := 0; i < count; i++ {
 		itemPath := path.AppendIndex(i)
 		fieldPath := itemPath.AppendField(check.Field.Name)
 		record := at(i)
 		recordPtr := xunsafe.AsPointer(record)
-		if !presence.IsSet(recordPtr, int(check.Field.Index)) {
+		if setMarker != nil && !setMarker.IsSet(recordPtr, int(setMarker.Marker.Index(check.Field.Name))) {
 			continue
 		}
 		value := check.Field.Value(recordPtr)
@@ -215,7 +215,7 @@ func (s *Service) buildCheckRefQueryContext(check *Check, count int, path *Path,
 		fieldPath := itemPath.AppendField(check.Field.Name)
 		record := at(i)
 		recordPtr := xunsafe.AsPointer(record)
-		if !setMarker.IsSet(recordPtr, int(check.Field.Index)) {
+		if setMarker != nil && !setMarker.IsSet(recordPtr, int(setMarker.Marker.Index(check.Field.Name))) {
 			continue
 		}
 		value := check.Field.Value(recordPtr)
