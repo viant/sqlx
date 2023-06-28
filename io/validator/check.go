@@ -48,6 +48,8 @@ func NewChecks(p reflect.Type, presence *option.SetMarker) (*Checks, error) {
 	if err != nil {
 		return nil, err
 	}
+	result.presence = presence
+
 	for _, column := range columns {
 		tag := column.Tag()
 		if tag == nil {

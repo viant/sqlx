@@ -25,6 +25,10 @@ func (s *Service) checksFor(t reflect.Type, setMarker *option.SetMarker) (*Check
 	}
 	s.mux.RLock()
 	checks, ok := s.checks[t]
+	if ok && setMarker != nil && checks.presence != nil {
+		setMarker.Marker = checks.presence.Marker
+		setMarker.IdentityIndex = checks.presence.IdentityIndex
+	}
 	s.mux.RUnlock()
 	if ok {
 		return checks, nil
