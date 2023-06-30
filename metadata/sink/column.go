@@ -45,6 +45,8 @@ func (c *Column) IsUnique() bool {
 	switch strings.ToLower(c.Key) {
 	case "uni": //unique key
 		return true
+	case "mul": //first column of a nonunique index
+		return false
 	}
 	return true
 }
