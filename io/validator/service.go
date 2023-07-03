@@ -118,7 +118,7 @@ func (s *Service) checkUnique(ctx context.Context, path *Path, db *sql.DB, at io
 		return nil
 	}
 	//build query for all values that should be unique
-	reader, err := read.New(ctx, db, queryCtx.Query(), func() interface{} {
+	reader, err := read.New(ctx, db, queryCtx.QueryWithExclusions(), func() interface{} {
 		return reflect.New(check.CheckType).Interface()
 	})
 	if err != nil {
@@ -161,6 +161,12 @@ func (s *Service) buildUniqueMatchContext(check *Check, count int, path *Path, a
 			continue //unique is null and not required skipping validation
 		}
 		queryCtx.Append(value, check.Field.Name, fieldPath)
+
+		if check.IdentityField != nil {
+			IdFieldPath := itemPath.AppendField(check.IdentityField.Name)
+			IdValue := check.IdentityField.Value(recordPtr)
+			queryCtx.AddExclusion([]interface{}{IdValue}, []string{check.IdentityField.Name}, []*Path{IdFieldPath})
+		}
 	}
 	return queryCtx
 }

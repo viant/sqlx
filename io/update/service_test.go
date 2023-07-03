@@ -23,7 +23,7 @@ func TestService_Exec(t *testing.T) {
 
 	type record struct {
 		Id   int             `sqlx:"name=foo_id,primaryKey=true,generator=autoincrement"`
-		Name string          `sqlx:"foo_name"`
+		Name string          `sqlx:"foo_name,unique,table=t1"`
 		Desc string          `sqlx:"desc"`
 		Has  *recordPresence `sqlx:"-" setMarker:"true"`
 	}

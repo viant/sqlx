@@ -283,9 +283,48 @@ func TestNewValidation(t *testing.T) {
 			options:          []Option{WithSetMarker()},
 			expectViolations: false,
 		},
+		{
+			description: "14 unique validation pass with has - insert case",
+			driver:      "sqlite3",
+			dsn:         "/tmp/sqllite.db",
+			initSQL: []string{
+				"CREATE TABLE IF NOT EXISTS v03 (id INTEGER PRIMARY KEY, name TEXT, dept_id INTEGER, desc TEXT, unk TEXT)",
+				"delete from v03",
+				`insert into v03 values(1, "Name 999", 2, "desc999", "999")`,
+			},
+			data: &Record{
+				Id:   11,
+				Name: stringPtr("Name 101"), //Desc is ignored since has does not flag it as set
+				Has: &RecordHas{
+					Name: true,
+				},
+			},
+			options:          []Option{WithSetMarker()},
+			expectViolations: false,
+		},
+		{
+			description: "15 unique validation pass with has - update case",
+			driver:      "sqlite3",
+			dsn:         "/tmp/sqllite.db",
+			initSQL: []string{
+				"CREATE TABLE IF NOT EXISTS v03 (id INTEGER PRIMARY KEY, name TEXT, dept_id INTEGER, desc TEXT, unk TEXT)",
+				"delete from v03",
+				`insert into v03 values(1, "Name 999", 2, "desc999", "999")`,
+			},
+			data: &Record{
+				Id:   1,
+				Name: stringPtr("Name 999"), //Desc is ignored since has does not flag it as set
+				Has: &RecordHas{
+					Name: true,
+				},
+			},
+			options:          []Option{WithSetMarker() /*, WithForUpdate(true)*/},
+			expectViolations: false,
+		},
 	}
 
 	for _, testCase := range testCases {
+		//for i, testCase := range testCases {
 		//fmt.Printf("#CASE: %d/%d - %s\n", i+1, len(testCases), testCase.description)
 
 		db, err := sql.Open(testCase.driver, testCase.dsn)
@@ -548,6 +587,44 @@ func TestNewValidationWithCache(t *testing.T) {
 				Has:  &RecordHas{},
 			},
 			options:          []Option{WithSetMarker()},
+			expectViolations: false,
+		},
+		{
+			description: "14 unique validation pass with has - insert case",
+			driver:      "sqlite3",
+			dsn:         "/tmp/sqllite.db",
+			initSQL: []string{
+				"CREATE TABLE IF NOT EXISTS v03 (id INTEGER PRIMARY KEY, name TEXT, dept_id INTEGER, desc TEXT, unk TEXT)",
+				"delete from v03",
+				`insert into v03 values(1, "Name 999", 2, "desc999", "999")`,
+			},
+			data: &Record{
+				Id:   11,
+				Name: stringPtr("Name 101"), //Desc is ignored since has does not flag it as set
+				Has: &RecordHas{
+					Name: true,
+				},
+			},
+			options:          []Option{WithSetMarker()},
+			expectViolations: false,
+		},
+		{
+			description: "15 unique validation pass with has - update case",
+			driver:      "sqlite3",
+			dsn:         "/tmp/sqllite.db",
+			initSQL: []string{
+				"CREATE TABLE IF NOT EXISTS v03 (id INTEGER PRIMARY KEY, name TEXT, dept_id INTEGER, desc TEXT, unk TEXT)",
+				"delete from v03",
+				`insert into v03 values(1, "Name 999", 2, "desc999", "999")`,
+			},
+			data: &Record{
+				Id:   1,
+				Name: stringPtr("Name 999"), //Desc is ignored since has does not flag it as set
+				Has: &RecordHas{
+					Name: true,
+				},
+			},
+			options:          []Option{WithSetMarker() /*, WithForUpdate(true)*/},
 			expectViolations: false,
 		},
 	}

@@ -17,12 +17,13 @@ type (
 	CheckKid string
 
 	Check struct {
-		SQL        string
-		Field      *xunsafe.Field
-		ErrorMsg   string
-		CheckType  reflect.Type
-		CheckField *xunsafe.Field
-		Required   bool
+		SQL           string
+		Field         *xunsafe.Field
+		ErrorMsg      string
+		CheckType     reflect.Type
+		CheckField    *xunsafe.Field
+		Required      bool
+		IdentityField *xunsafe.Field
 	}
 
 	Checks struct {
@@ -50,6 +51,16 @@ func NewChecks(p reflect.Type, presence *option.SetMarker) (*Checks, error) {
 	}
 	result.presence = presence
 
+	identityColPos := io.Columns(columns).IdentityColumnPos()
+	var idXField *xunsafe.Field
+	if identityColPos > -1 {
+		fielder, ok := columns[identityColPos].(io.Fielder)
+		if ok {
+			fields := fielder.Fields()
+			idXField = fields[len(fields)-1]
+		}
+	}
+
 	for _, column := range columns {
 		tag := column.Tag()
 		if tag == nil {
@@ -75,12 +86,13 @@ func NewChecks(p reflect.Type, presence *option.SetMarker) (*Checks, error) {
 			checkType := reflect.StructOf([]reflect.StructField{{Name: xField.Name, Type: xField.Type, Tag: `sqlx:"Val"`}})
 			checkField := xunsafe.NewField(checkType.Field(0))
 			result.Unique = append(result.Unique, &Check{
-				SQL:        "SELECT " + column.Name() + " AS Val FROM " + schema(tag.Db) + tag.Table + " WHERE " + column.Name(),
-				CheckType:  checkType,
-				CheckField: checkField,
-				Required:   tag.Required,
-				Field:      xField,
-				ErrorMsg:   tag.ErrorMgs,
+				SQL:           "SELECT " + column.Name() + " AS Val FROM " + schema(tag.Db) + tag.Table + " WHERE " + column.Name(),
+				CheckType:     checkType,
+				CheckField:    checkField,
+				Required:      tag.Required,
+				Field:         xField,
+				ErrorMsg:      tag.ErrorMgs,
+				IdentityField: idXField,
 			})
 			continue
 		}
