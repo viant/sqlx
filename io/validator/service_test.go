@@ -38,18 +38,18 @@ type NoNullRecord struct {
 }
 
 type Record struct {
-	Id     int        `sqlx:"name=ID,autoincrement,primaryKey"`
-	Name   *string    `sqlx:"name=name,unique,table=v03" json:",omitempty"`
-	DeptId *int       `sqlx:"name=dept_id,refColumn=id,refTable=dept01" json:",omitempty"`
-	Desc   *int       `sqlx:"name=desc,required" json:",omitempty"`
-	Has    *RecordHas `sqlx:"presence=true"`
+	Id         int        `sqlx:"name=ID,autoincrement,primaryKey"`
+	CustomName *string    `sqlx:"name=name,unique,table=v03" json:",omitempty"`
+	DeptId     *int       `sqlx:"name=dept_id,refColumn=id,refTable=dept01" json:",omitempty"`
+	Desc       *int       `sqlx:"name=desc,required" json:",omitempty"`
+	Has        *RecordHas `sqlx:"presence=true"`
 }
 
 type RecordHas struct {
-	Id     bool
-	Name   bool
-	DeptId bool
-	Desc   bool
+	Id         bool
+	CustomName bool
+	DeptId     bool
+	Desc       bool
 }
 
 func TestNewValidation(t *testing.T) {
@@ -253,13 +253,13 @@ func TestNewValidation(t *testing.T) {
 			initSQL: []string{
 				"CREATE TABLE IF NOT EXISTS v03 (id INTEGER PRIMARY KEY, name TEXT, dept_id INTEGER, desc TEXT, unk TEXT)",
 				"delete from v03",
-				`insert into v03 values(1, "Name 101", 2, "desc1", "101")`,
+				`insert into v03 values(1, "CustomName 101", 2, "desc1", "101")`,
 			},
 			data: &Record{
-				Id:   11,
-				Name: stringPtr("Name 101"), //Desc is ignored since has does not flag it as set
+				Id:         11,
+				CustomName: stringPtr("CustomName 101"), //Desc is ignored since has does not flag it as set
 				Has: &RecordHas{
-					Name: true,
+					CustomName: true,
 				},
 			},
 			options:             []Option{WithSetMarker()},
@@ -273,12 +273,12 @@ func TestNewValidation(t *testing.T) {
 			initSQL: []string{
 				"CREATE TABLE IF NOT EXISTS v03 (id INTEGER PRIMARY KEY, name TEXT, dept_id INTEGER, desc TEXT, unk TEXT)",
 				"delete from v03",
-				`insert into v03 values(1, "Name 101", 2, "desc1", "101")`,
+				`insert into v03 values(1, "CustomName 101", 2, "desc1", "101")`,
 			},
 			data: &Record{
-				Id:   11,
-				Name: stringPtr("Name 101"), //Name is ignored since has does not flag it as set
-				Has:  &RecordHas{},
+				Id:         11,
+				CustomName: stringPtr("CustomName 101"), //CustomName is ignored since has does not flag it as set
+				Has:        &RecordHas{},
 			},
 			options:          []Option{WithSetMarker()},
 			expectViolations: false,
@@ -290,13 +290,13 @@ func TestNewValidation(t *testing.T) {
 			initSQL: []string{
 				"CREATE TABLE IF NOT EXISTS v03 (id INTEGER PRIMARY KEY, name TEXT, dept_id INTEGER, desc TEXT, unk TEXT)",
 				"delete from v03",
-				`insert into v03 values(1, "Name 999", 2, "desc999", "999")`,
+				`insert into v03 values(1, "CustomName 999", 2, "desc999", "999")`,
 			},
 			data: &Record{
-				Id:   11,
-				Name: stringPtr("Name 101"), //Desc is ignored since has does not flag it as set
+				Id:         11,
+				CustomName: stringPtr("CustomName 101"), //Desc is ignored since has does not flag it as set
 				Has: &RecordHas{
-					Name: true,
+					CustomName: true,
 				},
 			},
 			options:          []Option{WithSetMarker()},
@@ -309,13 +309,13 @@ func TestNewValidation(t *testing.T) {
 			initSQL: []string{
 				"CREATE TABLE IF NOT EXISTS v03 (id INTEGER PRIMARY KEY, name TEXT, dept_id INTEGER, desc TEXT, unk TEXT)",
 				"delete from v03",
-				`insert into v03 values(1, "Name 999", 2, "desc999", "999")`,
+				`insert into v03 values(1, "CustomName 999", 2, "desc999", "999")`,
 			},
 			data: &Record{
-				Id:   1,
-				Name: stringPtr("Name 999"), //Desc is ignored since has does not flag it as set
+				Id:         1,
+				CustomName: stringPtr("CustomName 999"), //Desc is ignored since has does not flag it as set
 				Has: &RecordHas{
-					Name: true,
+					CustomName: true,
 				},
 			},
 			options:          []Option{WithSetMarker() /*, WithForUpdate(true)*/},
@@ -559,13 +559,13 @@ func TestNewValidationWithCache(t *testing.T) {
 			initSQL: []string{
 				"CREATE TABLE IF NOT EXISTS v03 (id INTEGER PRIMARY KEY, name TEXT, dept_id INTEGER, desc TEXT, unk TEXT)",
 				"delete from v03",
-				`insert into v03 values(1, "Name 101", 2, "desc1", "101")`,
+				`insert into v03 values(1, "CustomName 101", 2, "desc1", "101")`,
 			},
 			data: &Record{
-				Id:   11,
-				Name: stringPtr("Name 101"), //Desc is ignored since has does not flag it as set
+				Id:         11,
+				CustomName: stringPtr("CustomName 101"), //Desc is ignored since has does not flag it as set
 				Has: &RecordHas{
-					Name: true,
+					CustomName: true,
 				},
 			},
 			options:             []Option{WithSetMarker()},
@@ -579,12 +579,12 @@ func TestNewValidationWithCache(t *testing.T) {
 			initSQL: []string{
 				"CREATE TABLE IF NOT EXISTS v03 (id INTEGER PRIMARY KEY, name TEXT, dept_id INTEGER, desc TEXT, unk TEXT)",
 				"delete from v03",
-				`insert into v03 values(1, "Name 101", 2, "desc1", "101")`,
+				`insert into v03 values(1, "CustomName 101", 2, "desc1", "101")`,
 			},
 			data: &Record{
-				Id:   11,
-				Name: stringPtr("Name 101"), //Name is ignored since has does not flag it as set
-				Has:  &RecordHas{},
+				Id:         11,
+				CustomName: stringPtr("CustomName 101"), //CustomName is ignored since has does not flag it as set
+				Has:        &RecordHas{},
 			},
 			options:          []Option{WithSetMarker()},
 			expectViolations: false,
@@ -596,13 +596,13 @@ func TestNewValidationWithCache(t *testing.T) {
 			initSQL: []string{
 				"CREATE TABLE IF NOT EXISTS v03 (id INTEGER PRIMARY KEY, name TEXT, dept_id INTEGER, desc TEXT, unk TEXT)",
 				"delete from v03",
-				`insert into v03 values(1, "Name 999", 2, "desc999", "999")`,
+				`insert into v03 values(1, "CustomName 999", 2, "desc999", "999")`,
 			},
 			data: &Record{
-				Id:   11,
-				Name: stringPtr("Name 101"), //Desc is ignored since has does not flag it as set
+				Id:         11,
+				CustomName: stringPtr("CustomName 101"), //Desc is ignored since has does not flag it as set
 				Has: &RecordHas{
-					Name: true,
+					CustomName: true,
 				},
 			},
 			options:          []Option{WithSetMarker()},
@@ -615,13 +615,13 @@ func TestNewValidationWithCache(t *testing.T) {
 			initSQL: []string{
 				"CREATE TABLE IF NOT EXISTS v03 (id INTEGER PRIMARY KEY, name TEXT, dept_id INTEGER, desc TEXT, unk TEXT)",
 				"delete from v03",
-				`insert into v03 values(1, "Name 999", 2, "desc999", "999")`,
+				`insert into v03 values(1, "CustomName 999", 2, "desc999", "999")`,
 			},
 			data: &Record{
-				Id:   1,
-				Name: stringPtr("Name 999"), //Desc is ignored since has does not flag it as set
+				Id:         1,
+				CustomName: stringPtr("CustomName 999"), //Desc is ignored since has does not flag it as set
 				Has: &RecordHas{
-					Name: true,
+					CustomName: true,
 				},
 			},
 			options:          []Option{WithSetMarker() /*, WithForUpdate(true)*/},

@@ -1,6 +1,10 @@
 package validator
 
-import "strings"
+import (
+	"github.com/viant/sqlx/io"
+	"strings"
+	"unsafe"
+)
 
 type (
 	queryContext struct {
@@ -34,8 +38,8 @@ func (p *queryContext) Append(value interface{}, field string, path *Path) {
 	}
 }
 
-func (p *queryContext) AddExclusion(values []interface{}, fields []string, paths []*Path) {
-	if len(values) != len(fields) || len(values) != len(paths) {
+func (p *queryContext) AddExclusion(columns []*io.Column, recUPtr unsafe.Pointer, itemPath *Path) {
+	if len(columns) == 0 {
 		return
 	}
 
@@ -44,24 +48,34 @@ func (p *queryContext) AddExclusion(values []interface{}, fields []string, paths
 	}
 
 	queryExclusion := &queryExclusion{
-		columnNames:  fields,
-		placeholders: make([]string, len(fields)),
+		columnNames:  make([]string, len(columns)),
+		placeholders: make([]string, len(columns)),
 	}
 
-	for i := 0; i < len(queryExclusion.placeholders); i++ {
+	for i, column := range columns {
+		columnFielder, ok := (*column).(io.ColumnWithFields)
+		if !ok {
+			return
+		}
+
+		fields := columnFielder.Fields()
+		field := fields[len(fields)-1]
+
+		fieldPath := itemPath.AppendField(field.Name)
+		fieldValue := field.Value(recUPtr)
+
+		p.values = append(p.values, fieldValue)
+		p.index[mapKey(fieldValue)] = &queryValue{
+			value: fieldValue,
+			field: field.Name,
+			path:  fieldPath,
+		}
+
 		queryExclusion.placeholders[i] = "?"
+		queryExclusion.columnNames[i] = columnFielder.Name()
 	}
 
 	p.queryExclusions = append(p.queryExclusions, queryExclusion)
-
-	for i := 0; i < len(fields); i++ {
-		p.values = append(p.values, values[i])
-		p.index[mapKey(values[i])] = &queryValue{
-			value: values[i],
-			field: fields[i],
-			path:  paths[i],
-		}
-	}
 }
 
 func (p *queryContext) Query() string {
@@ -69,7 +83,6 @@ func (p *queryContext) Query() string {
 }
 
 func (p *queryContext) QueryWithExclusions() string {
-	return p.SQL + " IN (" + strings.Join(p.placeholders, ",") + ")"
 
 	var sb strings.Builder
 	sb.WriteString(p.Query())
