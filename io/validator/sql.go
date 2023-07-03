@@ -69,6 +69,7 @@ func (p *queryContext) Query() string {
 }
 
 func (p *queryContext) QueryWithExclusions() string {
+	return p.SQL + " IN (" + strings.Join(p.placeholders, ",") + ")"
 
 	var sb strings.Builder
 	sb.WriteString(p.Query())

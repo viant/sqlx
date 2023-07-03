@@ -162,11 +162,11 @@ func (s *Service) buildUniqueMatchContext(check *Check, count int, path *Path, a
 		}
 		queryCtx.Append(value, check.Field.Name, fieldPath)
 
-		if check.IdentityField != nil {
-			IdFieldPath := itemPath.AppendField(check.IdentityField.Name)
-			IdValue := check.IdentityField.Value(recordPtr)
-			queryCtx.AddExclusion([]interface{}{IdValue}, []string{check.IdentityField.Name}, []*Path{IdFieldPath})
-		}
+		//if check.IdentityField != nil {
+		//	IdFieldPath := itemPath.AppendField(check.IdentityField.Name)
+		//	IdValue := check.IdentityField.Value(recordPtr)
+		//	queryCtx.AddExclusion([]interface{}{IdValue}, []string{check.IdentityField.Name}, []*Path{IdFieldPath})
+		//}
 	}
 	return queryCtx
 }
