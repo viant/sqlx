@@ -31,7 +31,7 @@ var (
 	interfaceType = reflect.TypeOf(new(interface{}))
 )
 
-//ensureScanType ensure that scan type returns type matching database type name
+// ensureScanType ensure that scan type returns type matching database type name
 func ensureScanType(columnTypeName string, scanType reflect.Type) reflect.Type {
 
 	if scanType != nil && scanType.Kind() != reflect.Interface {
@@ -59,7 +59,7 @@ func ensureScanType(columnTypeName string, scanType reflect.Type) reflect.Type {
 	return interfaceType
 }
 
-//EnsureDereference returns Type of value dereferenced e.g. if any is type of *Foo, it will return Foo
+// EnsureDereference returns Type of value dereferenced e.g. if any is type of *Foo, it will return Foo
 func EnsureDereference(value interface{}) reflect.Type {
 	rType := reflect.TypeOf(value)
 	if rType.Kind() == reflect.Ptr {

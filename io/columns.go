@@ -10,10 +10,10 @@ import (
 	"time"
 )
 
-//Columns represents columns
+// Columns represents columns
 type Columns []Column
 
-//Autoincrement returns position of autoincrement column position or -1
+// Autoincrement returns position of autoincrement column position or -1
 func (c Columns) Autoincrement() int {
 	if len(c) == 0 {
 		return -1
@@ -41,7 +41,7 @@ func (c Columns) IdentityColumnPos() int {
 	return -1
 }
 
-//PrimaryKeys returns position of primary key position or -1
+// PrimaryKeys returns position of primary key position or -1
 func (c Columns) PrimaryKeys() int {
 	if len(c) == 0 {
 		return -1
@@ -54,7 +54,7 @@ func (c Columns) PrimaryKeys() int {
 	return -1
 }
 
-//Names returns column names
+// Names returns column names
 func (c Columns) Names() []string {
 	var result = make([]string, len(c))
 	for i, item := range c {
@@ -105,7 +105,6 @@ func ParseType(columnType string) (reflect.Type, bool) {
 	case "date", "time", "timestamp", "datetime":
 		return xreflect.TimeType, true
 	case "sql.rawbytes", "rawbytes":
-		return reflect.TypeOf(""), true
 	case "interface":
 		t := xreflect.InterfaceType
 		return t, true
@@ -174,7 +173,7 @@ func pointerify(rType reflect.Type, counter int) reflect.Type {
 	return rType
 }
 
-//TypesToColumns converts []*sql.ColumnType type to []sqlx.column
+// TypesToColumns converts []*sql.ColumnType type to []sqlx.column
 func TypesToColumns(columns []*sql.ColumnType) []Column {
 	var result = make([]Column, len(columns))
 	for i := range columns {
@@ -186,7 +185,7 @@ func TypesToColumns(columns []*sql.ColumnType) []Column {
 	return result
 }
 
-//NamesToColumns converts []string to []sqlx.column
+// NamesToColumns converts []string to []sqlx.column
 func NamesToColumns(columns []string) []Column {
 	var result = make([]Column, len(columns))
 	for i := range columns {
@@ -195,7 +194,7 @@ func NamesToColumns(columns []string) []Column {
 	return result
 }
 
-//StructColumns returns column for the struct
+// StructColumns returns column for the struct
 func StructColumns(recordType reflect.Type, tagName string, opts ...option.Option) ([]Column, error) {
 	columns, _, err := StructColumnMapper(recordType, tagName, opts...)
 	if err != nil {

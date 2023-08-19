@@ -21,7 +21,7 @@ var bigQuery = database.Product{
 	//Release:   int
 }
 
-//BigQuery return BigQuery product
+// BigQuery return BigQuery product
 func BigQuery() *database.Product {
 	return &bigQuery
 }
@@ -169,6 +169,7 @@ FROM INFORMATION_SCHEMA.COLUMNS
 		),
 
 		info.NewQuery(info.KindPrimaryKeys, `SELECT * FROM (
+SELECT    
 '' AS CONSTRAINT_NAME,  
 '' AS CONSTRAINT_TYPE,
 '' AS CONSTRAINT_CATALOG,
@@ -185,6 +186,7 @@ FROM INFORMATION_SCHEMA.COLUMNS
 		),
 
 		info.NewQuery(info.KindForeignKeys, `SELECT * FROM (
+SELECT 
 '' AS CONSTRAINT_NAME,  
 '' AS CONSTRAINT_TYPE,
 '' AS CONSTRAINT_CATALOG,
