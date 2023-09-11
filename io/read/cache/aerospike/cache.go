@@ -252,7 +252,7 @@ func (a *Cache) updateCacheStats(fullMatch *RecordMatched, columnsInMatch *Recor
 	cacheStats.FoundWarmup = columnsInMatch != nil && columnsInMatch.hasKey
 }
 
-//TODO mabe move to its own error type
+// TODO mabe move to its own error type
 func (a *Cache) findActualError(err error) (string, types.ResultCode, error) {
 	if err == nil {
 		return "", types.OK, nil
@@ -689,7 +689,10 @@ func (a *Cache) updateWriter(anEntry *cache.Entry, fullMatch *RecordMatched, SQL
 	writer := a.newWriter(fullMatch.key, fullMatch.keyValue, SQL, argsMarshal)
 	anEntry.SetWriter(writer, writer)
 	writer.entry = anEntry
-
+	stats.Key = fullMatch.keyValue
+	if fullMatch.key != nil {
+		stats.Dataset = fullMatch.key.SetName()
+	}
 	stats.Type = cache.TypeWrite
 	return nil
 }

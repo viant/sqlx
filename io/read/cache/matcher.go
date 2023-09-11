@@ -42,6 +42,7 @@ type (
 		Type           Type
 		RecordsCounter int
 		Key            string
+		Dataset        string
 		FoundWarmup    bool             `json:",omitempty"`
 		FoundLazy      bool             `json:",omitempty"`
 		ErrorType      string           `json:",omitempty"`
