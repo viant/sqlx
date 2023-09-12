@@ -12,9 +12,9 @@ type Entry struct {
 	Id          string
 	WriteCloser *WriteCloser
 	ReadCloser  *ReadCloser
-
-	index    int
-	RowAdded bool
+	Refresh     bool
+	index       int
+	RowAdded    bool
 }
 
 func (e *Entry) Next() bool {

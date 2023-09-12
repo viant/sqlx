@@ -23,6 +23,8 @@ type (
 	ErrorType  string
 	AllowSmart bool
 
+	//Refresh forecase cache refresh
+	Refresh bool
 	//ParmetrizedQuery abstraction to represent data optimisation with caching and custom pagination
 	ParmetrizedQuery struct {
 		By      string

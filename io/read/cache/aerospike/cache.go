@@ -182,12 +182,15 @@ func (a *Cache) AddValues(ctx context.Context, entry *cache.Entry, values []inte
 func (a *Cache) Get(ctx context.Context, SQL string, args []interface{}, options ...interface{}) (*cache.Entry, error) {
 	var query *cache.ParmetrizedQuery
 	var cacheStats *cache.Stats
+	var refresh bool
 	for _, option := range options {
 		switch actual := option.(type) {
 		case *cache.ParmetrizedQuery:
 			query = actual
 		case *cache.Stats:
 			cacheStats = actual
+		case cache.Refresh:
+			refresh = bool(actual)
 		}
 	}
 
@@ -203,11 +206,14 @@ func (a *Cache) Get(ctx context.Context, SQL string, args []interface{}, options
 		cacheStats.ErrorType = cache.ErrorTypeCurrentlyNotAvailable
 		return nil, nil
 	}
-	return a.get(ctx, SQL, args, query, cacheStats)
+	return a.get(ctx, SQL, args, query, cacheStats, refresh)
 }
 
-func (a *Cache) get(ctx context.Context, SQL string, args []interface{}, columnsInMatcher *cache.ParmetrizedQuery, cacheStats *cache.Stats) (*cache.Entry, error) {
+func (a *Cache) get(ctx context.Context, SQL string, args []interface{}, columnsInMatcher *cache.ParmetrizedQuery, cacheStats *cache.Stats, refresh bool) (*cache.Entry, error) {
 	lazyMatch, warmupMatch, err := a.readRecords(SQL, args, columnsInMatcher)
+	if refresh {
+		lazyMatch = nil
+	}
 	a.updateCacheStats(lazyMatch, warmupMatch, cacheStats)
 	cacheStats.ErrorType, cacheStats.ErrorCode, err = a.findActualError(err)
 	if cacheStats.ErrorCode != types.OK && !cacheStats.FoundAny() || err != nil {

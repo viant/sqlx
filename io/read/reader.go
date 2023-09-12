@@ -34,6 +34,7 @@ type (
 		db                 *sql.DB
 		row                *bufferEntry
 		cacheStats         *cache.Stats
+		cacheRefresh       cache.Refresh
 	}
 
 	bufferEntry struct {
@@ -337,7 +338,7 @@ func (r *Reader) Stmt() *sql.Stmt {
 
 func (r *Reader) cacheEntry(ctx context.Context, sql string, args []interface{}) (*cache.Entry, error) {
 	if r.cache != nil {
-		entry, err := r.cache.Get(ctx, sql, args, r.matcher, r.cacheStats)
+		entry, err := r.cache.Get(ctx, sql, args, r.matcher, r.cacheStats, r.cacheRefresh)
 		return entry, err
 	}
 
@@ -421,7 +422,7 @@ func NewStmt(stmt *sql.Stmt, newRow func() interface{}, options ...option.Option
 	var db *sql.DB
 	var columnsInMatcher *cache.ParmetrizedQuery
 	var stats *cache.Stats
-
+	var cacheRefresh cache.Refresh
 	for _, anOption := range options {
 		switch actual := anOption.(type) {
 		case cache.Cache:
@@ -436,6 +437,8 @@ func NewStmt(stmt *sql.Stmt, newRow func() interface{}, options ...option.Option
 			columnsInMatcher = *actual
 		case *sql.DB:
 			db = actual
+		case cache.Refresh:
+			cacheRefresh = actual
 		case *cache.Stats:
 			stats = actual
 		}
@@ -451,6 +454,7 @@ func NewStmt(stmt *sql.Stmt, newRow func() interface{}, options ...option.Option
 		mapperCache:        mapperCache,
 		disableMapperCache: disableMapperCache,
 		matcher:            columnsInMatcher,
+		cacheRefresh:       cacheRefresh,
 		db:                 db,
 		cacheStats:         stats,
 	}
