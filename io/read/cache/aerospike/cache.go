@@ -248,6 +248,10 @@ func (a *Cache) updateCacheStats(fullMatch *RecordMatched, columnsInMatch *Recor
 	if fullMatch.hasKey {
 		cacheStats.Key = fullMatch.keyValue
 	}
+	if fullMatch.key != nil {
+		cacheStats.Dataset = fullMatch.key.SetName()
+		cacheStats.Namespace = fullMatch.key.Namespace()
+	}
 	cacheStats.FoundLazy = fullMatch != nil && fullMatch.hasKey
 	cacheStats.FoundWarmup = columnsInMatch != nil && columnsInMatch.hasKey
 }
@@ -626,6 +630,10 @@ func (a *Cache) updateLazyMatchEntry(ctx context.Context, anEntry *cache.Entry, 
 	stats.Type = cache.TypeReadSingle
 	stats.RecordsCounter = 1
 	stats.Key = match.keyValue
+	if match.key != nil {
+		stats.Dataset = match.key.SetName()
+		stats.Namespace = match.key.Namespace()
+	}
 	return nil
 }
 
@@ -693,7 +701,6 @@ func (a *Cache) updateWriter(anEntry *cache.Entry, fullMatch *RecordMatched, SQL
 	if fullMatch.key != nil {
 		stats.Dataset = fullMatch.key.SetName()
 		stats.Namespace = fullMatch.key.Namespace()
-
 	}
 	stats.Type = cache.TypeWrite
 	return nil
