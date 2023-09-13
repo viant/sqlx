@@ -212,7 +212,8 @@ func (a *Cache) Get(ctx context.Context, SQL string, args []interface{}, options
 func (a *Cache) get(ctx context.Context, SQL string, args []interface{}, columnsInMatcher *cache.ParmetrizedQuery, cacheStats *cache.Stats, refresh bool) (*cache.Entry, error) {
 	lazyMatch, warmupMatch, err := a.readRecords(SQL, args, columnsInMatcher)
 	if refresh {
-		lazyMatch = nil
+		lazyMatch.hasKey = false
+		lazyMatch.record = nil
 	}
 	a.updateCacheStats(lazyMatch, warmupMatch, cacheStats)
 	cacheStats.ErrorType, cacheStats.ErrorCode, err = a.findActualError(err)
