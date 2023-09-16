@@ -80,8 +80,8 @@ type (
 	}
 )
 
-//TODO: Fix policies, specially when it comes to expiration time
-//TODO: Fix test cases to make them less vulnerable against the time.
+// TODO: Fix policies, specially when it comes to expiration time
+// TODO: Fix test cases to make them less vulnerable against the time.
 func TestReader_ReadAll(t *testing.T) {
 	cache.Now = func() time.Time {
 		parse, _ := time.Parse("Jan 2, 2006 at 3:04pm (MST)", "Feb 4, 2014 at 6:05pm (PST)")
@@ -755,7 +755,7 @@ func getCache(aRecorder *recorder, config *cacheConfig) (cache.Cache, error) {
 		return nil, err
 	}
 
-	return aerospike.New("test", "aerospike", client, uint32Max, aRecorder)
+	return aerospike.New("test", "aerospike", client, 0, aRecorder)
 }
 
 func boolPtr(b bool) *bool {
@@ -1069,7 +1069,7 @@ func BenchmarkStructMapper(b *testing.B) {
 			return
 		}
 
-		dataCache, err := aerospike.New("test", "aerospike", client, uint32Max)
+		dataCache, err := aerospike.New("test", "aerospike", client, 0)
 		if !assert.Nil(b, err) {
 			return
 		}

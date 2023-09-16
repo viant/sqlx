@@ -214,7 +214,7 @@ func (c *Cache) wrongSignature(meta cache.Meta, entryMeta *cache.Meta) bool {
 }
 
 func (c *Cache) expired(meta cache.Meta) bool {
-	return int(cache.Now().UnixNano()) > meta.TimeToLive
+	return int(cache.Now().UnixMilli()) > meta.ExpiryTimeMs
 }
 
 func (c *Cache) writeMeta(ctx context.Context, m *cache.Entry) error {
@@ -229,7 +229,7 @@ func (c *Cache) writeMeta(ctx context.Context, m *cache.Entry) error {
 	bufioWriter := bufio.NewWriterSize(writer, 2048)
 	m.WriteCloser = cache.NewWriteCloser(cache.NewLineWriter(bufioWriter), writer)
 
-	m.Meta.TimeToLive = int(cache.Now().Add(c.ttl).UnixNano())
+	m.Meta.ExpiryTimeMs = int(cache.Now().Add(c.ttl).UnixMilli())
 	data, err := json.Marshal(m.Meta)
 	if err != nil {
 		return err

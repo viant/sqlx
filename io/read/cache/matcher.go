@@ -3,6 +3,7 @@ package cache
 import (
 	"encoding/json"
 	"github.com/aerospike/aerospike-client-go/types"
+	"time"
 )
 
 const (
@@ -50,6 +51,7 @@ type (
 		FoundLazy      bool             `json:",omitempty"`
 		ErrorType      string           `json:",omitempty"`
 		ErrorCode      types.ResultCode `json:",omitempty"`
+		ExpiryTime     *time.Time
 	}
 )
 

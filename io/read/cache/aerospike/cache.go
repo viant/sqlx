@@ -37,17 +37,17 @@ var cachedBins = []string{typesBin, argsBin, sqlBin, dataBin, fieldsBin, compDat
 
 type (
 	Cache struct {
-		recorder          cache.Recorder
-		typeHolder        *cache.ScanTypeHolder
-		client            *as.Client
-		set               string
-		namespace         string
-		mux               sync.Mutex
-		expirationTimeInS uint32
-		allowSmart        bool
-		chanSize          int
-		timeoutConfig     *TimeoutConfig
-		failureHandler    *FailureHandler
+		recorder        cache.Recorder
+		typeHolder      *cache.ScanTypeHolder
+		client          *as.Client
+		set             string
+		namespace       string
+		mux             sync.Mutex
+		timeToLiveInSec uint32
+		allowSmart      bool
+		chanSize        int
+		timeoutConfig   *TimeoutConfig
+		failureHandler  *FailureHandler
 	}
 )
 
@@ -227,11 +227,12 @@ func (a *Cache) get(ctx context.Context, SQL string, args []interface{}, columns
 		return nil, err
 	}
 
+	expiryDuration := time.Second * time.Duration(a.timeToLiveInSec)
 	anEntry := &cache.Entry{
 		Meta: cache.Meta{
-			SQL:        SQL,
-			Args:       jsonEncodedArgs,
-			TimeToLive: int(time.Now().Add(time.Duration(a.expirationTimeInS)).UnixNano()),
+			SQL:          SQL,
+			Args:         jsonEncodedArgs,
+			ExpiryTimeMs: int(time.Now().Add(expiryDuration).UnixMilli()),
 		},
 		Id: a.entryId(lazyMatch, warmupMatch),
 	}
@@ -454,7 +455,7 @@ func (a *Cache) recordMatches(record *as.Record, SQL string, args []byte) bool {
 
 func (a *Cache) newWriter(key *as.Key, aKey string, SQL string, args []byte) *Writer {
 	return &Writer{
-		expirationTimeInSeconds: a.expirationTimeInS,
+		expirationTimeInSeconds: a.timeToLiveInSec,
 		mainKey:                 key,
 		buffers:                 []*bytes.Buffer{bytes.NewBuffer(nil)},
 		id:                      aKey,
@@ -593,7 +594,7 @@ func (a *Cache) columnValueURL(column string, columnValueMarshal []byte, URL str
 }
 
 func (a *Cache) writePolicy() *as.WritePolicy {
-	policy := as.NewWritePolicy(0, a.expirationTimeInS)
+	policy := as.NewWritePolicy(0, a.timeToLiveInSec)
 	basePolicy := a.newBasePolicy(false)
 	policy.BasePolicy = *basePolicy
 	policy.SendKey = true
@@ -710,6 +711,10 @@ func (a *Cache) updateWriter(anEntry *cache.Entry, fullMatch *RecordMatched, SQL
 		stats.Namespace = fullMatch.key.Namespace()
 	}
 	stats.Type = cache.TypeWrite
+	if anEntry.Meta.ExpiryTimeMs > 0 {
+		expiresAt := time.UnixMilli(int64(anEntry.Meta.ExpiryTimeMs))
+		stats.ExpiryTime = &expiresAt
+	}
 	return nil
 }
 
@@ -898,7 +903,7 @@ func (a *Cache) put(key *as.Key, binMap as.BinMap) error {
 	return err
 }
 
-func New(namespace string, setName string, client *as.Client, expirationTimeInS uint32, options ...interface{}) (*Cache, error) {
+func New(namespace string, setName string, client *as.Client, timeToLiveInSec uint32, options ...interface{}) (*Cache, error) {
 	var recorder cache.Recorder
 	var allowSmart bool
 	var timeoutConfig *TimeoutConfig
@@ -918,13 +923,13 @@ func New(namespace string, setName string, client *as.Client, expirationTimeInS 
 	}
 
 	return &Cache{
-		client:            client,
-		namespace:         namespace,
-		set:               setName,
-		recorder:          recorder,
-		expirationTimeInS: expirationTimeInS,
-		allowSmart:        allowSmart,
-		timeoutConfig:     timeoutConfig,
-		failureHandler:    globalFailureHandler,
+		client:          client,
+		namespace:       namespace,
+		set:             setName,
+		recorder:        recorder,
+		timeToLiveInSec: timeToLiveInSec,
+		allowSmart:      allowSmart,
+		timeoutConfig:   timeoutConfig,
+		failureHandler:  globalFailureHandler,
 	}, nil
 }
