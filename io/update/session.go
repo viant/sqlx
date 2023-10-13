@@ -90,16 +90,6 @@ func (s *session) update(ctx context.Context, record interface{}) (int64, error)
 
 	placeholders = s.setMarker.Placeholders(record, placeholders)
 	result, err := s.stmt.ExecContext(ctx, placeholders...)
-	for _, p := range placeholders {
-		vv := reflect.ValueOf(p)
-		if vv.Kind() == reflect.Ptr {
-			vv = vv.Elem()
-		}
-		if vv.Kind() == reflect.Ptr {
-			vv = vv.Elem()
-		}
-		fmt.Printf("Update with: %s\n", vv.Interface())
-	}
 	if err != nil {
 		return 0, err
 	}
