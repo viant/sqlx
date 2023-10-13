@@ -13,23 +13,23 @@ const (
 	columnSeparator = ", "
 )
 
-//Builder represent update DML builder
+// Builder represent update DML builder
 type Builder struct {
-	id            string
-	identityIndex int
-	fragments     []string
-	sqlPrefix     string
-	sqlSuffix     string
-	buffer        bytes.Buffer
+	id                  string
+	identityIndex       int
+	fragments           []string
+	sqlPrefix           string
+	sqlSuffix           string
+	estimatedBufferSize int
 }
 
-//Build builds update statement
+// Build builds update statement
 func (b *Builder) Build(record interface{}, options ...option.Option) string {
 	presenceProvider := option.Options(options).SetMarker()
-	b.buffer.Reset()
+	buffer := bytes.Buffer{}
+	buffer.Grow(b.estimatedBufferSize)
 	ptr := xunsafe.AsPointer(record)
-	b.buffer.WriteString(b.sqlPrefix)
-
+	buffer.WriteString(b.sqlPrefix)
 	hasCount := 0
 	presenceAware := presenceProvider != nil && presenceProvider.Marker != nil
 	for i := 0; i < b.identityIndex; i++ {
@@ -37,19 +37,19 @@ func (b *Builder) Build(record interface{}, options ...option.Option) string {
 			continue
 		}
 		if hasCount > 0 {
-			b.buffer.WriteString(columnSeparator)
+			buffer.WriteString(columnSeparator)
 		}
-		b.buffer.WriteString(b.fragments[i])
+		buffer.WriteString(b.fragments[i])
 		hasCount++
 	}
 	if presenceAware && hasCount == 0 { //record has no changes no point to run update
 		return ""
 	}
-	b.buffer.WriteString(b.sqlSuffix)
-	return b.buffer.String()
+	buffer.WriteString(b.sqlSuffix)
+	return buffer.String()
 }
 
-//NewBuilder return insert builder
+// NewBuilder return insert builder
 func NewBuilder(table string, columns []string, identityIndex int, dialect *info.Dialect) (*Builder, error) {
 	if len(columns) == 0 {
 		return nil, fmt.Errorf("columns were empty")
@@ -71,8 +71,7 @@ func NewBuilder(table string, columns []string, identityIndex int, dialect *info
 		identityIndex: identityIndex,
 		fragments:     fragments,
 	}
-	estBufferSize := len(result.sqlPrefix) + len(result.sqlSuffix) + fragmentSize + (3 * len(fragments))
-	result.buffer.Grow(estBufferSize)
+	result.estimatedBufferSize = len(result.sqlPrefix) + len(result.sqlSuffix) + fragmentSize + (3 * len(fragments))
 	return result, nil
 }
 

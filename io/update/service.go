@@ -10,7 +10,7 @@ import (
 	"sync"
 )
 
-//Service represents updater
+// Service represents updater
 type Service struct {
 	*config.Config
 	initSession *session
@@ -34,16 +34,16 @@ func (s *Service) Exec(ctx context.Context, any interface{}, options ...option.O
 	var rowsAffected int64
 	dml := ""
 	for i := 0; i < count; i++ {
-		record := valueAt(i)
-		changed, err := s.tryUpdate(ctx, sess, record, &dml)
-		if err != nil {
-			return 0, err
+		aRecord := valueAt(i)
+		changed, e := s.tryUpdate(ctx, sess, aRecord, &dml)
+		if e != nil {
+			err = e
+			break
 		}
 		rowsAffected += changed
 	}
 	err = sess.end(err)
 	return rowsAffected, err
-
 }
 
 func (s *Service) tryUpdate(ctx context.Context, sess *session, record interface{}, dml *string) (int64, error) {
@@ -93,7 +93,7 @@ func (s *Service) ensureSession(record interface{}, options ...option.Option) (*
 	return result, err
 }
 
-//New creates an updater
+// New creates an updater
 func New(ctx context.Context, db *sql.DB, tableName string, options ...option.Option) (*Service, error) {
 	updater := &Service{
 		Config: config.New(tableName),
