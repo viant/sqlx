@@ -2,6 +2,7 @@ package io
 
 import (
 	"fmt"
+	"github.com/viant/structology/format/text"
 	"reflect"
 	"strings"
 )
@@ -10,7 +11,7 @@ const (
 	EncodingJSON = "JSON"
 )
 
-//Tag represent field tag
+// Tag represent field tag
 type Tag struct {
 	Column           string
 	Autoincrement    bool
@@ -31,9 +32,10 @@ type Tag struct {
 	PresenceProvider bool
 	Bit              bool
 	Encoding         string
+	CaseFormat       text.CaseFormat
 }
 
-//CanExpand return true if field can expend fied struct fields
+// CanExpand return true if field can expend fied struct fields
 func (f *Field) CanExpand() bool {
 	if f.Tag.Ns != "" {
 		return true
@@ -50,7 +52,7 @@ func (f *Field) CanExpand() bool {
 	return candidateType.Kind() == reflect.Struct
 }
 
-//ParseTag parses tag
+// ParseTag parses tag
 func ParseTag(tagString string) *Tag {
 	tag := &Tag{}
 	if tagString == "-" {
@@ -83,6 +85,8 @@ func ParseTag(tagString string) *Tag {
 				tag.IsUnique = strings.TrimSpace(nv[1]) == "true"
 			case "db":
 				tag.Db = nv[1]
+			case "caseformat":
+				tag.CaseFormat = text.NewCaseFormat(nv[1])
 			case "table":
 				tag.Table = nv[1]
 			case "refdb":
@@ -145,12 +149,27 @@ func ParseTag(tagString string) *Tag {
 }
 
 func (t *Tag) getColumnName(field reflect.StructField) string {
-	columnName := field.Name
-	if names := t.Column; names != "" {
-		columns := strings.Split(names, "|")
-		columnName = columns[0]
+	columnName := ""
+	if name := t.Name(); name != "" {
+		columnName = name
+	}
+	if columnName == "" {
+		if strings.ToUpper(columnName[0:]) == columnName[0:] {
+			columnName = text.CaseFormatUpperCamel.Format(field.Name, t.CaseFormat)
+		} else {
+			columnName = text.CaseFormatLowerCamel.Format(field.Name, t.CaseFormat)
+		}
 	}
 	return columnName
+}
+
+func (t *Tag) Name() string {
+	column := t.Column
+	if names := t.Column; names != "" {
+		columns := strings.Split(names, "|")
+		column = columns[0]
+	}
+	return column
 }
 
 func (t *Tag) isIdentity(name string) bool {

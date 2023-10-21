@@ -7,7 +7,7 @@ import (
 	"unsafe"
 )
 
-//Field represents column mapped field
+// Field represents column mapped field
 type (
 	Field struct {
 		Tag
@@ -22,7 +22,7 @@ type (
 	Fields []Field
 )
 
-// ColumnNames returns slice of column names for given Fields
+// ExtractColumnNames returns slice of column names for given Fields
 func (f Fields) ColumnNames() []string {
 	var result = make([]string, len(f))
 	for i, field := range f {
@@ -40,7 +40,7 @@ func (f Fields) XFields() []xunsafe.Field {
 	return result
 }
 
-//Addr returns field pointer
+// Addr returns field pointer
 func (f *Field) Addr(pointer unsafe.Pointer) interface{} {
 	result := f.EvalAddr
 	if f.EvalAddr == nil {

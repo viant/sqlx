@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/viant/sqlx/option"
+	"github.com/viant/structology/format/text"
+
 	"github.com/viant/structology"
 	"github.com/viant/xunsafe"
 	"reflect"
@@ -61,7 +63,7 @@ func (j *JSONEncodedValue) Scan(v interface{}) error {
 	}
 }
 
-//ColumnMapper maps src to columns and its placeholders
+// ColumnMapper maps src to columns and its placeholders
 type ColumnMapper func(src interface{}, tagName string, options ...option.Option) ([]Column, PlaceholderBinder, error)
 
 type columnMapperBuilder struct {
@@ -72,7 +74,7 @@ type columnMapperBuilder struct {
 	identityOnly      bool
 }
 
-//StructColumnMapper returns genertic column mapper
+// StructColumnMapper returns genertic column mapper
 func StructColumnMapper(src interface{}, tagName string, options ...option.Option) ([]Column, PlaceholderBinder, error) {
 	recordType, ok := src.(reflect.Type)
 	if !ok {
@@ -88,9 +90,11 @@ func StructColumnMapper(src interface{}, tagName string, options ...option.Optio
 		return nil, nil, err
 	}
 
+	caseFormat := DetectColumnCaseFormat(recordType)
+
 	for i := 0; i < recordType.NumField(); i++ {
 		field := recordType.Field(i)
-		if err = builder.appendColumns(field, tagName); err != nil {
+		if err = builder.appendColumns(field, caseFormat, tagName); err != nil {
 			return nil, nil, err
 		}
 	}
@@ -142,6 +146,27 @@ func StructColumnMapper(src interface{}, tagName string, options ...option.Optio
 	}, nil
 }
 
+func DetectColumnCaseFormat(recordType reflect.Type) text.CaseFormat {
+	ret := text.CaseFormat(text.CaseFormatUndefined)
+	names := ExtractColumnNames(recordType)
+	if len(names) == 0 {
+		return ret
+	}
+	return text.DetectCaseFormat(names...)
+}
+
+// ExtractColumnNames extract sqlx tag colum names
+func ExtractColumnNames(recordType reflect.Type) []string {
+	var names []string
+	for i := 0; i < recordType.NumField(); i++ {
+		field := recordType.Field(i)
+		if tag := ParseTag(field.Tag.Get(option.TagSqlx)); tag != nil && tag.Name() != "" {
+			names = append(names, tag.Name())
+		}
+	}
+	return names
+}
+
 func fieldGetter(tag *Tag, field *xunsafe.Field, recordType reflect.Type) (xunsafe.Getter, error) {
 	if tag == nil || tag.Encoding == "" {
 		return field.Addr, nil
@@ -184,9 +209,22 @@ func newColumnBuilder(options []option.Option, recordType reflect.Type) (*column
 	return builder, nil
 }
 
-func (b *columnMapperBuilder) appendColumns(field reflect.StructField, tagName string, holders ...*xunsafe.Field) error {
+func (b *columnMapperBuilder) appendColumns(field reflect.StructField, caseFormat text.CaseFormat, tagName string, holders ...*xunsafe.Field) error {
+	switch field.Type.Kind() {
+	case reflect.Slice, reflect.Array:
+		return nil
+	}
 	xField := xunsafe.NewField(field)
 	tag := ParseTag(field.Tag.Get(tagName))
+	if tag.Transient {
+		return nil
+	}
+	if err := tag.validateWithField(field); err != nil {
+		return err
+	}
+	if tag.CaseFormat == "" {
+		tag.CaseFormat = caseFormat
+	}
 	if len(holders) > 0 {
 		actualHolder := holders[0]
 		if actualHolder.Type.Kind() == reflect.Struct {
@@ -194,37 +232,22 @@ func (b *columnMapperBuilder) appendColumns(field reflect.StructField, tagName s
 			holders = nil
 		}
 	}
-
 	holders = append(holders, xField)
-	if isExported := field.PkgPath == ""; !isExported {
-		return nil
-	}
-	if err := tag.validateWithField(field); err != nil {
-		return err
-	}
-
-	if tag.Transient {
-		return nil
-	}
-
 	if xField.Anonymous {
 		fieldType := xField.Type
 		for fieldType.Kind() == reflect.Ptr {
 			fieldType = fieldType.Elem()
 		}
-
 		if fieldType.Kind() == reflect.Struct {
 			numField := fieldType.NumField()
 			for i := 0; i < numField; i++ {
-				if err := b.appendColumns(fieldType.Field(i), tagName, xField); err != nil {
+				if err := b.appendColumns(fieldType.Field(i), caseFormat, tagName, xField); err != nil {
 					return err
 				}
 			}
-
 			return nil
 		}
 	}
-
 	columnName := tag.getColumnName(field)
 	if tag.isIdentity(columnName) {
 		tag.PrimaryKey = true
@@ -232,15 +255,12 @@ func (b *columnMapperBuilder) appendColumns(field reflect.StructField, tagName s
 		b.identityColumns = append(b.identityColumns, NewColumnWithFields(columnName, "", field.Type, holders, tag))
 		return nil
 	}
-
 	if b.identityOnly {
 		return nil
 	}
-
 	if b.columnRestriction.CanUse(columnName) {
 		b.columns = append(b.columns, NewColumnWithFields(columnName, "", field.Type, holders, tag))
 	}
-
 	return nil
 }
 
