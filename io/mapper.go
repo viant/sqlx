@@ -252,14 +252,14 @@ func (b *columnMapperBuilder) appendColumns(field reflect.StructField, caseForma
 	if tag.isIdentity(columnName) {
 		tag.PrimaryKey = true
 		tag.Column = columnName
-		b.identityColumns = append(b.identityColumns, NewColumnWithFields(columnName, "", field.Type, holders, tag))
+		b.identityColumns = append(b.identityColumns, NewColumnWithFields(columnName, "", field.Type, holders, WithTag(tag)))
 		return nil
 	}
 	if b.identityOnly {
 		return nil
 	}
 	if b.columnRestriction.CanUse(columnName) {
-		b.columns = append(b.columns, NewColumnWithFields(columnName, "", field.Type, holders, tag))
+		b.columns = append(b.columns, NewColumnWithFields(columnName, "", field.Type, holders, WithTag(tag)))
 	}
 	return nil
 }
