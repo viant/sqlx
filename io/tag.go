@@ -3,6 +3,7 @@ package io
 import (
 	"fmt"
 	"github.com/viant/structology/format/text"
+	"github.com/viant/structology/tags"
 	"reflect"
 	"strings"
 )
@@ -59,93 +60,69 @@ func ParseTag(tagString string) *Tag {
 		tag.Transient = true
 		return tag
 	}
-	elements := strings.Split(tagString, ",")
-	if len(elements) == 0 {
-		return tag
+	if tagString == "-" {
+		tag.Transient = true
 	}
-	for i, element := range elements {
-		nv := strings.Split(element, "=")
-		switch len(nv) {
-		case 2:
-			switch strings.ToLower(strings.TrimSpace(nv[0])) {
-			case "name":
-				tag.Column = strings.TrimSpace(nv[1])
-			case "ns":
-				tag.Ns = strings.TrimSpace(nv[1])
-			case "sequence":
-				tag.Sequence = strings.TrimSpace(nv[1])
-			case "presence":
-				tag.PresenceProvider = true
-				tag.Transient = true
-			case "primarykey":
-				tag.PrimaryKey = strings.TrimSpace(nv[1]) == "true"
-			case "autoincrement":
-				tag.Autoincrement = true
-			case "unique":
-				tag.IsUnique = strings.TrimSpace(nv[1]) == "true"
-			case "db":
-				tag.Db = nv[1]
-			case "caseformat":
-				tag.CaseFormat = text.NewCaseFormat(nv[1])
-			case "table":
-				tag.Table = nv[1]
-			case "refdb":
-				tag.RefDb = nv[1]
-			case "reftable":
-				tag.RefTable = nv[1]
-			case "refcolumn":
-				tag.RefColumn = nv[1]
-			case "transient":
-				tag.Transient = strings.TrimSpace(nv[1]) == "true"
-			case "bit":
-				tag.Bit = strings.TrimSpace(nv[1]) == "true"
-			case "required":
-				tag.Required = strings.TrimSpace(nv[1]) == "true"
-			case "errormsg":
-				tag.ErrorMgs = strings.ReplaceAll(nv[1], "$coma", ",")
-			case "generator":
-				generatorStrat := strings.TrimSpace(nv[1])
-				tag.Generator = generatorStrat
-				if generatorStrat == "autoincrement" {
-					tag.Autoincrement = true
-					tag.Generator = ""
-				}
-			case "nullifyempty":
-				nullifyEmpty := strings.TrimSpace(nv[1])
-				tag.NullifyEmpty = nullifyEmpty == "true" || nullifyEmpty == ""
-			case "enc":
-				tag.Encoding = nv[1]
-			}
-			continue
-		case 1:
-			if i == 0 {
-				tag.Column = strings.TrimSpace(element)
-				continue
-			}
-			switch strings.ToLower(element) {
-			case "autoincrement":
-				tag.PrimaryKey = true
-			case "bit":
-				tag.Bit = true
-			case "primarykey":
-				tag.PrimaryKey = true
-			case "unique":
-				tag.IsUnique = true
-			case "nullifyempty":
-				tag.NullifyEmpty = true
-			case "required":
-				tag.Required = true
-			case "-":
-				tag.Transient = true
-			case "presence":
-				tag.PresenceProvider = true
-				tag.Transient = true
-			}
-		}
-
-	}
+	values := tags.Values(tagString)
+	name, values := values.Name()
+	tag.Column = name
+	_ = values.MatchPairs(tag.updateTagKey)
 	tag.PrimaryKey = tag.PrimaryKey || tag.Autoincrement
 	return tag
+}
+func (t *Tag) updateTagKey(key string, value string) error {
+	switch strings.ToLower(strings.TrimSpace(key)) {
+	case "name", "column":
+		t.Column = strings.TrimSpace(value)
+	case "ns":
+		t.Ns = strings.TrimSpace(value)
+	case "sequence":
+		t.Sequence = strings.TrimSpace(value)
+	case "presence":
+		t.PresenceProvider = true
+		t.Transient = true
+	case "primarykey":
+		t.PrimaryKey = strings.TrimSpace(value) == "true"
+	case "autoincrement":
+		t.Autoincrement = true
+	case "unique":
+		t.IsUnique = strings.TrimSpace(value) == "true"
+	case "db":
+		t.Db = value
+	case "caseformat":
+		t.CaseFormat = text.NewCaseFormat(value)
+	case "table":
+		t.Table = value
+	case "refdb":
+		t.RefDb = value
+	case "reftable":
+		t.RefTable = value
+	case "refcolumn":
+		t.RefColumn = value
+	case "transient":
+		t.Transient = strings.TrimSpace(value) == "true"
+	case "bit":
+		t.Bit = strings.TrimSpace(value) == "true"
+	case "required":
+		t.Required = strings.TrimSpace(value) == "true"
+	case "errormsg":
+		t.ErrorMgs = strings.ReplaceAll(value, "$coma", ",")
+	case "generator":
+		generatorStrat := strings.TrimSpace(value)
+		t.Generator = generatorStrat
+		if generatorStrat == "autoincrement" {
+			t.Autoincrement = true
+			t.Generator = ""
+		}
+	case "nullifyempty":
+		nullifyEmpty := strings.TrimSpace(value)
+		t.NullifyEmpty = nullifyEmpty == "true" || nullifyEmpty == ""
+	case "enc":
+		t.Encoding = value
+	case "-":
+		t.Transient = true
+	}
+	return nil
 }
 
 func (t *Tag) getColumnName(field reflect.StructField) string {

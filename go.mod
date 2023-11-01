@@ -18,7 +18,7 @@ require (
 	github.com/viant/assertly v0.9.1-0.20220620174148-bab013f93a60
 	github.com/viant/bigquery v0.2.1
 	github.com/viant/parsly v0.3.0
-	github.com/viant/structology v0.5.4
+	github.com/viant/structology v0.5.6-0.20231027223343-51d596f3b723
 	github.com/viant/toolbox v0.34.6-0.20221112031702-3e7cdde7f888
 	github.com/viant/xreflect v0.0.0-20230303201326-f50afb0feb0d
 	github.com/viant/xunsafe v0.9.0
