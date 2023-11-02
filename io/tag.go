@@ -137,6 +137,9 @@ func (t *Tag) getColumnName(field reflect.StructField) string {
 			columnName = text.CaseFormatLowerCamel.Format(field.Name, t.CaseFormat)
 		}
 	}
+	if t.Ns != "" {
+		return t.Ns + columnName
+	}
 	return columnName
 }
 

@@ -225,15 +225,20 @@ func (b *columnMapperBuilder) appendColumns(field reflect.StructField, caseForma
 	if tag.CaseFormat == "" {
 		tag.CaseFormat = caseFormat
 	}
+
 	if len(holders) > 0 {
 		actualHolder := holders[0]
+		holderTag := ParseTag(actualHolder.Tag.Get(tagName))
+		if holderTag.Ns != "" {
+			tag.Ns = holderTag.Ns
+		}
 		if actualHolder.Type.Kind() == reflect.Struct {
 			xField.Offset += actualHolder.Offset
 			holders = nil
 		}
 	}
 	holders = append(holders, xField)
-	if xField.Anonymous {
+	if xField.Anonymous || tag.Ns != "" {
 		fieldType := xField.Type
 		for fieldType.Kind() == reflect.Ptr {
 			fieldType = fieldType.Elem()
@@ -241,6 +246,7 @@ func (b *columnMapperBuilder) appendColumns(field reflect.StructField, caseForma
 		if fieldType.Kind() == reflect.Struct {
 			numField := fieldType.NumField()
 			for i := 0; i < numField; i++ {
+
 				if err := b.appendColumns(fieldType.Field(i), caseFormat, tagName, xField); err != nil {
 					return err
 				}
@@ -248,6 +254,7 @@ func (b *columnMapperBuilder) appendColumns(field reflect.StructField, caseForma
 			return nil
 		}
 	}
+
 	columnName := tag.getColumnName(field)
 	if tag.isIdentity(columnName) {
 		tag.PrimaryKey = true
