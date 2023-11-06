@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/viant/sqlx/option"
-	"github.com/viant/structology/format/text"
+	"github.com/viant/tagly/format/text"
 
 	"github.com/viant/structology"
 	"github.com/viant/xunsafe"

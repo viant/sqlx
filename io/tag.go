@@ -2,8 +2,8 @@ package io
 
 import (
 	"fmt"
-	"github.com/viant/structology/format/text"
-	"github.com/viant/structology/tags"
+	"github.com/viant/tagly/format/text"
+	"github.com/viant/tagly/tags"
 	"reflect"
 	"strings"
 )
