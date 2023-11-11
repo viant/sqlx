@@ -15,9 +15,9 @@ import (
 )
 
 type numericSequencer struct {
-	session *session
-	column  io.Column
-
+	session               *session
+	column                io.Column
+	options               []option.Option
 	position              int
 	sequence              *sink.Sequence
 	sequenceValue         *int64
@@ -47,10 +47,12 @@ func (n *numericSequencer) updateRecord(ctx context.Context, sess *session, reco
 }
 
 func (n *numericSequencer) prepare(_ context.Context, options []option.Option, sess *session, _ io.ValueAccessor, _ int) ([]option.Option, error) {
+	n.options = options
 	return nil, nil
 }
 
 func (n *numericSequencer) nextSequence(ctx context.Context, sess *session, record interface{}, batchRecordBuffer []interface{}, recordCount int, options []option.Option) (*sink.Sequence, error) {
+	options = append(n.options, options...)
 	presetIDStrategy := option.Options(options).PresetIDStrategy()
 	if presetIDStrategy == dialect.PresetIDStrategyUndefined {
 		presetIDStrategy = sess.Dialect.DefaultPresetIDStrategy
@@ -61,7 +63,9 @@ func (n *numericSequencer) nextSequence(ctx context.Context, sess *session, reco
 	}
 
 	switch presetIDStrategy {
-	case dialect.PresetIDStrategyUndefined, dialect.PresetIDStrategyIgnore:
+	case dialect.PresetIDStrategyIgnore:
+		return nil, nil
+	case dialect.PresetIDStrategyUndefined:
 		n.shallPresetIdentities = false
 		n.updateSequence(ctx, n.getSequenceName(sess))
 		return nil, nil
