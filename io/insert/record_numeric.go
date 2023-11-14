@@ -29,7 +29,6 @@ func (n *numericSequencer) updateRecord(ctx context.Context, sess *session, reco
 	if err := n.prepareSequenceIfNeeded(ctx, sess, record, columnValue, recordCount, identitiesBatched, options); err != nil {
 		return err
 	}
-
 	if n.sequence == nil || !n.shallPresetIdentities {
 		if isZero(*columnValue) {
 			*columnValue = nil
@@ -43,7 +42,7 @@ func (n *numericSequencer) updateRecord(ctx context.Context, sess *session, reco
 	}
 	nextValue := atomic.LoadInt64(n.sequenceValue)
 	atomic.AddInt64(n.sequenceValue, n.sequence.IncrementBy)
-	return assign(columnValue, nextValue)
+	return assign(*columnValue, nextValue)
 }
 
 func (n *numericSequencer) prepare(_ context.Context, options []option.Option, sess *session, _ io.ValueAccessor, _ int) ([]option.Option, error) {
@@ -67,14 +66,13 @@ func (n *numericSequencer) nextSequence(ctx context.Context, sess *session, reco
 		return nil, nil
 	case dialect.PresetIDStrategyUndefined:
 		n.shallPresetIdentities = false
-		n.updateSequence(ctx, n.getSequenceName(sess))
+		n.updateSequence(ctx, n.getSequenceName(sess), recordCount)
 		return nil, nil
 	case dialect.PresetIDWithMax:
 		options = append(options, n.maxIDSQLBuilder(sess))
 	case dialect.PresetIDWithTransientTransaction:
 		options = append(options, dialect.PresetIDWithTransientTransaction, n.transientDMLBuilder(sess, record, batchRecordBuffer, int64(recordCount)))
 	}
-
 	sequenceName := n.getSequenceName(sess)
 	options = append(options, option.NewArgs(sess.info.Catalog, sess.info.Schema, sequenceName), option.RecordCount(recordCount))
 	meta := metadata.New()
@@ -101,14 +99,15 @@ func (n *numericSequencer) transientDMLBuilder(sess *session, record interface{}
 		copy(values, batchRecordBuffer[0:len(sess.columns)-1]) // don't copy ID pointer (last position in slice)
 
 		oldValue := sequence.Value
+		passedValue := sequence.Value
 		sequence.Value = sequence.NextValue(recordCount)
-
-		if diff := sequence.Value - oldValue; diff < recordCount {
-			return nil, fmt.Errorf("new next value for sequenceName %d is too small, expected >= %d but had ", sequence.Value, oldValue+recordCount)
+		if recordCount > 1 {
+			if diff := sequence.Value - oldValue; diff < recordCount {
+				return nil, fmt.Errorf("new next value for sequenceName %d is too small, expected >= %d but had ", sequence.Value, oldValue+recordCount)
+			}
+			passedValue = sequence.Value - sequence.IncrementBy // decreasing is required for transient insert approach //TODO confirm this should be decrement by increment by
 		}
-		passedValue := sequence.Value - sequence.IncrementBy // decreasing is required for transient insert approach //TODO confirm this should be decrement by increment by
 		values[len(sess.columns)-1] = &passedValue
-
 		resetAutoincrementSQL := &sqlx.SQL{
 			Query: resetAutoincrementQuery,
 			Args:  values,
@@ -168,7 +167,7 @@ func (n *numericSequencer) prepareSequenceIfNeeded(ctx context.Context, sess *se
 		}
 
 	} else {
-		n.updateSequence(ctx, n.getSequenceName(sess))
+		n.updateSequence(ctx, n.getSequenceName(sess), recordCount)
 	}
 
 	return nil
@@ -180,6 +179,9 @@ func (n *numericSequencer) afterFlush(ctx context.Context, values []interface{},
 	}
 
 	if isZero(identities[0]) {
+		if rowsAffected == 1 {
+			assign(identities[0], lastInsertedID)
+		}
 		return lastInsertedID, nil
 	}
 
@@ -204,21 +206,24 @@ func (n *numericSequencer) afterFlush(ctx context.Context, values []interface{},
 		}
 
 	case lastInsertedID:
-		n.updateSequence(ctx, n.sequence.Name)
+		if rowsAffected == 1 {
+			return lastInsertedID, nil
+		}
+		//in case there is a batch insert, we need to check if last inserted ID is the same as the sequence value
+		//if so we can safely update the identities with the new sequence value within the batch
+		n.updateSequence(ctx, n.sequence.Name, int(rowsAffected))
+		sequenceValue = n.sequence.Value
 		expectedNextInsertID := (1 + rowsAffected) * inceremntBy
 		if expectedNextInsertID != sequenceValue { //race condition during batch insert, skip updating IDs
 			return lastInsertedID, nil
 		}
-
 		for i := 0; i < int(rowsAffected); i++ {
 			if err := assign(identities[i], lastInsertedID); err != nil {
 				return 0, err
 			}
-
 			lastInsertedID += inceremntBy
 		}
 	}
-
 	return lastInsertedID, nil
 }
 
@@ -241,7 +246,7 @@ func isZero(value interface{}) bool {
 	}
 }
 
-func (n *numericSequencer) updateSequence(ctx context.Context, sequenceName string) {
+func (n *numericSequencer) updateSequence(ctx context.Context, sequenceName string, recordCount int) {
 	meta := metadata.New()
 	options := []option.Option{option.NewArgs(n.session.info.Catalog, n.session.info.Schema, sequenceName), n.session.Dialect}
 
@@ -249,6 +254,9 @@ func (n *numericSequencer) updateSequence(ctx context.Context, sequenceName stri
 		n.sequence = &sink.Sequence{IncrementBy: 1}
 	}
 	_ = meta.Info(ctx, n.session.db, info.KindSequences, n.sequence, options...)
+	if n.sequence.Value > 0 {
+		n.sequence.NextValue(int64(recordCount))
+	}
 }
 
 func assign(dst interface{}, value int64) error {

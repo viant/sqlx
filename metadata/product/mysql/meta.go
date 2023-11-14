@@ -22,7 +22,7 @@ var mySQL57 = database.Product{
 	Minor: 7,
 }
 
-//MySQL5 return MySQL 5.x product
+// MySQL5 return MySQL 5.x product
 func MySQL5() *database.Product {
 	return &mySQL5
 }
@@ -93,41 +93,18 @@ FROM INFORMATION_SCHEMA.COLUMNS`,
 
 		info.NewQuery(info.KindSequences, `SELECT 
   '' SEQUENCE_CATALOG,
-  t.TABLE_SCHEMA AS SEQUENCE_SCHEMA, 
-  c.TABLE_NAME AS SEQUENCE_NAME,
-  COALESCE(t.AUTO_INCREMENT, 0) AS SEQUENCE_VALUE,
-  0 INCREMENT_BY,
-  c.COLUMN_TYPE AS DATA_TYPE,
-  0 START_VALUE,
-  c.MAX_VALUE
-FROM 
-  (SELECT 
-     TABLE_SCHEMA,
-     TABLE_NAME,
-     COLUMN_TYPE,
-     CASE 
-        WHEN COLUMN_TYPE LIKE 'tinyint(1)' THEN 127
-        WHEN COLUMN_TYPE LIKE 'tinyint(1) unsigned' THEN 255
-        WHEN COLUMN_TYPE LIKE 'smallint(%)' THEN 32767
-        WHEN COLUMN_TYPE LIKE 'smallint(%) unsigned' THEN 65535
-        WHEN COLUMN_TYPE LIKE 'mediumint(%)' THEN 8388607
-        WHEN COLUMN_TYPE LIKE 'mediumint(%) unsigned' THEN 16777215
-        WHEN COLUMN_TYPE LIKE 'int(%)' THEN 2147483647
-        WHEN COLUMN_TYPE LIKE 'int(%) unsigned' THEN 4294967295
-        WHEN COLUMN_TYPE LIKE 'bigint(%)' THEN 9223372036854775807
-        WHEN COLUMN_TYPE LIKE 'bigint(%) unsigned' THEN 0
-        ELSE 0
-     END AS "MAX_VALUE" 
-   FROM 
-     INFORMATION_SCHEMA.COLUMNS
-     WHERE EXTRA LIKE '%auto_increment%'
-   ) c
-   JOIN INFORMATION_SCHEMA.TABLES t ON (t.TABLE_SCHEMA = c.TABLE_SCHEMA AND t.TABLE_NAME = c.TABLE_NAME)
+  '$Args[1]' AS SEQUENCE_SCHEMA, 
+  '$Args[2]'  AS SEQUENCE_NAME,
+  0 AS SEQUENCE_VALUE,
+  COALESCE(@@SESSION.auto_increment_increment, 0) INCREMENT_BY,
+  'int' AS DATA_TYPE,
+  COALESCE(@@SESSION.auto_increment_offset, 0) START_VALUE,
+  9223372036854775807 AS MAX_VALUE
 `,
 			mySQL5,
-			info.NewCriterion(info.Catalog, "t.TABLE_CATALOG"),
-			info.NewCriterion(info.Schema, "t.TABLE_SCHEMA"),
-			info.NewCriterion(info.Sequence, "t.TABLE_NAME"),
+			info.NewCriterion(info.Catalog, ""),
+			info.NewCriterion(info.Schema, ""),
+			info.NewCriterion(info.Sequence, ""),
 		).OnPost(info.NewHandler(sequence.UpdateMySQLSequence)),
 
 		info.NewQuery(info.KindIndexes, `SELECT 

@@ -63,17 +63,25 @@ func updateSequence(ctx context.Context, db *sql.DB, sequence *sink.Sequence, tx
 			sequence.DataType = colType
 		}
 	}
-
-	offset := int64(0)
-	if err := runQuery(ctx, db, "SELECT @@SESSION.auto_increment_increment, @@SESSION.auto_increment_offset", []interface{}{&sequence.IncrementBy, &offset}, tx); err != nil {
+	err := ensureIncrements(ctx, db, sequence, tx)
+	if err != nil {
 		return err
 	}
+	return nil
+}
 
-	if sequence.Value == 0 {
-		sequence.Value = offset
-	}
-	if sequence.StartValue == 0 {
-		sequence.StartValue = offset
+func ensureIncrements(ctx context.Context, db *sql.DB, sequence *sink.Sequence, tx *sql.Tx) error {
+	if sequence.IncrementBy == 0 || sequence.StartValue == 0 {
+		offset := int64(0)
+		if err := runQuery(ctx, db, "SELECT @@SESSION.auto_increment_increment, @@SESSION.auto_increment_offset", []interface{}{&sequence.IncrementBy, &offset}, tx); err != nil {
+			return err
+		}
+		if sequence.Value == 0 {
+			sequence.Value = offset
+		}
+		if sequence.StartValue == 0 {
+			sequence.StartValue = offset
+		}
 	}
 	return nil
 }
