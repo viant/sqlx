@@ -2,7 +2,6 @@ package io
 
 import (
 	"github.com/stretchr/testify/assert"
-	"github.com/viant/sqlx/option"
 	"github.com/viant/xunsafe"
 	"reflect"
 	"testing"
@@ -17,7 +16,6 @@ func TestMatcher_Match(t *testing.T) {
 	var testCases = []struct {
 		description string
 		resolve     Resolve
-		tagName     string
 		targetType  reflect.Type
 		columns     []Column
 		init        func(v interface{})
@@ -67,7 +65,6 @@ func TestMatcher_Match(t *testing.T) {
 		{
 			description: "simple struct - tag mapping",
 			columns:     NamesToColumns([]string{"A1", "a2", "a_3", "A_4", "A5"}),
-			tagName:     option.TagSqlx,
 			targetType: reflect.StructOf([]reflect.StructField{
 				{
 					Name: "A11111",
@@ -109,7 +106,6 @@ func TestMatcher_Match(t *testing.T) {
 		{
 			description: "simple struct - error mapping",
 			columns:     NamesToColumns([]string{"A1", "a2", "a_3", "A_4", "A5"}),
-			tagName:     option.TagSqlx,
 			hasError:    true,
 			targetType: reflect.StructOf([]reflect.StructField{
 				{
@@ -150,7 +146,6 @@ func TestMatcher_Match(t *testing.T) {
 		{
 			description: "nested struct mapping",
 			columns:     NamesToColumns([]string{"ID", "Z_ID"}),
-			tagName:     option.TagSqlx,
 			targetType: reflect.StructOf([]reflect.StructField{
 				{
 					Name: "ID",
@@ -189,7 +184,6 @@ func TestMatcher_Match(t *testing.T) {
 				NewColumn("Name", "", reflect.TypeOf("")),
 				NewColumn("Active", "", reflect.TypeOf(false)),
 			},
-			tagName: option.TagSqlx,
 			targetType: reflect.StructOf([]reflect.StructField{
 				{
 					Name: "ID",
@@ -222,7 +216,7 @@ func TestMatcher_Match(t *testing.T) {
 	for _, testCase := range testCases {
 		v := reflect.New(testCase.targetType).Interface()
 		testCase.init(v)
-		matcher := NewMatcher(testCase.tagName, testCase.resolve)
+		matcher := NewMatcher(testCase.resolve)
 		matched, err := matcher.Match(testCase.targetType, testCase.columns)
 
 		if testCase.hasError {

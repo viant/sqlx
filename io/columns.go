@@ -195,8 +195,8 @@ func NamesToColumns(columns []string) []Column {
 }
 
 // StructColumns returns column for the struct
-func StructColumns(recordType reflect.Type, tagName string, opts ...option.Option) ([]Column, error) {
-	columns, _, err := StructColumnMapper(recordType, tagName, opts...)
+func StructColumns(recordType reflect.Type, opts ...option.Option) ([]Column, error) {
+	columns, _, err := StructColumnMapper(recordType, opts...)
 	if err != nil {
 		return nil, err
 	}

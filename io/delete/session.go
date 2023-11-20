@@ -27,7 +27,7 @@ func (s *session) init(record interface{}) (err error) {
 		s.columns = s.Config.Columns
 		return nil
 	}
-	if s.columns, s.binder, err = s.Mapper(record, s.TagName, option.IdentityOnly(true)); err != nil {
+	if s.columns, s.binder, err = s.Mapper(record, option.IdentityOnly(true)); err != nil {
 		return err
 	}
 	recordlessBuilder, err := NewBuilder(s.TableName, s.columns.Names(), s.Dialect, s.batchSize)

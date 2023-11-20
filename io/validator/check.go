@@ -45,7 +45,7 @@ func NewChecks(p reflect.Type, presence *option.SetMarker) (*Checks, error) {
 	if presence != nil {
 		opts = append(opts, presence)
 	}
-	columns, err := io.StructColumns(p, option.TagSqlx, opts...)
+	columns, err := io.StructColumns(p, opts...)
 	if err != nil {
 		return nil, err
 	}

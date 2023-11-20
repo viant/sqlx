@@ -11,21 +11,16 @@ import (
 	"unsafe"
 )
 
-const (
-	//TagSqlx defines sqlx annotation
-	TagSqlx = "sqlx"
-)
-
-//Identity represents identity option
+// Identity represents identity option
 type Identity string
 
-//IdentityOnly  represents identity (pk) only option
+// IdentityOnly  represents identity (pk) only option
 type IdentityOnly bool
 
-//Option represents generic option
+// Option represents generic option
 type Option interface{}
 
-//Options represents generic options
+// Options represents generic options
 type Options []Option
 
 // LoadFormat represents the format of data loaded
@@ -34,20 +29,7 @@ type LoadFormat string
 // LoadHint represents the bigquery.JobConfigurationLoad in json format
 type LoadHint string
 
-//Tag returns annotation tag, default sqlx
-func (o Options) Tag() string {
-	if len(o) == 0 {
-		return TagSqlx
-	}
-	for _, candidate := range o {
-		if tagOpt, ok := candidate.(Tag); ok {
-			return string(tagOpt)
-		}
-	}
-	return TagSqlx
-}
-
-//Dialect returns dialect
+// Dialect returns dialect
 func (o Options) Dialect() *info.Dialect {
 	if len(o) == 0 {
 		return nil
@@ -60,7 +42,7 @@ func (o Options) Dialect() *info.Dialect {
 	return nil
 }
 
-//Product returns product
+// Product returns product
 func (o Options) Product() *database.Product {
 	if len(o) == 0 {
 		return nil
@@ -76,7 +58,7 @@ func (o Options) Product() *database.Product {
 	return nil
 }
 
-//BatchSize returns batch size option
+// BatchSize returns batch size option
 func (o Options) BatchSize() int {
 	if len(o) == 0 {
 		return 1
@@ -90,7 +72,7 @@ func (o Options) BatchSize() int {
 	return 1
 }
 
-//Db returns *sql.Db or nil
+// Db returns *sql.Db or nil
 func (o Options) Db() *sql.DB {
 	if len(o) == 0 {
 		return nil
@@ -104,7 +86,7 @@ func (o Options) Db() *sql.DB {
 	return nil
 }
 
-//IdentityOnly returns identity only option value or false
+// IdentityOnly returns identity only option value or false
 func (o Options) IdentityOnly() bool {
 	if len(o) == 0 {
 		return false
@@ -118,7 +100,7 @@ func (o Options) IdentityOnly() bool {
 	return false
 }
 
-//SetMarker returns SetMarker option value or false
+// SetMarker returns SetMarker option value or false
 func (o Options) SetMarker() *SetMarker {
 	if len(o) == 0 {
 		return nil
@@ -132,7 +114,7 @@ func (o Options) SetMarker() *SetMarker {
 	return nil
 }
 
-//Identity returns identity column
+// Identity returns identity column
 func (o Options) Identity() string {
 	if len(o) == 0 {
 		return ""
@@ -146,7 +128,7 @@ func (o Options) Identity() string {
 	return ""
 }
 
-//Tx returns *sql.Tx or nil
+// Tx returns *sql.Tx or nil
 func (o Options) Tx() *sql.Tx {
 	if len(o) == 0 {
 		return nil
@@ -160,13 +142,13 @@ func (o Options) Tx() *sql.Tx {
 	return nil
 }
 
-//Tag represent a annotation tag name
+// Tag represent a annotation tag name
 type Tag string
 
-//BatchSize represents a batch size options
+// BatchSize represents a batch size options
 type BatchSize int
 
-//Columns option to control which column to operate on
+// Columns option to control which column to operate on
 type Columns []string
 type ColumnRestriction map[string]bool
 
@@ -185,7 +167,7 @@ func (u Columns) Restriction() ColumnRestriction {
 	return result
 }
 
-//Columns returns map of updateable columns
+// Columns returns map of updateable columns
 func (o Options) Columns() Columns {
 	if len(o) == 0 {
 		return nil
@@ -218,7 +200,7 @@ func (o Options) LoadHint() string {
 	return ""
 }
 
-//SQL returns sqlx.SQL
+// SQL returns sqlx.SQL
 func (o Options) SQL() *sqlx.SQL {
 	if len(o) == 0 {
 		return nil
@@ -273,7 +255,7 @@ func (o Options) Interfaces() []interface{} {
 	return *(*[]interface{})(unsafe.Pointer(&o))
 }
 
-//AsOptions case slice of interface to Options
+// AsOptions case slice of interface to Options
 func AsOptions(options []interface{}) Options {
 	return *(*Options)(unsafe.Pointer(&options))
 }
@@ -294,7 +276,7 @@ func (o Options) Args() *Args {
 // RecordCount represents record count option
 type RecordCount int64
 
-//RecordCount returns record count option
+// RecordCount returns record count option
 func (o Options) RecordCount() int64 {
 	if len(o) == 0 {
 		return 1

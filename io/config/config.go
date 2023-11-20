@@ -8,10 +8,9 @@ import (
 	"github.com/viant/sqlx/option"
 )
 
-//Config represents general config
+// Config represents general config
 type Config struct {
 	TableName string
-	TagName   string
 	Identity  string
 	Columns   io.Columns
 	Dialect   *info.Dialect
@@ -19,19 +18,17 @@ type Config struct {
 	Builder   io.Builder
 }
 
-//New creates a  config
+// New creates a  config
 func New(tableName string) *Config {
 	return &Config{TableName: tableName}
 }
 
-//ApplyOption applied config option
+// ApplyOption applied config option
 func (c *Config) ApplyOption(ctx context.Context, db *sql.DB, options ...option.Option) error {
 	for _, opt := range options {
 		switch actual := opt.(type) {
 		case *info.Dialect:
 			c.Dialect = actual
-		case option.Tag:
-			c.TagName = string(actual)
 		case io.Columns:
 			c.Columns = actual
 		case option.Identity:
@@ -47,7 +44,6 @@ func (c *Config) ApplyOption(ctx context.Context, db *sql.DB, options ...option.
 			}
 		}
 	}
-	c.ensureTagName()
 	c.ensureMapper()
 	return c.ensureDialect(ctx, db)
 }
@@ -68,10 +64,4 @@ func (c *Config) ensureDialect(ctx context.Context, db *sql.DB) error {
 	}
 	c.Dialect = dialect
 	return nil
-}
-
-func (c *Config) ensureTagName() {
-	if c.TagName == "" {
-		c.TagName = option.TagSqlx
-	}
 }

@@ -64,7 +64,7 @@ func (j *JSONEncodedValue) Scan(v interface{}) error {
 }
 
 // ColumnMapper maps src to columns and its placeholders
-type ColumnMapper func(src interface{}, tagName string, options ...option.Option) ([]Column, PlaceholderBinder, error)
+type ColumnMapper func(src interface{}, options ...option.Option) ([]Column, PlaceholderBinder, error)
 
 type columnMapperBuilder struct {
 	columns           []ColumnWithFields
@@ -75,7 +75,7 @@ type columnMapperBuilder struct {
 }
 
 // StructColumnMapper returns genertic column mapper
-func StructColumnMapper(src interface{}, tagName string, options ...option.Option) ([]Column, PlaceholderBinder, error) {
+func StructColumnMapper(src interface{}, options ...option.Option) ([]Column, PlaceholderBinder, error) {
 	recordType, ok := src.(reflect.Type)
 	if !ok {
 		recordType = reflect.TypeOf(src)
@@ -94,7 +94,7 @@ func StructColumnMapper(src interface{}, tagName string, options ...option.Optio
 
 	for i := 0; i < recordType.NumField(); i++ {
 		field := recordType.Field(i)
-		if err = builder.appendColumns(field, caseFormat, tagName); err != nil {
+		if err = builder.appendColumns(field, caseFormat); err != nil {
 			return nil, nil, err
 		}
 	}
@@ -160,7 +160,7 @@ func ExtractColumnNames(recordType reflect.Type) []string {
 	var names []string
 	for i := 0; i < recordType.NumField(); i++ {
 		field := recordType.Field(i)
-		if tag := ParseTag(field.Tag.Get(option.TagSqlx)); tag != nil && tag.Name() != "" {
+		if tag := ParseTag(field.Tag); tag != nil && tag.Name() != "" {
 			names = append(names, tag.Name())
 		}
 	}
@@ -209,16 +209,21 @@ func newColumnBuilder(options []option.Option, recordType reflect.Type) (*column
 	return builder, nil
 }
 
-func (b *columnMapperBuilder) appendColumns(field reflect.StructField, caseFormat text.CaseFormat, tagName string, holders ...*xunsafe.Field) error {
+func (b *columnMapperBuilder) appendColumns(field reflect.StructField, caseFormat text.CaseFormat, holders ...*xunsafe.Field) error {
 	switch field.Type.Kind() {
 	case reflect.Slice, reflect.Array:
 		return nil
 	}
 	xField := xunsafe.NewField(field)
-	tag := ParseTag(field.Tag.Get(tagName))
+	tag := ParseTag(field.Tag)
+	if _, has := field.Tag.Lookup("on"); has {
+		tag.Transient = has
+		return nil
+	}
 	if tag.Transient {
 		return nil
 	}
+
 	if err := tag.validateWithField(field); err != nil {
 		return err
 	}
@@ -228,7 +233,11 @@ func (b *columnMapperBuilder) appendColumns(field reflect.StructField, caseForma
 
 	if len(holders) > 0 {
 		actualHolder := holders[0]
-		holderTag := ParseTag(actualHolder.Tag.Get(tagName))
+		holderTag := ParseTag(actualHolder.Tag)
+		if _, has := field.Tag.Lookup("on"); has {
+			holderTag.Transient = has
+			return nil
+		}
 		if holderTag.Ns != "" {
 			tag.Ns = holderTag.Ns
 		}
@@ -243,11 +252,11 @@ func (b *columnMapperBuilder) appendColumns(field reflect.StructField, caseForma
 		for fieldType.Kind() == reflect.Ptr {
 			fieldType = fieldType.Elem()
 		}
+
 		if fieldType.Kind() == reflect.Struct {
 			numField := fieldType.NumField()
 			for i := 0; i < numField; i++ {
-
-				if err := b.appendColumns(fieldType.Field(i), caseFormat, tagName, xField); err != nil {
+				if err := b.appendColumns(fieldType.Field(i), caseFormat, xField); err != nil {
 					return err
 				}
 			}

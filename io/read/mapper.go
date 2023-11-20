@@ -9,11 +9,11 @@ import (
 	"strings"
 )
 
-//RowMapper represents a target values mapped to pointer of slice
+// RowMapper represents a target values mapped to pointer of slice
 type RowMapper func(target interface{}) ([]interface{}, error)
 
-//NewRowMapper  new a row mapper function
-type NewRowMapper func(columns []io.Column, targetType reflect.Type, tagName string, resolver io.Resolve, options []option.Option) (RowMapper, error)
+// NewRowMapper  new a row mapper function
+type NewRowMapper func(columns []io.Column, targetType reflect.Type, resolver io.Resolve, options []option.Option) (RowMapper, error)
 
 type Mapper struct {
 	fields         []io.Field
@@ -59,30 +59,25 @@ func (m *Mapper) init() {
 	}
 }
 
-//newRowMapper creates a new record mapped
-func newRowMapper(columns []io.Column, targetType reflect.Type, tagName string, resolver io.Resolve, options []option.Option) (RowMapper, error) {
+// newRowMapper creates a new record mapped
+func newRowMapper(columns []io.Column, targetType reflect.Type, resolver io.Resolve, options []option.Option) (RowMapper, error) {
 	if strings.Contains(targetType.String(), "Products") {
 		fmt.Println("")
 	}
-
-	if tagName == "" {
-		tagName = option.TagSqlx
-	}
-
 	switch targetType.Kind() {
 	case reflect.Struct:
-		return NewSQLStructMapper(columns, targetType, tagName, resolver, options...)
+		return NewSQLStructMapper(columns, targetType, resolver, options...)
 	case reflect.Ptr:
 		if targetType.Elem().Kind() == reflect.Struct {
-			return NewSQLStructMapper(columns, targetType.Elem(), tagName, resolver, options...)
+			return NewSQLStructMapper(columns, targetType.Elem(), resolver, options...)
 		}
 	}
 	return GenericRowMapper(columns)
 }
 
-//NewStructMapper creates a new record mapper for supplied struct type
-func NewStructMapper(columns []io.Column, recordType reflect.Type, tagName string, resolver io.Resolve, options ...option.Option) (RowMapper, error) {
-	mapper, err := getMapper(columns, recordType, tagName, resolver, options)
+// NewStructMapper creates a new record mapper for supplied struct type
+func NewStructMapper(columns []io.Column, recordType reflect.Type, resolver io.Resolve, options ...option.Option) (RowMapper, error) {
+	mapper, err := getMapper(columns, recordType, resolver, options)
 	if err != nil {
 		return nil, err
 	}
@@ -90,9 +85,9 @@ func NewStructMapper(columns []io.Column, recordType reflect.Type, tagName strin
 	return mapper.MapToRow, nil
 }
 
-//NewSQLStructMapper creates a new record mapper for supplied struct and prepares them to scan / send values with sql.DB
-func NewSQLStructMapper(columns []io.Column, recordType reflect.Type, tagName string, resolver io.Resolve, options ...option.Option) (RowMapper, error) {
-	mapper, err := getMapper(columns, recordType, tagName, resolver, options)
+// NewSQLStructMapper creates a new record mapper for supplied struct and prepares them to scan / send values with sql.DB
+func NewSQLStructMapper(columns []io.Column, recordType reflect.Type, resolver io.Resolve, options ...option.Option) (RowMapper, error) {
+	mapper, err := getMapper(columns, recordType, resolver, options)
 	if err != nil {
 		return nil, err
 	}
@@ -104,13 +99,13 @@ func NewSQLStructMapper(columns []io.Column, recordType reflect.Type, tagName st
 	return mapper.MapToRow, nil
 }
 
-func getMapper(columns []io.Column, recordType reflect.Type, tagName string, resolver io.Resolve, options []option.Option) (*Mapper, error) {
+func getMapper(columns []io.Column, recordType reflect.Type, resolver io.Resolve, options []option.Option) (*Mapper, error) {
 	cache, entry, err := mapperCacheEntry(columns, recordType, options, resolver)
 	if err != nil {
 		return nil, err
 	}
 
-	matched, err := fields(entry, columns, recordType, tagName, resolver)
+	matched, err := fields(entry, columns, recordType, resolver)
 	if err != nil {
 		return nil, err
 	}
@@ -152,12 +147,12 @@ func mapperCacheEntry(columns []io.Column, recordType reflect.Type, options []op
 	return mapperCache, entry, nil
 }
 
-func fields(entry *MapperCacheEntry, columns []io.Column, recordType reflect.Type, tagName string, resolver io.Resolve) ([]io.Field, error) {
+func fields(entry *MapperCacheEntry, columns []io.Column, recordType reflect.Type, resolver io.Resolve) ([]io.Field, error) {
 	if entry != nil && entry.HasFields() {
 		return entry.Fields(), nil
 	}
 
-	matcher := io.NewMatcher(tagName, resolver)
+	matcher := io.NewMatcher(resolver)
 	matched, err := matcher.Match(recordType, columns)
 	if err != nil {
 		return nil, err
@@ -166,7 +161,7 @@ func fields(entry *MapperCacheEntry, columns []io.Column, recordType reflect.Typ
 	return matched, nil
 }
 
-//GenericRowMapper creates a new row mapper for supplied slice or map type
+// GenericRowMapper creates a new row mapper for supplied slice or map type
 func GenericRowMapper(columns []io.Column) (RowMapper, error) {
 	var valueProviders = make([]func(index int, values []interface{}), len(columns))
 	for i, column := range columns {

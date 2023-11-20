@@ -10,6 +10,9 @@ import (
 
 const (
 	EncodingJSON = "JSON"
+	//TagSqlx defines sqlx annotation
+
+	TagSqlx = "sqlx"
 )
 
 // Tag represent field tag
@@ -54,15 +57,26 @@ func (f *Field) CanExpand() bool {
 }
 
 // ParseTag parses tag
-func ParseTag(tagString string) *Tag {
+func ParseTag(structTag reflect.StructTag) *Tag {
+	tagName := TagSqlx
+	tagString := structTag.Get(tagName)
 	tag := &Tag{}
 	if tagString == "-" {
 		tag.Transient = true
 		return tag
 	}
+
+	if _, ok := structTag.Lookup("on"); ok {
+		tag.Transient = true
+	}
 	if tagString == "-" {
 		tag.Transient = true
 	}
+
+	if tag.Transient {
+		return tag
+	}
+
 	values := tags.Values(tagString)
 	name, values := values.Name()
 	tag.Column = name

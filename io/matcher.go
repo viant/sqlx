@@ -7,11 +7,10 @@ import (
 	"strings"
 )
 
-//Matcher implements column to struct filed mapper
+// Matcher implements column to struct filed mapper
 type (
 	Matcher struct {
 		resolver  Resolve
-		tagName   string
 		unmatched []int
 	}
 
@@ -35,11 +34,11 @@ func IsMatchedError(err error) bool {
 	return ok
 }
 
-//Match matches field with columns
+// Match matches field with columns
 func (f *Matcher) Match(targetType reflect.Type, columns []Column) ([]Field, error) {
 	if len(columns) == 0 {
 		var err error
-		if columns, err = StructColumns(targetType, f.tagName); err != nil {
+		if columns, err = StructColumns(targetType); err != nil {
 			return nil, fmt.Errorf("failed to create column for struct: %v, %w", targetType.String(), err)
 		}
 	}
@@ -117,8 +116,7 @@ func (f *Matcher) indexFields(idx index, owner *Field, xStruct *xunsafe.Struct, 
 			Field: structField,
 		}
 		field.buildEvalAddr(owner)
-		tag := structField.Tag.Get(f.tagName)
-		if parsed := ParseTag(tag); parsed != nil {
+		if parsed := ParseTag(structField.Tag); parsed != nil {
 			field.Tag = *parsed
 		}
 		if field.Transient {
@@ -157,11 +155,10 @@ func (f *Matcher) indexField(idx index, ns string, field *Field, pos int) {
 	idx.add(ns+field.Field.Name, pos)
 }
 
-//NewMatcher creates a fields to column matcher
-func NewMatcher(tagName string, resolver Resolve) *Matcher {
+// NewMatcher creates a fields to column matcher
+func NewMatcher(resolver Resolve) *Matcher {
 	fields := &Matcher{
 		resolver: resolver,
-		tagName:  tagName,
 	}
 	return fields
 }

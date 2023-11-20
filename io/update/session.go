@@ -35,7 +35,7 @@ func (s *session) init(record interface{}, options ...option.Option) (err error)
 		options = append(options, s.setMarker)
 	}
 
-	if s.columns, s.binder, err = s.Mapper(record, s.TagName, options...); err != nil {
+	if s.columns, s.binder, err = s.Mapper(record, options...); err != nil {
 		return err
 	}
 

@@ -26,7 +26,7 @@ type session struct {
 }
 
 func (s *session) init(record interface{}) (err error) {
-	if s.columns, s.binder, err = s.Mapper(record, s.TagName); err != nil {
+	if s.columns, s.binder, err = s.Mapper(record); err != nil {
 		return err
 	}
 

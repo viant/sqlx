@@ -20,7 +20,6 @@ type (
 		query              string
 		newRow             func() interface{}
 		targetType         reflect.Type
-		tagName            string
 		stmt               *sql.Stmt
 		rows               *sql.Rows
 		getRowMapper       NewRowMapper
@@ -324,7 +323,7 @@ func (r *Reader) ensureRowMapper(source cache.Source, mapperPtr *RowMapper) (Row
 		options = append(options, r.disableMapperCache)
 	}
 
-	if mapper, err = r.getRowMapper(columns, r.targetType, r.tagName, r.unmappedFn, options); err != nil {
+	if mapper, err = r.getRowMapper(columns, r.targetType, r.unmappedFn, options); err != nil {
 		return nil, fmt.Errorf("failed to get row mapper, due to %w", err)
 	}
 	*mapperPtr = mapper
@@ -447,7 +446,6 @@ func NewStmt(stmt *sql.Stmt, newRow func() interface{}, options ...option.Option
 	result := &Reader{
 		newRow:             newRow,
 		stmt:               stmt,
-		tagName:            option.Options(options).Tag(),
 		getRowMapper:       newRowMapper,
 		unmappedFn:         unmappedFn,
 		cache:              readerCache,

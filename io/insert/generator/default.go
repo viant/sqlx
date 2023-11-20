@@ -132,7 +132,7 @@ func (d *Default) prepare(ctx context.Context, rType reflect.Type, table string)
 
 	ioColumns = append(ioColumns, io.NewColumn(sqlxOrderColumn, "", reflect.TypeOf(0)))
 
-	queryMapper, err := read.NewSQLStructMapper(ioColumns, rType.Elem(), option.TagSqlx, resolveSqlxPosition)
+	queryMapper, err := read.NewSQLStructMapper(ioColumns, rType.Elem(), resolveSqlxPosition)
 
 	if err != nil {
 		return nil, nil, err
@@ -174,7 +174,7 @@ func (d *Default) shouldLoadColumnInfo(rType reflect.Type) bool {
 	}
 
 	for i := 0; i < rType.NumField(); i++ {
-		tag := io.ParseTag(rType.Field(i).Tag.Get(option.TagSqlx))
+		tag := io.ParseTag(rType.Field(i).Tag)
 		if tag.Generator != "" && !(tag.PrimaryKey && tag.Autoincrement) {
 			return true
 		}

@@ -2,7 +2,6 @@ package io
 
 import (
 	"fmt"
-	"github.com/viant/sqlx/option"
 	"github.com/viant/toolbox/format"
 	"github.com/viant/xunsafe"
 	"reflect"
@@ -135,9 +134,9 @@ func (s *ObjectStringifier) FieldNames() []string {
 	return fieldNames
 }
 
-//TypeStringifier returns ObjectStringifier for a given Type.
-//It will replace nil values with nullValue for properties with tag: "nullifyEmpty" and omit (if specified) transient properties
-//By default, results are shared, no new arrays are returned unless Parallel(true) is provided as an option.
+// TypeStringifier returns ObjectStringifier for a given Type.
+// It will replace nil values with nullValue for properties with tag: "nullifyEmpty" and omit (if specified) transient properties
+// By default, results are shared, no new arrays are returned unless Parallel(true) is provided as an option.
 func TypeStringifier(rType reflect.Type, nullValue string, omitTransient bool, options ...interface{}) *ObjectStringifier {
 	fieldLen := rType.NumField()
 	parallel := false
@@ -152,7 +151,7 @@ func TypeStringifier(rType reflect.Type, nullValue string, omitTransient bool, o
 
 	for i := 0; i < fieldLen; i++ {
 		field := rType.Field(i)
-		tag := ParseTag(field.Tag.Get(option.TagSqlx))
+		tag := ParseTag(field.Tag)
 		if tag.Transient && omitTransient {
 			continue
 		}

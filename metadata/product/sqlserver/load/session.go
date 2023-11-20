@@ -55,7 +55,7 @@ func (s *Session) Exec(ctx context.Context, data interface{}, db *sql.DB, tableN
 		return nil, err
 	}
 
-	matcher := io.NewMatcher("", nil)
+	matcher := io.NewMatcher(nil)
 	matchResult, err := matcher.Match(dataType, tableColumns)
 	if err != nil && !io.IsMatchedError(err) {
 		return nil, err
