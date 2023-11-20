@@ -210,12 +210,15 @@ func newColumnBuilder(options []option.Option, recordType reflect.Type) (*column
 }
 
 func (b *columnMapperBuilder) appendColumns(field reflect.StructField, caseFormat text.CaseFormat, holders ...*xunsafe.Field) error {
+	tag := ParseTag(field.Tag)
+
 	switch field.Type.Kind() {
 	case reflect.Slice, reflect.Array:
-		return nil
+		if tag.Name() == "" {
+			return nil
+		}
 	}
 	xField := xunsafe.NewField(field)
-	tag := ParseTag(field.Tag)
 	if _, has := field.Tag.Lookup("on"); has {
 		tag.Transient = has
 		return nil
@@ -268,14 +271,14 @@ func (b *columnMapperBuilder) appendColumns(field reflect.StructField, caseForma
 	if tag.isIdentity(columnName) {
 		tag.PrimaryKey = true
 		tag.Column = columnName
-		b.identityColumns = append(b.identityColumns, NewColumnWithFields(columnName, "", field.Type, holders, WithTag(tag)))
+		b.identityColumns = append(b.identityColumns, NewColumnWithFields(columnName, tag.DataType, field.Type, holders, WithTag(tag)))
 		return nil
 	}
 	if b.identityOnly {
 		return nil
 	}
 	if b.columnRestriction.CanUse(columnName) {
-		b.columns = append(b.columns, NewColumnWithFields(columnName, "", field.Type, holders, WithTag(tag)))
+		b.columns = append(b.columns, NewColumnWithFields(columnName, tag.DataType, field.Type, holders, WithTag(tag)))
 	}
 	return nil
 }

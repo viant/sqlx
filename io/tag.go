@@ -37,6 +37,8 @@ type Tag struct {
 	Bit              bool
 	Encoding         string
 	CaseFormat       text.CaseFormat
+	DataType         string
+	Raw              string
 }
 
 // CanExpand return true if field can expend fied struct fields
@@ -44,7 +46,6 @@ func (f *Field) CanExpand() bool {
 	if f.Tag.Ns != "" {
 		return true
 	}
-
 	if !f.Anonymous {
 		return false
 	}
@@ -60,7 +61,7 @@ func (f *Field) CanExpand() bool {
 func ParseTag(structTag reflect.StructTag) *Tag {
 	tagName := TagSqlx
 	tagString := structTag.Get(tagName)
-	tag := &Tag{}
+	tag := &Tag{Raw: string(structTag)}
 	if tagString == "-" {
 		tag.Transient = true
 		return tag
@@ -117,6 +118,8 @@ func (t *Tag) updateTagKey(key string, value string) error {
 		t.Transient = strings.TrimSpace(value) == "true"
 	case "bit":
 		t.Bit = strings.TrimSpace(value) == "true"
+	case "type":
+		t.DataType = strings.TrimSpace(value)
 	case "required":
 		t.Required = strings.TrimSpace(value) == "true"
 	case "errormsg":
