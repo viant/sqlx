@@ -54,8 +54,6 @@ func updateSequence(ctx context.Context, db *sql.DB, sequence *sink.Sequence, tx
 			}
 			sequence.Value = int64(value)
 		}
-	} else {
-		return fmt.Errorf("unable to find autoincrement value in DDL: %v", DDL)
 	}
 	if indexEnd := strings.Index(DDL, autoincrementColumnDef); indexEnd != -1 {
 		colTypeEndedFragment := DDL[:indexEnd]
