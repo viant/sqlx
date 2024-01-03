@@ -97,11 +97,11 @@ func (t *Tag) updateTagKey(key string, value string) error {
 		t.PresenceProvider = true
 		t.Transient = true
 	case "primarykey":
-		t.PrimaryKey = strings.TrimSpace(value) == "true"
+		t.PrimaryKey = strings.TrimSpace(value) == "true" || strings.TrimSpace(value) == ""
 	case "autoincrement":
 		t.Autoincrement = true
 	case "unique":
-		t.IsUnique = strings.TrimSpace(value) == "true"
+		t.IsUnique = strings.TrimSpace(value) == "true" || strings.TrimSpace(value) == ""
 	case "db":
 		t.Db = value
 	case "caseformat":
@@ -115,13 +115,13 @@ func (t *Tag) updateTagKey(key string, value string) error {
 	case "refcolumn":
 		t.RefColumn = value
 	case "transient":
-		t.Transient = strings.TrimSpace(value) == "true"
+		t.Transient = strings.TrimSpace(value) == "true" || strings.TrimSpace(value) == ""
 	case "bit":
-		t.Bit = strings.TrimSpace(value) == "true"
+		t.Bit = strings.TrimSpace(value) == "true" || strings.TrimSpace(value) == ""
 	case "type":
 		t.DataType = strings.TrimSpace(value)
 	case "required":
-		t.Required = strings.TrimSpace(value) == "true"
+		t.Required = strings.TrimSpace(value) == "true" || strings.TrimSpace(value) == ""
 	case "errormsg":
 		t.ErrorMgs = strings.ReplaceAll(value, "$coma", ",")
 	case "generator":
