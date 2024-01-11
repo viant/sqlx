@@ -19,6 +19,7 @@ require (
 	github.com/viant/bigquery v0.2.1
 	github.com/viant/parsly v0.3.0
 	github.com/viant/structology v0.5.6-0.20231027223343-51d596f3b723
+	github.com/viant/tagly v0.1.0
 	github.com/viant/toolbox v0.34.6-0.20221112031702-3e7cdde7f888
 	github.com/viant/xreflect v0.0.0-20230303201326-f50afb0feb0d
 	github.com/viant/xunsafe v0.9.0
@@ -46,7 +47,6 @@ require (
 	github.com/pierrec/lz4/v4 v4.1.9 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/segmentio/encoding v0.3.5 // indirect
-	github.com/viant/tagly v0.1.0 // indirect
 	github.com/yuin/gopher-lua v0.0.0-20220504180219-658193537a64 // indirect
 	go.opencensus.io v0.24.0 // indirect
 	golang.org/x/crypto v0.3.0 // indirect

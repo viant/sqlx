@@ -20,29 +20,29 @@ var mysqlLoadConfig = &csv.Config{
 	NullValue:       "null",
 }
 
-//Session represents MySQL session
+// Session represents MySQL session
 type Session struct {
 	*io.Transaction
 	dialect *info.Dialect
 	columns io.Columns
 }
 
-//NewSession returns new MySQL session
+// NewSession returns new MySQL session
 func NewSession(dialect *info.Dialect) io.Session {
 	return &Session{
 		dialect: dialect,
 	}
 }
 
-//Exec inserts given data to database using "LOAD DATA LOCAL INFILE"
-//note: local_infile=1 must be enabled on database
+// Exec inserts given data to database using "LOAD DATA LOCAL INFILE"
+// note: local_infile=1 must be enabled on database
 func (s *Session) Exec(ctx context.Context, data interface{}, db *sql.DB, tableName string, options ...option.Option) (sql.Result, error) {
 	dataReader, dataType, err := csv.NewReader(data, mysqlLoadConfig)
 	if err != nil {
 		return nil, err
 	}
 
-	columns, err := io.StructColumns(dataType, option.TagSqlx)
+	columns, err := io.StructColumns(dataType, io.TagSqlx)
 	if err != nil {
 		return nil, err
 	}
