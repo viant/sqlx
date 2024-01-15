@@ -28,6 +28,9 @@ type collectTestCase struct {
 	recordsCnt  int
 	config      *batcher.Config
 	concurrency bool
+	minSleepMs  int
+	maxSleepMs  int
+	useSleep    bool
 }
 
 type entity struct {
@@ -37,12 +40,10 @@ type entity struct {
 }
 
 func TestService_Collect(t *testing.T) {
-
 	driver := "mysql"
 	dsn := os.Getenv("TEST_MYSQL_DSN")
 	if dsn == "" {
 		t.Skip("set TEST_MYSQL_DSN before running test")
-		return
 	}
 
 	aInitSQL := []string{
@@ -52,28 +53,34 @@ func TestService_Collect(t *testing.T) {
 
 	var useCases = []*collectTestCase{
 		{
-			description: "1 - Collect - Concurrency: true, recordsCnt: 50, MaxElements: 1, MaxDurationMs: 1, BatchSize: 2",
+			description: "1 - Collect - Concurrency: true, recordsCnt: 250, MaxElements: 1, MaxDurationMs: 1, BatchSize: 2",
 			table:       "t21",
 			initSQL:     aInitSQL,
-			recordsCnt:  50,
+			recordsCnt:  250, // danger of too many connections if you increase
 			config: &batcher.Config{
 				MaxElements:   1,
 				MaxDurationMs: 1,
 				BatchSize:     1,
 			},
 			concurrency: true,
+			minSleepMs:  1,
+			maxSleepMs:  1,
+			useSleep:    false,
 		},
 		{
-			description: "2 - Collect - Concurrency: false, recordsCnt: 50, MaxElements: 1, MaxDurationMs: 1, BatchSize: 2",
+			description: "2 - Collect - Concurrency: false, recordsCnt: 250, MaxElements: 1, MaxDurationMs: 1, BatchSize: 2",
 			table:       "t21",
 			initSQL:     aInitSQL,
-			recordsCnt:  50,
+			recordsCnt:  250,
 			config: &batcher.Config{
 				MaxElements:   1,
 				MaxDurationMs: 1,
 				BatchSize:     1,
 			},
 			concurrency: false,
+			minSleepMs:  1,
+			maxSleepMs:  1,
+			useSleep:    false,
 		},
 		{
 			description: "3 - Collect - Concurrency: true, recordsCnt: 100, MaxElements: 33, MaxDurationMs: 1, BatchSize: 2",
@@ -86,6 +93,9 @@ func TestService_Collect(t *testing.T) {
 				BatchSize:     1,
 			},
 			concurrency: true,
+			minSleepMs:  1,
+			maxSleepMs:  1,
+			useSleep:    false,
 		},
 		{
 			description: "4 - Collect - Concurrency: false, recordsCnt: 100, MaxElements: 33, MaxDurationMs: 1, BatchSize: 2",
@@ -98,6 +108,9 @@ func TestService_Collect(t *testing.T) {
 				BatchSize:     1,
 			},
 			concurrency: false,
+			minSleepMs:  1,
+			maxSleepMs:  1,
+			useSleep:    false,
 		},
 		{
 			description: "5 - Collect - Concurrency: true, recordsCnt: 200, MaxElements: 100, MaxDurationMs: 500, BatchSize: 100",
@@ -111,6 +124,9 @@ func TestService_Collect(t *testing.T) {
 				BatchSize:     100,
 			},
 			concurrency: true,
+			minSleepMs:  1,
+			maxSleepMs:  1,
+			useSleep:    false,
 		},
 		{
 			description: "6 - Collect - Concurrency: false, recordsCnt: 200, MaxElements: 100, MaxDurationMs: 500, BatchSize: 100",
@@ -124,6 +140,9 @@ func TestService_Collect(t *testing.T) {
 				BatchSize:     100,
 			},
 			concurrency: false,
+			minSleepMs:  1,
+			maxSleepMs:  1,
+			useSleep:    false,
 		},
 		{
 			description: "7 - Collect - Concurrency: true, recordsCnt: 200, MaxElements: 1000, MaxDurationMs: 100, BatchSize: 100",
@@ -136,6 +155,9 @@ func TestService_Collect(t *testing.T) {
 				BatchSize:     100,
 			},
 			concurrency: true,
+			minSleepMs:  1,
+			maxSleepMs:  1,
+			useSleep:    false,
 		},
 		{
 			description: "8 - Collect - Concurrency: false, recordsCnt: 200, MaxElements: 1000, MaxDurationMs: 100, BatchSize: 100",
@@ -148,6 +170,9 @@ func TestService_Collect(t *testing.T) {
 				BatchSize:     100,
 			},
 			concurrency: false,
+			minSleepMs:  1,
+			maxSleepMs:  1,
+			useSleep:    false,
 		},
 	}
 	db, err := sql.Open(driver, dsn)
@@ -158,7 +183,9 @@ func TestService_Collect(t *testing.T) {
 
 	ctx := context.TODO()
 
-	for _, testCase := range useCases {
+	for i, testCase := range useCases {
+		i = i
+		//fmt.Printf("====> TEST %d: %s\n", i, testCase.description)
 
 		for _, SQL := range testCase.initSQL {
 			_, err = db.Exec(SQL)
@@ -188,8 +215,14 @@ func TestService_Collect(t *testing.T) {
 
 		// running Collect fnc
 		for i := range testRecords {
-			r := rand.Intn(20)
-			time.Sleep(time.Millisecond * time.Duration(r)) // makes goroutines don't start at the same time
+
+			if testCase.useSleep { // makes goroutines don't start at the same time
+				r := rand.Intn(testCase.maxSleepMs)
+				if r < testCase.minSleepMs {
+					r = testCase.minSleepMs
+				}
+				time.Sleep(time.Millisecond * time.Duration(r))
+			}
 
 			recPtr := testRecords[i]
 			fn := func(recPtr *entity, i int) {
@@ -215,27 +248,27 @@ func TestService_Collect(t *testing.T) {
 				toolbox.Dump(testRecords[i])
 			}
 		}
-		onDone, expected, err := loadExpected(ctx, t, testCase, db, testRecords)
+		onDone, expected, err := loadExpected(ctx, t, testCase, db, len(testRecords))
 		if err != nil {
 			return
 		}
 		sortSlice(testRecords)
 		if testCase.concurrency {
 			for _, v := range testRecords {
-				assert.True(t, v.ID > 0, testCase.description)
+				assert.True(t, v.ID > 0, fmt.Sprintf("Detected ID <= 0! %+v in test %s\n", v, testCase.description))
 			}
 			if !assert.EqualValues(t, testRecords, expected, testCase.description) {
-				fmt.Println("## testRecords")
-				toolbox.Dump(testRecords)
-				fmt.Println("## expected")
-				toolbox.Dump(expected)
+				//fmt.Println("## testRecords")
+				//toolbox.Dump(testRecords)
+				//fmt.Println("## expected")
+				//toolbox.Dump(expected)
 			}
 		} else {
 			if !assert.EqualValues(t, testRecords, expected, testCase.description) {
-				fmt.Println("## testRecords")
-				toolbox.Dump(testRecords)
-				fmt.Println("## expected")
-				toolbox.Dump(expected)
+				//fmt.Println("## testRecords")
+				//toolbox.Dump(testRecords)
+				//fmt.Println("## expected")
+				//toolbox.Dump(expected)
 			}
 		}
 		onDone(err)
@@ -251,7 +284,7 @@ func sortSlice(a []*entity) {
 	})
 }
 
-func loadExpected(ctx context.Context, t *testing.T, testCase *collectTestCase, db *sql.DB, testRecords []*entity) (func(err error), []*entity, error) {
+func loadExpected(ctx context.Context, t *testing.T, testCase *collectTestCase, db *sql.DB, cnt int) (func(err error), []*entity, error) {
 	// checking db contenet
 	var err error
 	SQL := "SELECT foo_id, foo_name, bar FROM " + testCase.table + " ORDER BY foo_id"
@@ -259,7 +292,7 @@ func loadExpected(ctx context.Context, t *testing.T, testCase *collectTestCase, 
 	rows, err = db.QueryContext(ctx, SQL)
 	onDone := func(err error) { io.RunWithError(rows.Close, &err) }
 	assert.Nil(t, err, testCase.description)
-	recordsFromDB := make([]*entity, len(testRecords))
+	recordsFromDB := make([]*entity, cnt)
 
 	i := 0
 	for rows.Next() {
@@ -277,10 +310,11 @@ func createTestRecords(count int) []*entity {
 	testRecords := make([]*entity, count)
 
 	for i := 0; i < count; i++ {
+		n := i + 1
 		testRecords[i] = &entity{
 			ID:   0,
-			Name: "Lu_" + strconv.Itoa(i),
-			Bar:  float64(i),
+			Name: "Lu_" + strconv.Itoa(n),
+			Bar:  float64(n),
 		}
 	}
 	return testRecords

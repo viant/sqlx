@@ -23,9 +23,14 @@ import (
 //
 // 2. Problems with offset > increment_by - see test sqlx/metadata/product/mysql/test/sequence_test.go
 func TestService_NextSequenceValue(t *testing.T) {
-	dsn, dsnSchema, shallSkip := getTestConfig(t)
-	if shallSkip {
-		return
+	dsn := os.Getenv("TEST_MYSQL_DSN")
+	if dsn == "" {
+		t.Skip("set TEST_MYSQL_DSN before running test")
+	}
+
+	dsnSchema := os.Getenv("TEST_MYSQL_DSN_SCHEMA")
+	if dsnSchema == "" {
+		t.Skip("set TEST_MYSQL_DSN_SCHEMA before running test")
 	}
 
 	var useCases = []struct {
@@ -59,13 +64,14 @@ func TestService_NextSequenceValue(t *testing.T) {
 				IncrementBy: 10,
 				DataType:    "int",
 				StartValue:  5,
-				MaxValue:    0,
+				MaxValue:    9223372036854775807,
 			},
 		},
 		{
 			description: "02. info.KindSequenceNextValue with PresetIDWithTransientTransaction strategy",
 			initSQL: []string{
 				createSequenceTable,
+				"DROP PROCEDURE IF EXISTS SET_AUTO_INCREMENT_WITH_INNER_TX",
 				createProcedure,
 				"DROP TABLE IF EXISTS t1",
 				"CREATE TABLE t1 (foo_id INTEGER AUTO_INCREMENT PRIMARY KEY, foo_name TEXT, bar INTEGER)",
@@ -94,7 +100,7 @@ func TestService_NextSequenceValue(t *testing.T) {
 				IncrementBy: 10,
 				DataType:    "int",
 				StartValue:  5,
-				MaxValue:    0,
+				MaxValue:    9223372036854775807,
 			},
 		},
 	}
@@ -104,6 +110,9 @@ func TestService_NextSequenceValue(t *testing.T) {
 	ctx := context.Background()
 
 	for _, testCase := range useCases {
+
+		//fmt.Printf("=====> TEST %d: %s\n", i, testCase.description)
+
 		func() {
 			if !assert.Nil(t, err, testCase.description) {
 				return
@@ -138,25 +147,10 @@ func TestService_NextSequenceValue(t *testing.T) {
 	}
 }
 
-func getTestConfig(t *testing.T) (dsn, dnsSchema string, shallSkip bool) {
-	dsn = os.Getenv("TEST_MYSQL_DSN")
-	if dsn == "" {
-		t.Skip("set TEST_MYSQL_DSN before running test")
-		return "", "", true
-	}
-
-	dnsSchema = os.Getenv("TEST_MYSQL_DSN_SCHEMA")
-	if dnsSchema == "" {
-		t.Skip("set TEST_MYSQL_DSN_SCHEMA before running test")
-		return "", "", true
-	}
-	return dsn, dnsSchema, false
-}
-
 func dmlBuilder(recordCount int64, sql *sqlx.SQL) func(sequence *sink.Sequence) (*sqlx.SQL, error) {
 	return func(sequence *sink.Sequence) (*sqlx.SQL, error) {
 		sequence.Value = sequence.NextValue(recordCount)
-		sql.Args[len(sql.Args)-1] = sequence.Value - 1 // "-1" because transient insert
+		sql.Args[len(sql.Args)-1] = sequence.Value - 1 // "-1" or(?) sequence.IncrementBy because transient insert
 		return sql, nil
 	}
 }

@@ -13,6 +13,9 @@ import (
 const autoincrementAssignment = "AUTO_INCREMENT="
 const autoincrementColumnDef = " NOT NULL AUTO_INCREMENT,"
 
+// MaxSeqValue represents default maximum sequence value
+const MaxSeqValue = 9223372036854775807
+
 // UpdateMySQLSequence updates for all passed sink.Sequences theirs Value or StartValue
 // getting autoincrement metadata by: SHOW CREATE TABLE ...,  @@SESSION.auto_increment_increment, @@SESSION.auto_increment_offset
 //
@@ -66,6 +69,10 @@ func updateSequence(ctx context.Context, db *sql.DB, sequence *sink.Sequence, tx
 	err := ensureIncrements(ctx, db, sequence, tx)
 	if err != nil {
 		return err
+	}
+
+	if sequence.MaxValue == 0 {
+		sequence.MaxValue = MaxSeqValue
 	}
 	return nil
 }

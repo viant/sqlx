@@ -14,9 +14,6 @@ type Sequence struct {
 
 // MinValue returns previous sequence's next value for given record count,
 func (s *Sequence) MinValue(recordCount int64) int64 {
-	if recordCount == 1 {
-		return s.Value
-	}
 	modValue := (s.Value - s.StartValue) % s.IncrementBy
 	if modValue == 0 && s.Value > s.StartValue {
 		return s.Value - recordCount*s.IncrementBy
@@ -35,9 +32,6 @@ func (s *Sequence) MinValue(recordCount int64) int64 {
 
 // NextValue returns sequence's next value for given record count
 func (s *Sequence) NextValue(recordCount int64) int64 {
-	if recordCount == 1 {
-		return s.Value
-	}
 	modValue := (s.Value - s.StartValue) % s.IncrementBy
 	if modValue == 0 && s.Value > s.StartValue {
 		return s.Value + recordCount*s.IncrementBy

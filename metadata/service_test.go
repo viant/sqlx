@@ -534,7 +534,7 @@ func TestAbstractService_Info(t *testing.T) {
 	}
 
 	for _, testCase := range testCases {
-		fmt.Printf("===%v\n", testCase.description)
+		//fmt.Printf("===%v\n", testCase.description)
 		if testCase.skip {
 			t.Skipf("skipped " + testCase.description)
 			continue

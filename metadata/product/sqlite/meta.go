@@ -26,7 +26,7 @@ var sqLite333 = database.Product{
 	Driver:    "SQLiteDriver",
 }
 
-//SQLite3 return SQLite3 product
+// SQLite3 return SQLite3 product
 func SQLite3() *database.Product {
 	return &sqLite3
 }
@@ -113,7 +113,12 @@ WHERE i.name IS NOT NULL
 			info.NewCriterion(info.Table, "m.name"),
 			info.NewCriterion(info.Index, "t.name"),
 		),
-		info.NewQuery(info.KindSequences, `SELECT name AS SEQUENCE_NAME,  seq AS SEQUENCE_VALUE  
+		info.NewQuery(info.KindSequences, `SELECT name AS SEQUENCE_NAME,  
+seq AS SEQUENCE_VALUE,
+1 INCREMENT_BY,
+'int' AS DATA_TYPE,
+1 START_VALUE,
+9223372036854775807 AS MAX_VALUE
 FROM SQLITE_SEQUENCE`,
 			product,
 			info.NewCriterion(info.Catalog, ""),

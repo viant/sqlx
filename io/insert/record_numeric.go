@@ -11,7 +11,7 @@ import (
 	"github.com/viant/sqlx/metadata/sink"
 	"github.com/viant/sqlx/option"
 	"reflect"
-	"sync/atomic"
+	"sync"
 )
 
 type numericSequencer struct {
@@ -23,6 +23,8 @@ type numericSequencer struct {
 	sequenceValue         *int64
 	detectedPreset        bool
 	shallPresetIdentities bool
+	muxPreset             sync.Mutex
+	muxSequenceValue      sync.Mutex
 }
 
 func (n *numericSequencer) updateRecord(ctx context.Context, sess *session, record interface{}, columnValue *interface{}, recordCount int, identitiesBatched []interface{}, options []option.Option) error {
@@ -36,13 +38,13 @@ func (n *numericSequencer) updateRecord(ctx context.Context, sess *session, reco
 
 		return nil
 	}
-	if n.sequenceValue == nil {
-		seqValue := n.sequence.MinValue(int64(recordCount))
-		n.sequenceValue = &seqValue
-	}
-	nextValue := atomic.LoadInt64(n.sequenceValue)
-	atomic.AddInt64(n.sequenceValue, n.sequence.IncrementBy)
-	return assign(*columnValue, nextValue)
+
+	n.muxSequenceValue.Lock()
+	currentValue := *n.sequenceValue
+	*n.sequenceValue += n.sequence.IncrementBy
+	n.muxSequenceValue.Unlock()
+
+	return assign(*columnValue, currentValue)
 }
 
 func (n *numericSequencer) prepare(_ context.Context, options []option.Option, sess *session, _ io.ValueAccessor, _ int) ([]option.Option, error) {
@@ -100,8 +102,9 @@ func (n *numericSequencer) transientDMLBuilder(sess *session, record interface{}
 
 		oldValue := sequence.Value
 		passedValue := sequence.Value
-		sequence.Value = sequence.NextValue(recordCount)
+
 		if recordCount > 1 {
+			sequence.Value = sequence.NextValue(recordCount)
 			if diff := sequence.Value - oldValue; diff < recordCount {
 				return nil, fmt.Errorf("new next value for sequenceName %d is too small, expected >= %d but had ", sequence.Value, oldValue+recordCount)
 			}
@@ -147,12 +150,18 @@ func (n *numericSequencer) getColumn() io.Column {
 }
 
 func (n *numericSequencer) prepareSequenceIfNeeded(ctx context.Context, sess *session, record interface{}, columnValue *interface{}, recordCount int, identitiesBatched []interface{}, options []option.Option) error {
+	// presetting sequence only once reserves (if implemented) sequence values on db only one time
 	if n.detectedPreset {
 		return nil
 	}
 
-	n.detectedPreset = true
 	if recordCount == 0 {
+		return nil
+	}
+
+	n.muxPreset.Lock()
+	if n.detectedPreset {
+		n.muxPreset.Unlock()
 		return nil
 	}
 
@@ -163,6 +172,7 @@ func (n *numericSequencer) prepareSequenceIfNeeded(ctx context.Context, sess *se
 		var err error
 		n.sequence, err = n.nextSequence(ctx, sess, record, identitiesBatched, recordCount, options)
 		if err != nil {
+			n.muxPreset.Unlock()
 			return err
 		}
 
@@ -170,6 +180,19 @@ func (n *numericSequencer) prepareSequenceIfNeeded(ctx context.Context, sess *se
 		n.updateSequence(ctx, n.getSequenceName(sess), recordCount)
 	}
 
+	if n.sequence != nil && n.shallPresetIdentities && n.sequenceValue == nil {
+		var seqValue int64
+		if recordCount == 1 {
+			seqValue = n.sequence.Value
+		} else {
+			seqValue = n.sequence.MinValue(int64(recordCount))
+		}
+
+		n.sequenceValue = &seqValue
+	}
+
+	n.detectedPreset = true // detectPreset must be here to avoid sending 0 in preset mode to db
+	n.muxPreset.Unlock()
 	return nil
 }
 

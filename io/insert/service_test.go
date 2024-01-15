@@ -240,10 +240,10 @@ Bar INTEGER
 
 outer:
 
-	//for _, testCase := range useCases[len(useCases)-1:] {
-	for _, testCase := range useCases {
+	for i, testCase := range useCases {
+		i = i
+		//fmt.Printf("TESTCASE %d: %s\n", i, testCase.description)
 
-		//ctx := context.Background()
 		var db *sql.DB
 
 		db, err := sql.Open(testCase.driver, testCase.dsn)

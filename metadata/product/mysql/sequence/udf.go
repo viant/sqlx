@@ -82,6 +82,10 @@ func (n *Udf) Handle(ctx context.Context, db *sql.DB, target interface{}, iopts 
 	if err != nil {
 		return false, err
 	}
+
+	if seq.MaxValue == 0 {
+		seq.MaxValue = MaxSeqValue
+	}
 	return false, nil
 }
 

@@ -7,6 +7,7 @@ import (
 	"github.com/viant/sqlx/metadata/product/mysql/sequence"
 	"github.com/viant/sqlx/metadata/registry"
 	"log"
+	"strconv"
 )
 
 const product = "MySQL"
@@ -96,10 +97,10 @@ FROM INFORMATION_SCHEMA.COLUMNS`,
   '$Args[1]' AS SEQUENCE_SCHEMA, 
   '$Args[2]'  AS SEQUENCE_NAME,
   0 AS SEQUENCE_VALUE,
-  COALESCE(@@SESSION.auto_increment_increment, 0) INCREMENT_BY,
+  COALESCE(@@SESSION.auto_increment_increment, 1) INCREMENT_BY,
   'int' AS DATA_TYPE,
   COALESCE(@@SESSION.auto_increment_offset, 0) START_VALUE,
-  9223372036854775807 AS MAX_VALUE
+  `+strconv.Itoa(sequence.MaxSeqValue)+` AS MAX_VALUE
 `,
 			mySQL5,
 			info.NewCriterion(info.Catalog, ""),
