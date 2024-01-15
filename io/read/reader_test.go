@@ -948,7 +948,7 @@ func BenchmarkStructMapper(b *testing.B) {
 			var err error
 			b.ReportAllocs()
 			for i := 0; i < b.N; i++ {
-				_, err = read.NewStructMapper(columns, fooPtrType, "", io.NewResolver().Resolve, read.DisableMapperCache(true))
+				_, err = read.NewStructMapper(columns, fooPtrType, io.NewResolver().Resolve, read.DisableMapperCache(true))
 			}
 			assert.Nil(b, err)
 		})
@@ -958,7 +958,7 @@ func BenchmarkStructMapper(b *testing.B) {
 			mapperCache := read.NewMapperCache(1024)
 			b.ReportAllocs()
 			for i := 0; i < b.N; i++ {
-				_, err = read.NewStructMapper(columns, fooPtrType, "", io.NewResolver().Resolve, mapperCache)
+				_, err = read.NewStructMapper(columns, fooPtrType, io.NewResolver().Resolve, mapperCache)
 			}
 			assert.Nil(b, err)
 		})

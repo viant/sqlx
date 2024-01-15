@@ -67,11 +67,12 @@ func (j *JSONEncodedValue) Scan(v interface{}) error {
 type ColumnMapper func(src interface{}, options ...option.Option) ([]Column, PlaceholderBinder, error)
 
 type columnMapperBuilder struct {
-	columns           []ColumnWithFields
-	identityColumns   []ColumnWithFields
-	setMarker         *option.SetMarker
-	columnRestriction option.ColumnRestriction
-	identityOnly      bool
+	columns              []ColumnWithFields
+	identityColumns      []ColumnWithFields
+	setMarker            *option.SetMarker
+	columnRestriction    option.ColumnRestriction
+	identityOnly         bool
+	structOrderedColumns []ColumnWithFields
 }
 
 // StructColumnMapper returns genertic column mapper
@@ -99,7 +100,14 @@ func StructColumnMapper(src interface{}, options ...option.Option) ([]Column, Pl
 		}
 	}
 
-	columns := builder.mergeColumns()
+	structOrder := option.Options(options).StructOrderedColumns()
+	var columns []ColumnWithFields
+	if structOrder {
+		columns = builder.structOrderedColumns
+	} else {
+		columns = builder.mergeColumns()
+	}
+
 	var getters []xunsafe.Getter
 	filedPos := map[string]int{}
 	transientFields := map[string]int{}
@@ -271,14 +279,18 @@ func (b *columnMapperBuilder) appendColumns(field reflect.StructField, caseForma
 	if tag.isIdentity(columnName) {
 		tag.PrimaryKey = true
 		tag.Column = columnName
-		b.identityColumns = append(b.identityColumns, NewColumnWithFields(columnName, tag.DataType, field.Type, holders, WithTag(tag)))
+		col := NewColumnWithFields(columnName, tag.DataType, field.Type, holders, WithTag(tag))
+		b.identityColumns = append(b.identityColumns, col)
+		b.structOrderedColumns = append(b.structOrderedColumns, col)
 		return nil
 	}
 	if b.identityOnly {
 		return nil
 	}
 	if b.columnRestriction.CanUse(columnName) {
-		b.columns = append(b.columns, NewColumnWithFields(columnName, tag.DataType, field.Type, holders, WithTag(tag)))
+		col := NewColumnWithFields(columnName, tag.DataType, field.Type, holders, WithTag(tag))
+		b.columns = append(b.columns, col)
+		b.structOrderedColumns = append(b.structOrderedColumns, col)
 	}
 	return nil
 }

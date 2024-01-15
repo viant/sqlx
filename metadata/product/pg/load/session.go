@@ -13,14 +13,14 @@ import (
 	"unsafe"
 )
 
-//Session represents Postgres load session
+// Session represents Postgres load session
 type Session struct {
 	*io.Transaction
 	dialect *info.Dialect
 	reader  goIo.Reader
 }
 
-//Exec inserts data to table using "Copy in"
+// Exec inserts data to table using "Copy in"
 func (s *Session) Exec(ctx context.Context, data interface{}, db *sql.DB, tableName string, options ...option.Option) (sql.Result, error) {
 	dataAccessor, size, err := io.Values(data)
 	if err != nil {
@@ -28,12 +28,12 @@ func (s *Session) Exec(ctx context.Context, data interface{}, db *sql.DB, tableN
 	}
 
 	actualStructType := io.EnsureDereference(dataAccessor(0))
-	columns, err := io.StructColumns(actualStructType, option.TagSqlx)
+	columns, err := io.StructColumns(actualStructType, io.TagSqlx, option.StructOrderedColumns(true))
 	if err != nil {
 		return nil, err
 	}
 
-	mapper, err := read.NewSQLStructMapper(columns, actualStructType, option.TagSqlx, columnResolver, options...)
+	mapper, err := read.NewSQLStructMapper(columns, actualStructType, columnResolver, options...)
 	if err != nil {
 		return nil, err
 	}
@@ -110,7 +110,7 @@ func (s *Session) end(err error) error {
 	return s.Transaction.Commit()
 }
 
-//NewSession returns new Postgres load session
+// NewSession returns new Postgres load session
 func NewSession(dialect *info.Dialect) io.Session {
 	return &Session{
 		dialect: dialect,

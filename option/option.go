@@ -17,6 +17,9 @@ type Identity string
 // IdentityOnly  represents identity (pk) only option
 type IdentityOnly bool
 
+// StructOrderedColumns is an option that represents the same column order as the struct field order
+type StructOrderedColumns bool
+
 // Option represents generic option
 type Option interface{}
 
@@ -84,6 +87,20 @@ func (o Options) Db() *sql.DB {
 		}
 	}
 	return nil
+}
+
+// StructOrderedColumns returns identity only option value or false
+func (o Options) StructOrderedColumns() bool {
+	if len(o) == 0 {
+		return false
+	}
+	for _, candidate := range o {
+		switch actual := candidate.(type) {
+		case StructOrderedColumns:
+			return bool(actual)
+		}
+	}
+	return false
 }
 
 // IdentityOnly returns identity only option value or false

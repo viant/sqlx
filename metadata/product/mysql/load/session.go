@@ -42,7 +42,7 @@ func (s *Session) Exec(ctx context.Context, data interface{}, db *sql.DB, tableN
 		return nil, err
 	}
 
-	columns, err := io.StructColumns(dataType, io.TagSqlx)
+	columns, err := io.StructColumns(dataType, io.TagSqlx, option.StructOrderedColumns(true))
 	if err != nil {
 		return nil, err
 	}

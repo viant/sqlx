@@ -1,22 +1,19 @@
-package load_test
+package load
 
 import (
 	"context"
 	"database/sql"
-	"fmt"
 	"github.com/stretchr/testify/assert"
 	"github.com/viant/assertly"
-	"github.com/viant/sqlx/io/load"
 	_ "github.com/viant/sqlx/metadata/product/mysql/load"
 	"os"
 	"testing"
 )
 
 func TestService_Exec(t *testing.T) {
-	//os.Setenv("TEST_MYSQL_DSN", "root:dev@tcp(127.0.0.1:3307)/ci_ads?parseTime=true")
-	dsn, shallSkip := getTestConfig(t)
-	if shallSkip {
-		return
+	dsn := os.Getenv("TEST_MYSQL_DSN")
+	if dsn == "" {
+		t.Skip("set TEST_MYSQL_DSN before running test")
 	}
 
 	type Config struct {
@@ -26,13 +23,17 @@ func TestService_Exec(t *testing.T) {
 
 	c := &Config{
 		Driver: "mysql",
-		DSN:    dsn, //"root:dev@tcp(127.0.0.1:3307)/ci_ads?parseTime=true",
+		DSN:    dsn,
 	}
 
 	type Foo struct {
-		//ID   int    `column:"ID" pk:"true" sqlx:"name=ID,primaryKey=true,generator=autoincrement"`
-		Name string `column:"NAME" sqlx:"name=NAME,nullifyempty"`
-		ID   int    `column:"ID" pk:"true" sqlx:"name=ID,primaryKey=true"`
+		ID   int    `sqlx:"name=ID,primaryKey=true"`
+		Name string `sqlx:"name=NAME,nullifyempty"`
+	}
+
+	type FooReverse struct {
+		Name string `sqlx:"name=NAME,nullifyemp"`
+		ID   int    `sqlx:"name=ID,primaryKey=true"`
 	}
 
 	var testCases = []struct {
@@ -42,40 +43,51 @@ func TestService_Exec(t *testing.T) {
 		expected    interface{}
 	}{
 		{
-			description: "basic test",
+			description: "ID as first field",
 			table:       "FOO",
 			records: []*Foo{
-				&Foo{ID: 1, Name: "A"},
+				{ID: 1, Name: "A"},
+				{ID: 2, Name: "B"},
 			},
 			expected: []*Foo{
-				&Foo{ID: 1, Name: "A"},
+				{ID: 1, Name: "A"},
+				{ID: 2, Name: "B"},
+			},
+		},
+		{
+			description: "ID as last field",
+			table:       "FOO",
+			records: []*FooReverse{
+				{Name: "A", ID: 1},
+				{Name: "B", ID: 2},
+			},
+			expected: []*Foo{
+				{Name: "A", ID: 1},
+				{Name: "B", ID: 2},
 			},
 		},
 	}
 
 	for _, testCase := range testCases {
-		/////
+
 		initSQL := []string{
 			"DROP TABLE IF EXISTS `" + testCase.table + "`",
 			"CREATE TABLE IF NOT EXISTS `" + testCase.table + "` (\n  `ID` int(11) NOT NULL,\n  `NAME` varchar(255) DEFAULT NULL,\n PRIMARY KEY (`ID`)\n) ENGINE=InnoDB DEFAULT CHARSET=latin1",
-			//"TRUNCATE TABLE " + testCase.table,
 		}
 
 		db, err := sql.Open(c.Driver, c.DSN)
 		assert.Nil(t, err, testCase.description)
 
 		for _, SQL := range initSQL {
-			//fmt.Println(SQL)
 			_, err := db.Exec(SQL)
 			assert.Nil(t, err, testCase.description)
 		}
 
-		loader, err := load.New(context.Background(), db, testCase.table)
+		loader, err := New(context.Background(), db, testCase.table)
 		assert.Nil(t, err, testCase.description)
 
-		count, err := loader.Exec(context.TODO(), testCase.records)
+		_, err = loader.Exec(context.TODO(), testCase.records)
 		assert.Nil(t, err, testCase.description)
-		fmt.Printf("loaded %v\n", count)
 
 		SQL := "SELECT * FROM " + testCase.table + " ORDER BY ID"
 		rows, err := db.QueryContext(context.TODO(), SQL)
@@ -89,28 +101,7 @@ func TestService_Exec(t *testing.T) {
 			actual = append(actual, &rule)
 		}
 
-		if !assertly.AssertValues(t, testCase.expected, actual) {
-			//fmt.Println("EXPECTED")
-			//toolbox.DumpIndent(testCase.srcRecords, true)
-			//fmt.Println("ACTUAL")
-			//toolbox.DumpIndent(actual, true)
-		}
-		if assertly.AssertValues(t, actual, testCase.expected) {
-			//fmt.Println("EXPECTED")
-			//toolbox.DumpIndent(testCase.srcRecords, true)
-			//fmt.Println("ACTUAL")
-			//toolbox.DumpIndent(actual, true)
-		}
-
-		/////
+		assertly.AssertValues(t, testCase.expected, actual)
+		assertly.AssertValues(t, actual, testCase.expected)
 	}
-}
-
-func getTestConfig(t *testing.T) (dsn string, shallSkip bool) {
-	dsn = os.Getenv("TEST_MYSQL_DSN")
-	if dsn == "" {
-		t.Skip("set TEST_MYSQL_DSN before running test")
-		return "", true
-	}
-	return dsn, false
 }
