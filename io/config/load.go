@@ -6,7 +6,7 @@ import (
 	"github.com/viant/sqlx/metadata/registry"
 )
 
-//LoadSession Returns new session for specified Dialect
-func LoadSession(dialect *info.Dialect) io.Session {
+// LoadSession Returns new session for specified Dialect
+func LoadSession(dialect *info.Dialect) io.LoadExecutor {
 	return registry.MatchLoadSession(dialect)
 }

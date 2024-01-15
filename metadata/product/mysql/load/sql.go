@@ -3,15 +3,24 @@ package load
 import (
 	"github.com/viant/sqlx/io"
 	"github.com/viant/sqlx/io/load/reader/csv"
+	"github.com/viant/sqlx/loption"
 	"strings"
 )
 
-//BuildSQL builds "LOAD DATA" statement
-func BuildSQL(config *csv.Config, readerID, tableName string, columns []io.Column) string {
+// BuildSQL builds "LOAD DATA" statement
+func BuildSQL(config *csv.Config, readerID, tableName string, columns []io.Column, options ...loption.Option) string {
+	opts := loption.NewOptions(options...)
+
 	sb := strings.Builder{}
 	sb.WriteString("LOAD DATA LOCAL INFILE 'Reader::")
 	sb.WriteString(readerID)
-	sb.WriteString("' INTO TABLE ")
+
+	if opts.GetWithUpsert() {
+		sb.WriteString("' REPLACE INTO TABLE ")
+	} else {
+		sb.WriteString("' INTO TABLE ")
+	}
+
 	sb.WriteString(tableName)
 	sb.WriteString(" FIELDS TERMINATED BY '")
 	sb.WriteString(config.FieldSeparator)

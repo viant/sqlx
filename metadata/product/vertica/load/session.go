@@ -6,6 +6,7 @@ import (
 	vcontext "github.com/vertica/vertica-sql-go"
 	"github.com/viant/sqlx/io"
 	"github.com/viant/sqlx/io/load/reader/csv"
+	"github.com/viant/sqlx/loption"
 	"github.com/viant/sqlx/metadata/info"
 	"github.com/viant/sqlx/option"
 )
@@ -29,14 +30,14 @@ type Session struct {
 }
 
 // NewSession returns new MySQL session
-func NewSession(dialect *info.Dialect) io.Session {
+func NewSession(dialect *info.Dialect) io.LoadExecutor {
 	return &Session{
 		dialect: dialect,
 	}
 }
 
 // Exec inserts given data to database using "COPY FROM STDIN "
-func (s *Session) Exec(ctx context.Context, data interface{}, db *sql.DB, tableName string, options ...option.Option) (sql.Result, error) {
+func (s *Session) Exec(ctx context.Context, data interface{}, db *sql.DB, tableName string, options ...loption.Option) (sql.Result, error) {
 	dataReader, dataType, err := csv.NewReader(data, verticaLoadConfig)
 	if err != nil {
 		return nil, err
@@ -81,9 +82,14 @@ func (s *Session) Exec(ctx context.Context, data interface{}, db *sql.DB, tableN
 	return result, err
 }
 
-func (s *Session) begin(ctx context.Context, db *sql.DB, options []option.Option) error {
+func (s *Session) begin(ctx context.Context, db *sql.DB, options []loption.Option) error {
 	var err error
-	s.Transaction, err = io.TransactionFor(ctx, s.dialect, db, options)
+	loadOpts := loption.NewOptions(options...)
+	var opts []option.Option
+	if tx := loadOpts.GetTransaction(); tx != nil {
+		opts = append(opts, tx)
+	}
+	s.Transaction, err = io.TransactionFor(ctx, s.dialect, db, opts)
 	if err != nil {
 		return err
 	}

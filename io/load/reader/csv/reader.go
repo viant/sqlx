@@ -135,6 +135,10 @@ func NewReader(any interface{}, config *Config, options ...interface{}) (*Reader
 		return nil, nil, err
 	}
 
+	if size == 0 {
+		return nil, nil, fmt.Errorf("sqlx io load reader csv newreader: unable to create reader - empty input data")
+	}
+
 	structType := io.EnsureDereference(valueAt(0))
 	stringifier, stringifierConfig := readOptions(options)
 	if stringifier == nil {

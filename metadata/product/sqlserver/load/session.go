@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	mssql "github.com/denisenkom/go-mssqldb"
 	"github.com/viant/sqlx/io"
+	"github.com/viant/sqlx/loption"
 	"github.com/viant/sqlx/metadata"
 	"github.com/viant/sqlx/metadata/info"
 	"github.com/viant/sqlx/metadata/sink"
@@ -20,7 +21,7 @@ type Session struct {
 }
 
 // NewSession returns new session
-func NewSession(dialect *info.Dialect) io.Session {
+func NewSession(dialect *info.Dialect) io.LoadExecutor {
 	return &Session{
 		dialect: dialect,
 	}
@@ -28,8 +29,9 @@ func NewSession(dialect *info.Dialect) io.Session {
 
 // Exec inserts given data to database using "LOAD DATA LOCAL INFILE"
 // note: local_infile=1 must be enabled on database
-func (s *Session) Exec(ctx context.Context, data interface{}, db *sql.DB, tableName string, options ...option.Option) (sql.Result, error) {
-	loadHint := option.Options(options).LoadHint()
+func (s *Session) Exec(ctx context.Context, data interface{}, db *sql.DB, tableName string, options ...loption.Option) (sql.Result, error) {
+	lopts := loption.NewOptions(options...)
+	loadHint := lopts.GetHint()
 
 	var bulkOptions = mssql.BulkOptions{}
 	if loadHint != "" {
@@ -139,9 +141,15 @@ func asArgs(xStruct *xunsafe.Struct, record interface{}) []interface{} {
 	return args
 }
 
-func (s *Session) begin(ctx context.Context, db *sql.DB, options []option.Option) error {
+func (s *Session) begin(ctx context.Context, db *sql.DB, options []loption.Option) error {
 	var err error
-	s.Transaction, err = io.TransactionFor(ctx, s.dialect, db, options)
+	loadOpts := loption.NewOptions(options...)
+	var opts []option.Option
+	if tx := loadOpts.GetTransaction(); tx != nil {
+		opts = append(opts, tx)
+	}
+
+	s.Transaction, err = io.TransactionFor(ctx, s.dialect, db, opts)
 	if err != nil {
 		return err
 	}

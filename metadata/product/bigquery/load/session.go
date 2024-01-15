@@ -11,8 +11,8 @@ import (
 	readerCsv "github.com/viant/sqlx/io/load/reader/csv"
 	readerJson "github.com/viant/sqlx/io/load/reader/json"
 	readerParquet "github.com/viant/sqlx/io/load/reader/parquet"
+	"github.com/viant/sqlx/loption"
 	"github.com/viant/sqlx/metadata/info"
-	"github.com/viant/sqlx/option"
 	"google.golang.org/api/bigquery/v2"
 	goIo "io"
 	"strings"
@@ -38,22 +38,23 @@ var loadConfig = &readerCsv.Config{
 	},
 }
 
-//Session represents BigQuery session
+// Session represents BigQuery session
 type Session struct {
 	dialect *info.Dialect
 }
 
-//NewSession returns new BigQuery session
-func NewSession(dialect *info.Dialect) io.Session {
+// NewSession returns new BigQuery session
+func NewSession(dialect *info.Dialect) io.LoadExecutor {
 	return &Session{
 		dialect: dialect,
 	}
 }
 
-//Exec loads given data to database
-func (s *Session) Exec(ctx context.Context, data interface{}, db *sql.DB, tableName string, options ...option.Option) (sql.Result, error) {
-	loadFormat := option.Options(options).LoadFormat()
-	loadHint := option.Options(options).LoadHint()
+// Exec loads given data to database
+func (s *Session) Exec(ctx context.Context, data interface{}, db *sql.DB, tableName string, options ...loption.Option) (sql.Result, error) {
+	opts := loption.NewOptions(options...)
+	loadFormat := opts.GetFormat()
+	loadHint := opts.GetHint()
 
 	if err := s.normalizeLoadConfig(loadHint, loadFormat); err != nil {
 		return nil, err

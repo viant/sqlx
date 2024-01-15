@@ -1,15 +1,15 @@
-package load
+package merge
 
 import (
 	"context"
 	"database/sql"
 	"github.com/viant/sqlx/io/config"
-	"github.com/viant/sqlx/loption"
 	"github.com/viant/sqlx/metadata/info"
 	"github.com/viant/sqlx/metadata/sink"
+	"github.com/viant/sqlx/moption"
 )
 
-// Service represents service used to
+// Service represents merge service
 type Service struct {
 	dialect   *info.Dialect
 	tableName string
@@ -18,34 +18,31 @@ type Service struct {
 }
 
 // New creates instance of Service
-func New(ctx context.Context, db *sql.DB, tableName string) (*Service, error) {
+func New(ctx context.Context, db *sql.DB, table string) (*Service, error) {
 	dialect, err := config.Dialect(ctx, db)
 	if err != nil {
 		return nil, err
 	}
 
 	return &Service{
-		tableName: tableName,
+		tableName: table,
 		db:        db,
 		dialect:   dialect,
 	}, nil
-
 }
 
-// Exec executes load statement specific for database
-func (s *Service) Exec(ctx context.Context, any interface{}, options ...loption.Option) (int, error) {
+// Exec performs database-specific merge operations
+func (s *Service) Exec(ctx context.Context, any interface{}, mConfig info.MergeConfig, options ...moption.Option) (info.MergeResult, error) {
 	dialect, err := s.ensureDialect(ctx)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
-	session := config.LoadSession(dialect)
-	exec, err := session.Exec(ctx, any, s.db, s.tableName, options...)
+	executor, err := config.MergeExecutor(dialect, mConfig)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 
-	affected, err := exec.RowsAffected()
-	return int(affected), err
+	return executor.Exec(ctx, any, s.db, s.tableName, options...)
 }
 
 func (s *Service) ensureDialect(ctx context.Context) (*info.Dialect, error) {

@@ -1,6 +1,7 @@
 package registry
 
 import (
+	"fmt"
 	"github.com/viant/sqlx/io"
 	"github.com/viant/sqlx/metadata/database"
 	"github.com/viant/sqlx/metadata/info"
@@ -13,40 +14,56 @@ var _registry = &registry{
 	queries:  make(map[string][]info.Queries),
 	products: make(map[string]*database.Product),
 	dialects: make(map[string]info.Dialects),
-	loads:    make(map[string]io.SessionResolver),
+	loads:    make(map[string]io.LoadExecutorResolver),
+	merges:   make(map[string]io.MergeExecutorResolver),
 }
 
-//Register register query info
+// Register register query info
 func Register(queries ...*info.Query) error {
 	return _registry.Register(queries...)
 }
 
-//RegisterLoad register session provider
-func RegisterLoad(load io.SessionResolver, productName string) {
+// RegisterLoad register session provider
+func RegisterLoad(load io.LoadExecutorResolver, productName string) {
 	_registry.RegisterLoad(load, productName)
 }
 
-//MatchLoadSession returns Session for Dialect
-func MatchLoadSession(dialect *info.Dialect) io.Session {
+// MatchLoadSession returns LoadExecutor for Dialect
+func MatchLoadSession(dialect *info.Dialect) io.LoadExecutor {
 	return _registry.loads[dialect.Product.Name](dialect)
 }
 
-//RegisterDialect register dialect
+// RegisterMergeExecutorResolver registers merge executor resolver
+func RegisterMergeExecutorResolver(merge io.MergeExecutorResolver, productName string) {
+	_registry.RegisterMerge(merge, productName)
+}
+
+// LookupMergeExecutor returns merge executor for given dialect and config
+func LookupMergeExecutor(dialect *info.Dialect, config info.MergeConfig) (io.MergeExecutor, error) {
+	var resolver io.MergeExecutorResolver
+	var ok bool
+	if resolver, ok = _registry.merges[dialect.Product.Name]; !ok {
+		return nil, fmt.Errorf("requested merge executor doesn't exist in registry")
+	}
+	return resolver(dialect, config)
+}
+
+// RegisterDialect register dialect
 func RegisterDialect(dialect *info.Dialect) {
 	_registry.RegisterDialect(dialect)
 }
 
-//Lookup lookups queries
+// Lookup lookups queries
 func Lookup(product string, kind info.Kind) info.Queries {
 	return _registry.Lookup(product, kind)
 }
 
-//Products access products registry
+// Products access products registry
 func Products() map[string]*database.Product {
 	return _registry.products
 }
 
-//LookupDialect lookups dialect
+// LookupDialect lookups dialect
 func LookupDialect(product *database.Product) *info.Dialect {
 	return _registry.LookupDialect(product)
 }
@@ -56,7 +73,8 @@ type registry struct {
 	queries  map[string][]info.Queries
 	products map[string]*database.Product
 	dialects map[string]info.Dialects
-	loads    map[string]io.SessionResolver
+	loads    map[string]io.LoadExecutorResolver
+	merges   map[string]io.MergeExecutorResolver
 }
 
 func (r *registry) LookupDialect(product *database.Product) *info.Dialect {
@@ -137,6 +155,10 @@ func (r *registry) Register(queries ...*info.Query) error {
 	return nil
 }
 
-func (r *registry) RegisterLoad(load io.SessionResolver, product string) {
+func (r *registry) RegisterLoad(load io.LoadExecutorResolver, product string) {
 	r.loads[product] = load
+}
+
+func (r *registry) RegisterMerge(merge io.MergeExecutorResolver, product string) {
+	r.merges[product] = merge
 }

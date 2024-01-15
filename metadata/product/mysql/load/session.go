@@ -7,6 +7,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/viant/sqlx/io"
 	"github.com/viant/sqlx/io/load/reader/csv"
+	"github.com/viant/sqlx/loption"
 	"github.com/viant/sqlx/metadata/info"
 	"github.com/viant/sqlx/option"
 	goIo "io"
@@ -25,10 +26,11 @@ type Session struct {
 	*io.Transaction
 	dialect *info.Dialect
 	columns io.Columns
+	loption.Options
 }
 
 // NewSession returns new MySQL session
-func NewSession(dialect *info.Dialect) io.Session {
+func NewSession(dialect *info.Dialect) io.LoadExecutor {
 	return &Session{
 		dialect: dialect,
 	}
@@ -36,7 +38,7 @@ func NewSession(dialect *info.Dialect) io.Session {
 
 // Exec inserts given data to database using "LOAD DATA LOCAL INFILE"
 // note: local_infile=1 must be enabled on database
-func (s *Session) Exec(ctx context.Context, data interface{}, db *sql.DB, tableName string, options ...option.Option) (sql.Result, error) {
+func (s *Session) Exec(ctx context.Context, data interface{}, db *sql.DB, tableName string, options ...loption.Option) (sql.Result, error) {
 	dataReader, dataType, err := csv.NewReader(data, mysqlLoadConfig)
 	if err != nil {
 		return nil, err
@@ -58,7 +60,7 @@ func (s *Session) Exec(ctx context.Context, data interface{}, db *sql.DB, tableN
 		return nil, err
 	}
 
-	SQL := BuildSQL(mysqlLoadConfig, readerID, tableName, columns)
+	SQL := BuildSQL(mysqlLoadConfig, readerID, tableName, columns, options...)
 
 	result := &io.QueryResult{}
 	if s.Transaction != nil {
@@ -82,9 +84,15 @@ func (s *Session) Exec(ctx context.Context, data interface{}, db *sql.DB, tableN
 	return result, err
 }
 
-func (s *Session) begin(ctx context.Context, db *sql.DB, options []option.Option) error {
+func (s *Session) begin(ctx context.Context, db *sql.DB, options []loption.Option) error {
 	var err error
-	s.Transaction, err = io.TransactionFor(ctx, s.dialect, db, options)
+	loadOpts := loption.NewOptions(options...)
+	var opts []option.Option
+	if tx := loadOpts.GetTransaction(); tx != nil {
+		opts = append(opts, tx)
+	}
+
+	s.Transaction, err = io.TransactionFor(ctx, s.dialect, db, opts)
 	if err != nil {
 		return err
 	}
@@ -93,7 +101,7 @@ func (s *Session) begin(ctx context.Context, db *sql.DB, options []option.Option
 }
 
 func (s *Session) end(err error) error {
-	if s.Tx == nil {
+	if s.Transaction == nil || s.Tx == nil {
 		return err
 	}
 

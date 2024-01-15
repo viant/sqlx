@@ -6,6 +6,7 @@ import (
 	"github.com/lib/pq"
 	"github.com/viant/sqlx/io"
 	"github.com/viant/sqlx/io/read"
+	"github.com/viant/sqlx/loption"
 	"github.com/viant/sqlx/metadata/info"
 	"github.com/viant/sqlx/option"
 	goIo "io"
@@ -21,7 +22,7 @@ type Session struct {
 }
 
 // Exec inserts data to table using "Copy in"
-func (s *Session) Exec(ctx context.Context, data interface{}, db *sql.DB, tableName string, options ...option.Option) (sql.Result, error) {
+func (s *Session) Exec(ctx context.Context, data interface{}, db *sql.DB, tableName string, options ...loption.Option) (sql.Result, error) {
 	dataAccessor, size, err := io.Values(data)
 	if err != nil {
 		return nil, err
@@ -33,7 +34,10 @@ func (s *Session) Exec(ctx context.Context, data interface{}, db *sql.DB, tableN
 		return nil, err
 	}
 
-	mapper, err := read.NewSQLStructMapper(columns, actualStructType, columnResolver, options...)
+	loadOpts := loption.NewOptions(options...)
+	var opts []option.Option = loadOpts.GetCommonOptions()
+
+	mapper, err := read.NewSQLStructMapper(columns, actualStructType, columnResolver, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -84,8 +88,14 @@ func (s *Session) mapColumnsToLowerCasedNames(columns []io.Column) []string {
 	return names
 }
 
-func (s *Session) begin(ctx context.Context, db *sql.DB, options []option.Option) error {
-	if err := s.ensureTransaction(ctx, options, db); err != nil {
+func (s *Session) begin(ctx context.Context, db *sql.DB, options []loption.Option) error {
+	loadOpts := loption.NewOptions(options...)
+	var opts []option.Option
+	if tx := loadOpts.GetTransaction(); tx != nil {
+		opts = append(opts, option.Option(tx))
+	}
+
+	if err := s.ensureTransaction(ctx, opts, db); err != nil {
 		return err
 	}
 
@@ -111,7 +121,7 @@ func (s *Session) end(err error) error {
 }
 
 // NewSession returns new Postgres load session
-func NewSession(dialect *info.Dialect) io.Session {
+func NewSession(dialect *info.Dialect) io.LoadExecutor {
 	return &Session{
 		dialect: dialect,
 	}
