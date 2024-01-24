@@ -100,7 +100,7 @@ func ParseType(columnType string) (reflect.Type, bool) {
 		return xreflect.BoolType, true
 	case "bit", "bitbool":
 		return reflect.TypeOf(types.BitBool(true)), true
-	case "string", "varchar", "char", "text", "longtext", "longblob", "mediumblob", "mediumtext", "blob", "tinytext":
+	case "string", "varbinary", "varchar", "char", "text", "longtext", "longblob", "mediumblob", "mediumtext", "blob", "tinytext":
 		return reflect.TypeOf(""), true
 	case "date", "time", "timestamp", "datetime":
 		return xreflect.TimeType, true
