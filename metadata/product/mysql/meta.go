@@ -91,13 +91,13 @@ FROM INFORMATION_SCHEMA.COLUMNS`,
 			info.NewCriterion(info.Schema, "TABLE_SCHEMA"),
 			info.NewCriterion(info.Table, "TABLE_NAME"),
 		),
-
+		// please leave 0 values inside coalesce statements
 		info.NewQuery(info.KindSequences, `SELECT 
   '' SEQUENCE_CATALOG,
   '$Args[1]' AS SEQUENCE_SCHEMA, 
   '$Args[2]'  AS SEQUENCE_NAME,
   0 AS SEQUENCE_VALUE,
-  COALESCE(@@SESSION.auto_increment_increment, 1) INCREMENT_BY,
+  COALESCE(@@SESSION.auto_increment_increment, 0) INCREMENT_BY,
   'int' AS DATA_TYPE,
   COALESCE(@@SESSION.auto_increment_offset, 0) START_VALUE,
   `+strconv.Itoa(sequence.MaxSeqValue)+` AS MAX_VALUE

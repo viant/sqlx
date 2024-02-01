@@ -79,9 +79,7 @@ func (n *numericSequencer) nextSequence(ctx context.Context, sess *session, reco
 	options = append(options, option.NewArgs(sess.info.Catalog, sess.info.Schema, sequenceName), option.RecordCount(recordCount))
 	meta := metadata.New()
 
-	n.sequence = &sink.Sequence{
-		IncrementBy: 1,
-	}
+	n.sequence = &sink.Sequence{}
 
 	err := meta.Info(ctx, n.session.db, info.KindSequenceNextValue, n.sequence, options...)
 	if err != nil {
@@ -101,14 +99,18 @@ func (n *numericSequencer) transientDMLBuilder(sess *session, record interface{}
 		copy(values, batchRecordBuffer[0:len(sess.columns)-1]) // don't copy ID pointer (last position in slice)
 
 		oldValue := sequence.Value
-		passedValue := sequence.Value
+		var passedValue int64
 
-		if recordCount > 1 {
+		switch recordCount {
+		case 1: // TODO not proved that miss some edge cases, if does then only default case should be used
+			passedValue = sequence.Value
+			sequence.Value += sequence.IncrementBy
+		default:
 			sequence.Value = sequence.NextValue(recordCount)
 			if diff := sequence.Value - oldValue; diff < recordCount {
 				return nil, fmt.Errorf("new next value for sequenceName %d is too small, expected >= %d but had ", sequence.Value, oldValue+recordCount)
 			}
-			passedValue = sequence.Value - sequence.IncrementBy // decreasing is required for transient insert approach //TODO confirm this should be decrement by increment by
+			passedValue = sequence.Value - sequence.IncrementBy // decreasing is required for transient insert approach
 		}
 		values[len(sess.columns)-1] = &passedValue
 		resetAutoincrementSQL := &sqlx.SQL{
@@ -175,16 +177,17 @@ func (n *numericSequencer) prepareSequenceIfNeeded(ctx context.Context, sess *se
 			n.muxPreset.Unlock()
 			return err
 		}
-
-	} else {
-		n.updateSequence(ctx, n.getSequenceName(sess), recordCount)
+		//} else { // n.sequence should be nil (it's not in use), and it's important in afterFlush func
+		//	n.updateSequence(ctx, n.getSequenceName(sess), recordCount)
 	}
 
 	if n.sequence != nil && n.shallPresetIdentities && n.sequenceValue == nil {
 		var seqValue int64
-		if recordCount == 1 {
-			seqValue = n.sequence.Value
-		} else {
+
+		switch recordCount {
+		case 1: // TODO not proved that miss some edge cases, if does then only default case should be used
+			seqValue = n.sequence.Value - n.sequence.IncrementBy
+		default:
 			seqValue = n.sequence.MinValue(int64(recordCount))
 		}
 
@@ -203,7 +206,10 @@ func (n *numericSequencer) afterFlush(ctx context.Context, values []interface{},
 
 	if isZero(identities[0]) {
 		if rowsAffected == 1 {
-			assign(identities[0], lastInsertedID)
+			err := assign(identities[0], lastInsertedID)
+			if err != nil {
+				return 0, err
+			}
 		}
 		return lastInsertedID, nil
 	}

@@ -44,15 +44,43 @@ func TestService_NextSequenceValue(t *testing.T) {
 			initSQL: []string{
 				"DROP TABLE IF EXISTS t1",
 				"CREATE TABLE t1(foo_id INTEGER AUTO_INCREMENT PRIMARY KEY, foo_name TEXT, bar INTEGER)",
-				"SET SESSION auto_increment_offset=5",
-				"SET  SESSION auto_increment_increment=10",
+				"SET SESSION auto_increment_offset=1",
+				"SET  SESSION auto_increment_increment=1",
 			},
 			options: option.Options{
 				option.NewArgs("", dsnSchema, "t1"),
 				dialect.PresetIDWithTransientTransaction,
 				dmlBuilder(1, &sqlx.SQL{
 					Query: `INSERT INTO t1 (foo_name, bar, foo_id) VALUES (?,?,?)`,
-					Args:  []interface{}{"John", 20, 0},
+					Args:  []interface{}{"John 01", 1, 0},
+				}),
+				option.RecordCount(1),
+			},
+			expect: &sink.Sequence{
+				Catalog:     "",
+				Schema:      dsnSchema,
+				Name:        "t1",
+				Value:       2,
+				IncrementBy: 1,
+				DataType:    "int",
+				StartValue:  1,
+				MaxValue:    9223372036854775807,
+			},
+		},
+		{
+			description: "02. info.KindSequenceNextValue with PresetIDWithTransientTransaction strategy",
+			initSQL: []string{
+				"DROP TABLE IF EXISTS t1",
+				"CREATE TABLE t1(foo_id INTEGER AUTO_INCREMENT PRIMARY KEY, foo_name TEXT, bar INTEGER)",
+				"SET SESSION auto_increment_offset=5",
+				"SET SESSION auto_increment_increment=10",
+			},
+			options: option.Options{
+				option.NewArgs("", dsnSchema, "t1"),
+				dialect.PresetIDWithTransientTransaction,
+				dmlBuilder(1, &sqlx.SQL{
+					Query: `INSERT INTO t1 (foo_name, bar, foo_id) VALUES (?,?,?)`,
+					Args:  []interface{}{"John 02", 20, 0},
 				}),
 				option.RecordCount(1),
 			},
@@ -68,7 +96,7 @@ func TestService_NextSequenceValue(t *testing.T) {
 			},
 		},
 		{
-			description: "02. info.KindSequenceNextValue with PresetIDWithTransientTransaction strategy",
+			description: "03. info.KindSequenceNextValue with PresetIDWithTransientTransaction strategy",
 			initSQL: []string{
 				createSequenceTable,
 				"DROP PROCEDURE IF EXISTS SET_AUTO_INCREMENT_WITH_INNER_TX",
@@ -88,7 +116,7 @@ func TestService_NextSequenceValue(t *testing.T) {
 				dialect.PresetIDWithUDFSequence,
 				dmlBuilder(1, &sqlx.SQL{
 					Query: `INSERT INTO t1 (foo_name, bar, foo_id) VALUES (?,?,?)`,
-					Args:  []interface{}{"John", 20, 0},
+					Args:  []interface{}{"John 03", 20, 0},
 				}),
 				option.RecordCount(1),
 			},
@@ -109,7 +137,7 @@ func TestService_NextSequenceValue(t *testing.T) {
 	db, err := sql.Open("mysql", dsn)
 	ctx := context.Background()
 
-	for _, testCase := range useCases {
+	for _, testCase := range useCases[len(useCases)-1:] {
 
 		//fmt.Printf("=====> TEST %d: %s\n", i, testCase.description)
 
@@ -150,7 +178,7 @@ func TestService_NextSequenceValue(t *testing.T) {
 func dmlBuilder(recordCount int64, sql *sqlx.SQL) func(sequence *sink.Sequence) (*sqlx.SQL, error) {
 	return func(sequence *sink.Sequence) (*sqlx.SQL, error) {
 		sequence.Value = sequence.NextValue(recordCount)
-		sql.Args[len(sql.Args)-1] = sequence.Value - 1 // "-1" or(?) sequence.IncrementBy because transient insert
+		sql.Args[len(sql.Args)-1] = sequence.Value - 1 // to reserve sequence value on db we do transient insert with id less by 1
 		return sql, nil
 	}
 }

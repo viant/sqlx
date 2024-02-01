@@ -66,18 +66,14 @@ func updateSequence(ctx context.Context, db *sql.DB, sequence *sink.Sequence, tx
 			sequence.DataType = colType
 		}
 	}
-	err := ensureIncrements(ctx, db, sequence, tx)
+	err := ensureIncrementsAndValues(ctx, db, sequence, tx)
 	if err != nil {
 		return err
-	}
-
-	if sequence.MaxValue == 0 {
-		sequence.MaxValue = MaxSeqValue
 	}
 	return nil
 }
 
-func ensureIncrements(ctx context.Context, db *sql.DB, sequence *sink.Sequence, tx *sql.Tx) error {
+func ensureIncrementsAndValues(ctx context.Context, db *sql.DB, sequence *sink.Sequence, tx *sql.Tx) error {
 	if sequence.IncrementBy == 0 || sequence.StartValue == 0 {
 		offset := int64(0)
 		if err := runQuery(ctx, db, "SELECT @@SESSION.auto_increment_increment, @@SESSION.auto_increment_offset", []interface{}{&sequence.IncrementBy, &offset}, tx); err != nil {
@@ -89,6 +85,14 @@ func ensureIncrements(ctx context.Context, db *sql.DB, sequence *sink.Sequence, 
 		if sequence.StartValue == 0 {
 			sequence.StartValue = offset
 		}
+	}
+
+	if sequence.Value == 0 {
+		sequence.Value = sequence.StartValue
+	}
+
+	if sequence.MaxValue == 0 {
+		sequence.MaxValue = MaxSeqValue
 	}
 	return nil
 }

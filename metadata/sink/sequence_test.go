@@ -17,6 +17,16 @@ func TestSequence_NextValue(t *testing.T) {
 		expect      int64
 	}{
 		{
+			description: "1 node active cluster, with local node 1 offset, seqValue: 1, recordCnt: 3",
+			records:     3,
+			seq: &Sequence{
+				Value:       1,
+				IncrementBy: 1,
+				StartValue:  1, //1 -> 2 -> 3 -> 4
+			},
+			expect: 4,
+		},
+		{
 			description: "2 nodes active cluster, with local node 3 offset, seqValue: 1, recordCnt: 1",
 			records:     1,
 			seq: &Sequence{
@@ -103,6 +113,26 @@ func TestSequence_MinValue(t *testing.T) {
 		expect      int64
 	}{
 		{
+			description: "1 node active cluster, with local node 1 offset, seqValue: 4, recordCnt: 3",
+			records:     3,
+			seq: &Sequence{
+				Value:       4,
+				IncrementBy: 1,
+				StartValue:  1, //4 -> 3 -> 2 -> 1
+			},
+			expect: 1,
+		},
+		{
+			description: "10 nodes active cluster, with local node 5 offset, seqValue: 35, recordCnt: 1",
+			records:     1,
+			seq: &Sequence{
+				Value:       35,
+				IncrementBy: 10,
+				StartValue:  5,
+			},
+			expect: 25, // 35 -> 25
+		},
+		{
 			description: "10 nodes active cluster, with local node 5 offset, seqValue: 35, recordCnt: 2",
 			records:     2,
 			seq: &Sequence{
@@ -121,6 +151,16 @@ func TestSequence_MinValue(t *testing.T) {
 				StartValue:  15, //15
 			},
 			expect: 15,
+		},
+		{
+			description: "10 nodes active cluster, with local node 5 offset, seqValue: 3, recordCnt: 1",
+			records:     1,
+			seq: &Sequence{
+				Value:       3,
+				IncrementBy: 10,
+				StartValue:  5, //5
+			},
+			expect: 5,
 		},
 		{
 			description: "10 nodes active cluster, with local node 5 offset, seqValue: 3, recordCnt: 2",
