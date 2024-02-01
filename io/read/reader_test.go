@@ -247,7 +247,7 @@ func TestReader_ReadAll(t *testing.T) {
 			expectResolved: `["101","102"]`,
 		},
 		{
-			description: "Cache",
+			description: "Cache - requires aerospike",
 			driver:      "sqlite3",
 			dsn:         "/tmp/sqllite.db",
 			initSQL: []string{
@@ -349,7 +349,7 @@ func TestReader_ReadAll(t *testing.T) {
 			expect: `[{"Val":1,"Id":0,"Name":"John","Price":101},{"Val":2,"Id":0,"Name":"Bruce","Price":102}]`,
 		},
 		{
-			description: "Aerospike cache write",
+			description: "Aerospike cache write (run twice?)",
 			driver:      "sqlite3",
 			dsn:         "/tmp/sqllite.db",
 			initSQL: []string{
