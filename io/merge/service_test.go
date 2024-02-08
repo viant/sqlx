@@ -11,13 +11,17 @@ import (
 	"github.com/viant/sqlx/io/merge"
 	"github.com/viant/sqlx/loption"
 	"github.com/viant/sqlx/metadata/info"
+	"github.com/viant/sqlx/metadata/info/dialect"
 	_ "github.com/viant/sqlx/metadata/product/mysql/load"
 	_ "github.com/viant/sqlx/metadata/product/mysql/merge"
 	mconfig "github.com/viant/sqlx/metadata/product/mysql/merge/config"
 	"github.com/viant/sqlx/moption"
+	"github.com/viant/sqlx/option"
+	"github.com/viant/toolbox"
 	"io/ioutil"
 	"log"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -54,16 +58,49 @@ func TestService_Exec(t *testing.T) {
 	}
 
 	var testCases = []struct {
-		description  string
-		table        string
-		options      []moption.Option
-		testDataPath string
-		dstRecords   interface{}
-		srcRecords   interface{}
-		expected     interface{}
-		config       info.MergeConfig
-		hasError     bool
+		description       string
+		table             string
+		options           []moption.Option
+		testDataPath      string
+		dstRecords        interface{}
+		srcRecords        interface{}
+		expected          interface{}
+		config            info.MergeConfig
+		hasError          bool
+		ignoreIdAssertion bool
 	}{
+		{
+			description: "merger ins_del strategy, ins/upd/del:use_insert_batch/none/use_transient, all loaders with upsert - matchKey without id, PresetIDWithTransientTransaction",
+			table:       "CI_TARGETING_RULE_TEST",
+			options:     []moption.Option{},
+			dstRecords: []*Rule{
+				{ID: 2, Tag: "CI_CAMPAIGN:1", Entity: "CI_CAMPAIGN", EntityID: 1, FeatureType: "adsize", FeatureGroup: 1, Operator: "=", FeatureValue: "1"},
+				{ID: 1, Tag: "CI_CREATIVE:2", Entity: "CI_CREATIVE", EntityID: 2, FeatureType: "adsize", FeatureGroup: 2, Operator: "=", FeatureValue: "2"},
+				{ID: 3, Tag: "CI_CAMPAIGN:303", Entity: "CI_CAMPAIGN", EntityID: 303, FeatureType: "adsize", FeatureGroup: 303, Operator: "=", FeatureValue: "303"},
+			},
+			srcRecords: []*Rule{
+				{ID: 0, Tag: "CI_CREATIVE:2", Entity: "CI_CREATIVE", EntityID: 2, FeatureType: "adsize", FeatureGroup: 2, Operator: "=", FeatureValue: "2"},
+				{ID: 0, Tag: "CI_CAMPAIGN:304", Entity: "CI_CAMPAIGN", EntityID: 304, FeatureType: "adsize", FeatureGroup: 304, Operator: "=", FeatureValue: "304"},
+				{ID: 0, Tag: "CI_CAMPAIGN:4", Entity: "CI_CAMPAIGN", EntityID: 4, FeatureType: "adsize", FeatureGroup: 4, Operator: "=", FeatureValue: "4"},
+				{ID: 0, Tag: "CI_CAMPAIGN:4", Entity: "CI_CAMPAIGN", EntityID: 6, FeatureType: "adsize", FeatureGroup: 6, Operator: "=", FeatureValue: "6"},
+			},
+			expected: []*Rule{
+				{ID: 1, Tag: "CI_CREATIVE:2", Entity: "CI_CREATIVE", EntityID: 2, FeatureType: "adsize", FeatureGroup: 2, Operator: "=", FeatureValue: "2"},
+				{ID: 4, Tag: "CI_CAMPAIGN:304", Entity: "CI_CAMPAIGN", EntityID: 304, FeatureType: "adsize", FeatureGroup: 304, Operator: "=", FeatureValue: "304"},
+				{ID: 5, Tag: "CI_CAMPAIGN:4", Entity: "CI_CAMPAIGN", EntityID: 4, FeatureType: "adsize", FeatureGroup: 4, Operator: "=", FeatureValue: "4"},
+				{ID: 6, Tag: "CI_CAMPAIGN:4", Entity: "CI_CAMPAIGN", EntityID: 6, FeatureType: "adsize", FeatureGroup: 6, Operator: "=", FeatureValue: "6"},
+			},
+			ignoreIdAssertion: true,
+			config: getInfoConfig(
+				info.MergeStrategyInsDel,
+				true, true, false,
+				false, true, false,
+				[]loption.Option{loption.WithUpsert()}, nil, []loption.Option{loption.WithUpsert()},
+				info.MergeInsStrategyInsBatch, "", info.MergeDelStrategyWithTransient,
+				[]loption.Option{},
+				[]option.Option{option.BatchSize(2), dialect.PresetIDWithTransientTransaction},
+				[]info.MergeSubOperationType{info.MergeSubOperationTypeDelete, info.MergeSubOperationTypeInsert}),
+		},
 		{
 			description: "base ins strategy, empty transient ins/del loader options",
 			table:       "CI_TARGETING_RULE_TEST",
@@ -81,14 +118,16 @@ func TestService_Exec(t *testing.T) {
 				{ID: 3, Tag: "CI_CAMPAIGN:3", Entity: "CI_CAMPAIGN", EntityID: 3, FeatureType: "adsize", FeatureGroup: 3, Operator: "=", FeatureValue: "3"},
 			},
 			config: getInfoConfig(
-				info.PresetMergeStrategyBaseInsDel,
+				info.MergeStrategyInsDel,
 				false, false, false,
 				false, true, false,
 				[]loption.Option{},
 				[]loption.Option{},
 				[]loption.Option{},
-				info.PresetMergeInsStrategyBase, info.PresetMergeUpdStrategyBase, info.PresetMergeDelStrategyBase,
-				[]loption.Option{}),
+				info.MergeInsStrategyWithTransient, info.MergeUpdStrategyWithTransient, info.MergeDelStrategyWithTransient,
+				[]loption.Option{},
+				[]option.Option{},
+				nil),
 		},
 		{
 			description: "base ins strategy, empty transient ins/del loader options - repeated src records - error - rollback",
@@ -109,18 +148,20 @@ func TestService_Exec(t *testing.T) {
 				{ID: 2, Tag: "CI_CREATIVE:2", Entity: "CI_CREATIVE", EntityID: 2, FeatureType: "adsize", FeatureGroup: 2, Operator: "=", FeatureValue: "2"},
 			},
 			config: getInfoConfig(
-				info.PresetMergeStrategyBaseInsDel,
+				info.MergeStrategyInsDel,
 				false, false, false,
 				false, true, false,
 				[]loption.Option{},
 				[]loption.Option{},
 				[]loption.Option{},
-				info.PresetMergeInsStrategyBase, info.PresetMergeUpdStrategyBase, info.PresetMergeDelStrategyBase,
-				[]loption.Option{}),
+				info.MergeInsStrategyWithTransient, info.MergeUpdStrategyWithTransient, info.MergeDelStrategyWithTransient,
+				[]loption.Option{},
+				[]option.Option{},
+				nil),
 			hasError: true,
 		},
 		{
-			description: "base ins strategy, empty transient ins/del loader options - too big id - no error - no rollback - corrupted data",
+			description: "base ins strategy, empty transient ins/del loader no options - too big id - no error - no rollback - corrupted data",
 			table:       "CI_TARGETING_RULE_TEST",
 			options:     []moption.Option{},
 			dstRecords: []*Rule{
@@ -136,14 +177,16 @@ func TestService_Exec(t *testing.T) {
 				{ID: 2147483647, Tag: "CI_CAMPAIGN:3", Entity: "CI_CAMPAIGN", EntityID: 3, FeatureType: "adsize", FeatureGroup: 3, Operator: "=", FeatureValue: "3"},
 			},
 			config: getInfoConfig(
-				info.PresetMergeStrategyBaseInsDel,
+				info.MergeStrategyInsDel,
 				false, false, false,
 				false, true, false,
 				[]loption.Option{},
 				[]loption.Option{},
 				[]loption.Option{},
-				info.PresetMergeInsStrategyBase, info.PresetMergeUpdStrategyBase, info.PresetMergeDelStrategyBase,
-				[]loption.Option{}),
+				info.MergeInsStrategyWithTransient, info.MergeUpdStrategyWithTransient, info.MergeDelStrategyWithTransient,
+				[]loption.Option{},
+				[]option.Option{},
+				nil),
 			hasError: false,
 		},
 		{
@@ -163,14 +206,16 @@ func TestService_Exec(t *testing.T) {
 				{ID: 3, Tag: "CI_CAMPAIGN:3", Entity: "CI_CAMPAIGN", EntityID: 3, FeatureType: "adsize", FeatureGroup: 3, Operator: "=", FeatureValue: "3"},
 			},
 			config: getInfoConfig(
-				info.PresetMergeStrategyBaseInsDel,
+				info.MergeStrategyInsDel,
 				false, false, false,
 				false, true, false,
 				[]loption.Option{loption.WithUpsert()},
 				[]loption.Option{loption.WithUpsert()},
 				[]loption.Option{loption.WithUpsert()},
-				info.PresetMergeInsStrategyBase, info.PresetMergeUpdStrategyBase, info.PresetMergeDelStrategyBase,
-				[]loption.Option{}),
+				info.MergeInsStrategyWithTransient, info.MergeUpdStrategyWithTransient, info.MergeDelStrategyWithTransient,
+				[]loption.Option{},
+				[]option.Option{},
+				nil),
 		},
 		//TODO srcRecords problem with maintaining order later (after to map conversion), result can be different every time
 		//{
@@ -192,21 +237,25 @@ func TestService_Exec(t *testing.T) {
 		//		{ID: 3, Tag: "CI_CAMPAIGN:3b", Entity: "CI_CAMPAIGN", EntityID: 3, FeatureType: "adsize", FeatureGroup: 3, Operator: "=", FeatureValue: "3b"},
 		//		{ID: 4, Tag: "CI_CAMPAIGN:4", Entity: "CI_CAMPAIGN", EntityID: 4, FeatureType: "adsize", FeatureGroup: 4, Operator: "=", FeatureValue: "4"},
 		//	},
+		//	ignoreIdAssertion: true,
 		//	// OR depened on random sorting later
 		//	//expected: []*Rule{
 		//	//	{ID: 2, Tag: "CI_CREATIVE:2b", Entity: "CI_CREATIVE", EntityID: 2, FeatureType: "adsize", FeatureGroup: 2, Operator: "=", FeatureValue: "2b"},
 		//	//	{ID: 3, Tag: "CI_CAMPAIGN:3a", Entity: "CI_CAMPAIGN", EntityID: 3, FeatureType: "adsize", FeatureGroup: 3, Operator: "=", FeatureValue: "3a"},
 		//	//	{ID: 4, Tag: "CI_CAMPAIGN:4", Entity: "CI_CAMPAIGN", EntityID: 4, FeatureType: "adsize", FeatureGroup: 4, Operator: "=", FeatureValue: "4"},
 		//	//},
+		//
 		//	config: getInfoConfig(
-		//		info.PresetMergeStrategyBaseInsDel,
+		//		info.MergeStrategyInsDel,
 		//		false, true, false,
 		//		false, true, false,
 		//		[]loption.Option{loption.WithUpsert()},
 		//		nil,
 		//		[]loption.Option{loption.WithUpsert()},
-		//		info.PresetMergeInsStrategyInsByLoad, info.PresetMergeUpdStrategyBase, info.PresetMergeDelStrategyBase,
-		//		[]loption.Option{loption.WithUpsert()}),
+		//		info.MergeInsStrategyInsByLoad, info.MergeUpdStrategyWithTransient, info.MergeDelStrategyWithTransient,
+		//		[]loption.Option{loption.WithUpsert()},
+		//		[]option.Option{},
+		//		nil),
 		//	hasError: false,
 		//},
 		{
@@ -226,14 +275,16 @@ func TestService_Exec(t *testing.T) {
 				{ID: 2, Tag: "CI_CREATIVE:2", Entity: "CI_CREATIVE", EntityID: 2, FeatureType: "adsize", FeatureGroup: 2, Operator: "=", FeatureValue: "2"},
 			},
 			config: getInfoConfig(
-				info.PresetMergeStrategyBaseInsDel,
+				info.MergeStrategyInsDel,
 				false, false, false,
 				false, true, false,
 				[]loption.Option{loption.WithUpsert()},
 				[]loption.Option{loption.WithUpsert()},
 				[]loption.Option{loption.WithUpsert()},
-				info.PresetMergeInsStrategyBase, info.PresetMergeUpdStrategyBase, info.PresetMergeDelStrategyBase,
-				[]loption.Option{}),
+				info.MergeInsStrategyWithTransient, info.MergeUpdStrategyWithTransient, info.MergeDelStrategyWithTransient,
+				[]loption.Option{},
+				[]option.Option{},
+				nil),
 			hasError: true,
 		},
 		{
@@ -253,14 +304,16 @@ func TestService_Exec(t *testing.T) {
 				{ID: 3, Tag: "CI_CAMPAIGN:3", Entity: "CI_CAMPAIGN", EntityID: 3, FeatureType: "adsize", FeatureGroup: 3, Operator: "=", FeatureValue: "3"},
 			},
 			config: getInfoConfig(
-				info.PresetMergeStrategyBaseInsDel,
+				info.MergeStrategyInsDel,
 				true, false, false,
 				false, true, false,
 				nil,
 				[]loption.Option{loption.WithUpsert()},
 				[]loption.Option{loption.WithUpsert()},
-				info.PresetMergeInsStrategyInsByLoad, info.PresetMergeUpdStrategyBase, info.PresetMergeDelStrategyBase,
-				[]loption.Option{}),
+				info.MergeInsStrategyInsByLoad, info.MergeUpdStrategyWithTransient, info.MergeDelStrategyWithTransient,
+				[]loption.Option{},
+				[]option.Option{},
+				nil),
 		},
 		{
 			description: "ins by load strategy, transient del loader with upsert option, ins loader with upsert option - too big id - error - rollback",
@@ -280,17 +333,19 @@ func TestService_Exec(t *testing.T) {
 			},
 			hasError: true,
 			config: getInfoConfig(
-				info.PresetMergeStrategyBaseInsDel,
+				info.MergeStrategyInsDel,
 				true, false, false,
 				false, true, false,
 				nil,
 				[]loption.Option{loption.WithUpsert()},
 				[]loption.Option{loption.WithUpsert()},
-				info.PresetMergeInsStrategyInsByLoad, info.PresetMergeUpdStrategyBase, info.PresetMergeDelStrategyBase,
-				[]loption.Option{loption.WithUpsert()}),
+				info.MergeInsStrategyInsByLoad, info.MergeUpdStrategyWithTransient, info.MergeDelStrategyWithTransient,
+				[]loption.Option{loption.WithUpsert()},
+				[]option.Option{},
+				nil),
 		},
 		{
-			description: "ins by load strategy, transient del loader with upsert option, ins loader with upsert option - too big id - no error - no rollback - corrupted data",
+			description: "ins by load strategy, transient del loader with upsert option, ins loader with no option - too big id - no error - no rollback - corrupted data",
 			table:       "CI_TARGETING_RULE_TEST",
 			options:     []moption.Option{},
 			dstRecords: []*Rule{
@@ -307,14 +362,109 @@ func TestService_Exec(t *testing.T) {
 			},
 			hasError: true,
 			config: getInfoConfig(
-				info.PresetMergeStrategyBaseInsDel,
+				info.MergeStrategyInsDel,
 				true, false, false,
 				false, true, false,
 				nil,
 				[]loption.Option{loption.WithUpsert()},
 				[]loption.Option{loption.WithUpsert()},
-				info.PresetMergeInsStrategyInsByLoad, info.PresetMergeUpdStrategyBase, info.PresetMergeDelStrategyBase,
-				[]loption.Option{}),
+				info.MergeInsStrategyInsByLoad, info.MergeUpdStrategyWithTransient, info.MergeDelStrategyWithTransient,
+				[]loption.Option{},
+				[]option.Option{},
+				nil),
+		},
+		//#
+		{
+			description: "ins batch strategy, transient del loader with upsert option, ins loader with no option",
+			table:       "CI_TARGETING_RULE_TEST",
+			options:     []moption.Option{},
+			dstRecords: []*Rule{
+				{ID: 1, Tag: "CI_CAMPAIGN:1", Entity: "CI_CAMPAIGN", EntityID: 1, FeatureType: "adsize", FeatureGroup: 1, Operator: "=", FeatureValue: "1"},
+				{ID: 2, Tag: "CI_CREATIVE:2", Entity: "CI_CREATIVE", EntityID: 2, FeatureType: "adsize", FeatureGroup: 2, Operator: "=", FeatureValue: "2"},
+			},
+			srcRecords: []*Rule{
+				{ID: 2, Tag: "CI_CREATIVE:2", Entity: "CI_CREATIVE", EntityID: 2, FeatureType: "adsize", FeatureGroup: 2, Operator: "=", FeatureValue: "2"},
+				{ID: 3, Tag: "CI_CAMPAIGN:3", Entity: "CI_CAMPAIGN", EntityID: 3, FeatureType: "adsize", FeatureGroup: 3, Operator: "=", FeatureValue: "3"},
+			},
+			expected: []*Rule{
+				{ID: 2, Tag: "CI_CREATIVE:2", Entity: "CI_CREATIVE", EntityID: 2, FeatureType: "adsize", FeatureGroup: 2, Operator: "=", FeatureValue: "2"},
+				{ID: 3, Tag: "CI_CAMPAIGN:3", Entity: "CI_CAMPAIGN", EntityID: 3, FeatureType: "adsize", FeatureGroup: 3, Operator: "=", FeatureValue: "3"},
+			},
+			config: getInfoConfig(
+				info.MergeStrategyInsDel,
+				true, false, false,
+				false, true, false,
+				nil,
+				[]loption.Option{loption.WithUpsert()},
+				[]loption.Option{loption.WithUpsert()},
+				info.MergeInsStrategyInsBatch, info.MergeUpdStrategyWithTransient, info.MergeDelStrategyWithTransient,
+				[]loption.Option{},
+				[]option.Option{
+					option.BatchSize(3), dialect.PresetIDWithTransientTransaction,
+				},
+				nil),
+		},
+		{
+			description: "ins batch strategy, transient del loader with upsert option, ins loader with no option - too big id - error - rollback",
+			table:       "CI_TARGETING_RULE_TEST",
+			options:     []moption.Option{},
+			dstRecords: []*Rule{
+				{ID: 1, Tag: "CI_CAMPAIGN:1", Entity: "CI_CAMPAIGN", EntityID: 1, FeatureType: "adsize", FeatureGroup: 1, Operator: "=", FeatureValue: "1"},
+				{ID: 2, Tag: "CI_CREATIVE:2", Entity: "CI_CREATIVE", EntityID: 2, FeatureType: "adsize", FeatureGroup: 2, Operator: "=", FeatureValue: "2"},
+			},
+			srcRecords: []*Rule{
+				{ID: 2, Tag: "CI_CREATIVE:2", Entity: "CI_CREATIVE", EntityID: 2, FeatureType: "adsize", FeatureGroup: 2, Operator: "=", FeatureValue: "2"},
+				{ID: 9999999999, Tag: "CI_CAMPAIGN:3", Entity: "CI_CAMPAIGN", EntityID: 3, FeatureType: "adsize", FeatureGroup: 3, Operator: "=", FeatureValue: "3"},
+			},
+			expected: []*Rule{
+				{ID: 1, Tag: "CI_CAMPAIGN:1", Entity: "CI_CAMPAIGN", EntityID: 1, FeatureType: "adsize", FeatureGroup: 1, Operator: "=", FeatureValue: "1"},
+				{ID: 2, Tag: "CI_CREATIVE:2", Entity: "CI_CREATIVE", EntityID: 2, FeatureType: "adsize", FeatureGroup: 2, Operator: "=", FeatureValue: "2"},
+			},
+			hasError: true,
+			config: getInfoConfig(
+				info.MergeStrategyInsDel,
+				true, false, false,
+				false, true, false,
+				nil,
+				nil,
+				[]loption.Option{loption.WithUpsert()},
+				info.MergeInsStrategyInsBatch, info.MergeUpdStrategyWithTransient, info.MergeDelStrategyWithTransient,
+				[]loption.Option{},
+				[]option.Option{
+					option.BatchSize(3), dialect.PresetIDWithTransientTransaction,
+				},
+				nil),
+		},
+		{
+			description: "ins batch strategy, empty transient ins/del loader options - repeated src records - error - rollback",
+			table:       "CI_TARGETING_RULE_TEST",
+			options:     []moption.Option{},
+			dstRecords: []*Rule{
+				{ID: 1, Tag: "CI_CAMPAIGN:1", Entity: "CI_CAMPAIGN", EntityID: 1, FeatureType: "adsize", FeatureGroup: 1, Operator: "=", FeatureValue: "1"},
+				{ID: 2, Tag: "CI_CREATIVE:2", Entity: "CI_CREATIVE", EntityID: 2, FeatureType: "adsize", FeatureGroup: 2, Operator: "=", FeatureValue: "2"},
+			},
+			srcRecords: []*Rule{
+				{ID: 2, Tag: "CI_CREATIVE:2b", Entity: "CI_CREATIVE", EntityID: 2, FeatureType: "adsize", FeatureGroup: 2, Operator: "=", FeatureValue: "2b"},
+				{ID: 3, Tag: "CI_CAMPAIGN:3a", Entity: "CI_CAMPAIGN", EntityID: 3, FeatureType: "adsize", FeatureGroup: 3, Operator: "=", FeatureValue: "3a"},
+				{ID: 3, Tag: "CI_CAMPAIGN:3b", Entity: "CI_CAMPAIGN", EntityID: 3, FeatureType: "adsize", FeatureGroup: 3, Operator: "=", FeatureValue: "3b"},
+				{ID: 4, Tag: "CI_CAMPAIGN:4", Entity: "CI_CAMPAIGN", EntityID: 4, FeatureType: "adsize", FeatureGroup: 4, Operator: "=", FeatureValue: "4"},
+			},
+			expected: []*Rule{
+				{ID: 1, Tag: "CI_CAMPAIGN:1", Entity: "CI_CAMPAIGN", EntityID: 1, FeatureType: "adsize", FeatureGroup: 1, Operator: "=", FeatureValue: "1"},
+				{ID: 2, Tag: "CI_CREATIVE:2", Entity: "CI_CREATIVE", EntityID: 2, FeatureType: "adsize", FeatureGroup: 2, Operator: "=", FeatureValue: "2"},
+			},
+			config: getInfoConfig(
+				info.MergeStrategyInsDel,
+				true, false, false,
+				false, true, false,
+				[]loption.Option{},
+				[]loption.Option{},
+				[]loption.Option{},
+				info.MergeInsStrategyInsBatch, info.MergeUpdStrategyWithTransient, info.MergeDelStrategyWithTransient,
+				[]loption.Option{},
+				[]option.Option{dialect.PresetIDWithTransientTransaction},
+				nil), // using default batchSize: option.BatchSize(1)
+			hasError: true,
 		},
 		////// match key without id
 		{
@@ -337,11 +487,13 @@ func TestService_Exec(t *testing.T) {
 				{ID: 4, Tag: "CI_CAMPAIGN:4", Entity: "CI_CAMPAIGN", EntityID: 4, FeatureType: "adsize", FeatureGroup: 4, Operator: "=", FeatureValue: "4"},
 			},
 			config: getInfoConfig(
-				info.PresetMergeStrategyBaseInsDel,
+				info.MergeStrategyInsDel,
 				false, true, false,
 				false, true, false,
 				[]loption.Option{}, nil, []loption.Option{},
-				info.PresetMergeInsStrategyBase, "", info.PresetMergeDelStrategyBase,
+				info.MergeInsStrategyWithTransient, "", info.MergeDelStrategyWithTransient,
+				nil,
+				[]option.Option{},
 				nil),
 		},
 		{
@@ -364,11 +516,13 @@ func TestService_Exec(t *testing.T) {
 				{ID: 4, Tag: "CI_CAMPAIGN:4", Entity: "CI_CAMPAIGN", EntityID: 4, FeatureType: "adsize", FeatureGroup: 4, Operator: "=", FeatureValue: "4"},
 			},
 			config: getInfoConfig(
-				info.PresetMergeStrategyBaseInsDel,
+				info.MergeStrategyInsDel,
 				false, true, false,
 				false, true, false,
 				[]loption.Option{loption.WithUpsert()}, nil, []loption.Option{loption.WithUpsert()},
-				info.PresetMergeInsStrategyBase, "", info.PresetMergeDelStrategyBase,
+				info.MergeInsStrategyWithTransient, "", info.MergeDelStrategyWithTransient,
+				nil,
+				[]option.Option{},
 				nil),
 		},
 		{
@@ -391,12 +545,43 @@ func TestService_Exec(t *testing.T) {
 				{ID: 4, Tag: "CI_CAMPAIGN:4", Entity: "CI_CAMPAIGN", EntityID: 4, FeatureType: "adsize", FeatureGroup: 4, Operator: "=", FeatureValue: "4"},
 			},
 			config: getInfoConfig(
-				info.PresetMergeStrategyBaseInsDel,
+				info.MergeStrategyInsDel,
 				true, true, false,
 				false, true, false,
 				[]loption.Option{loption.WithUpsert()}, nil, []loption.Option{loption.WithUpsert()},
-				info.PresetMergeInsStrategyInsByLoad, "", info.PresetMergeDelStrategyBase,
-				[]loption.Option{loption.WithUpsert()}),
+				info.MergeInsStrategyInsByLoad, "", info.MergeDelStrategyWithTransient,
+				[]loption.Option{loption.WithUpsert()},
+				[]option.Option{},
+				nil),
+		},
+		{
+			description: "merger ins_del strategy, ins/upd/del:use_insert_batch/none/use_transient, all loaders with upsert - matchKey without id, PresetIDWithTransientTransaction and non-zero id",
+			table:       "CI_TARGETING_RULE_TEST",
+			options:     []moption.Option{},
+			dstRecords: []*Rule{
+				{ID: 2, Tag: "CI_CAMPAIGN:1", Entity: "CI_CAMPAIGN", EntityID: 1, FeatureType: "adsize", FeatureGroup: 1, Operator: "=", FeatureValue: "1"},
+				{ID: 1, Tag: "CI_CREATIVE:2", Entity: "CI_CREATIVE", EntityID: 2, FeatureType: "adsize", FeatureGroup: 2, Operator: "=", FeatureValue: "2"},
+				{ID: 3, Tag: "CI_CAMPAIGN:303", Entity: "CI_CAMPAIGN", EntityID: 303, FeatureType: "adsize", FeatureGroup: 303, Operator: "=", FeatureValue: "303"},
+			},
+			srcRecords: []*Rule{
+				{ID: 2, Tag: "CI_CREATIVE:2", Entity: "CI_CREATIVE", EntityID: 2, FeatureType: "adsize", FeatureGroup: 2, Operator: "=", FeatureValue: "2"},
+				{ID: 3, Tag: "CI_CAMPAIGN:304", Entity: "CI_CAMPAIGN", EntityID: 304, FeatureType: "adsize", FeatureGroup: 304, Operator: "=", FeatureValue: "304"},
+				{ID: 4, Tag: "CI_CAMPAIGN:4", Entity: "CI_CAMPAIGN", EntityID: 4, FeatureType: "adsize", FeatureGroup: 4, Operator: "=", FeatureValue: "4"},
+			},
+			expected: []*Rule{
+				{ID: 1, Tag: "CI_CREATIVE:2", Entity: "CI_CREATIVE", EntityID: 2, FeatureType: "adsize", FeatureGroup: 2, Operator: "=", FeatureValue: "2"},
+				{ID: 3, Tag: "CI_CAMPAIGN:304", Entity: "CI_CAMPAIGN", EntityID: 304, FeatureType: "adsize", FeatureGroup: 304, Operator: "=", FeatureValue: "304"},
+				{ID: 4, Tag: "CI_CAMPAIGN:4", Entity: "CI_CAMPAIGN", EntityID: 4, FeatureType: "adsize", FeatureGroup: 4, Operator: "=", FeatureValue: "4"},
+			},
+			config: getInfoConfig(
+				info.MergeStrategyInsDel,
+				true, true, false,
+				false, true, false,
+				[]loption.Option{loption.WithUpsert()}, nil, []loption.Option{loption.WithUpsert()},
+				info.MergeInsStrategyInsBatch, "", info.MergeDelStrategyWithTransient,
+				[]loption.Option{},
+				[]option.Option{option.BatchSize(2), dialect.PresetIDWithTransientTransaction},
+				nil),
 		},
 		{
 			description: "merger ins_upd_del strategy, ins/upd/del:use_transient/use_transient/use_transient, all loaders with no upsert (dangerous) - matchKey without id",
@@ -418,11 +603,13 @@ func TestService_Exec(t *testing.T) {
 				{ID: 4, Tag: "CI_CAMPAIGN:4", Entity: "CI_CAMPAIGN", EntityID: 4, FeatureType: "adsize", FeatureGroup: 4, Operator: "=", FeatureValue: "4"},
 			},
 			config: getInfoConfig(
-				info.PresetMergeStrategyBaseInsUpdDel,
+				info.MergeStrategyInsUpdDel,
 				false, false, false,
 				false, false, false,
 				[]loption.Option{}, []loption.Option{}, []loption.Option{},
-				info.PresetMergeInsStrategyBase, info.PresetMergeUpdStrategyBase, info.PresetMergeDelStrategyBase,
+				info.MergeInsStrategyWithTransient, info.MergeUpdStrategyWithTransient, info.MergeDelStrategyWithTransient,
+				nil,
+				[]option.Option{},
 				nil),
 		},
 		{
@@ -445,11 +632,13 @@ func TestService_Exec(t *testing.T) {
 				{ID: 4, Tag: "CI_CAMPAIGN:4", Entity: "CI_CAMPAIGN", EntityID: 4, FeatureType: "adsize", FeatureGroup: 4, Operator: "=", FeatureValue: "4"},
 			},
 			config: getInfoConfig(
-				info.PresetMergeStrategyBaseInsUpdDel,
+				info.MergeStrategyInsUpdDel,
 				false, false, false,
 				false, false, false,
 				[]loption.Option{loption.WithUpsert()}, []loption.Option{loption.WithUpsert()}, []loption.Option{loption.WithUpsert()},
-				info.PresetMergeInsStrategyBase, info.PresetMergeUpdStrategyBase, info.PresetMergeDelStrategyBase,
+				info.MergeInsStrategyWithTransient, info.MergeUpdStrategyWithTransient, info.MergeDelStrategyWithTransient,
+				nil,
+				[]option.Option{},
 				nil),
 		},
 		{
@@ -472,12 +661,43 @@ func TestService_Exec(t *testing.T) {
 				{ID: 4, Tag: "CI_CAMPAIGN:4", Entity: "CI_CAMPAIGN", EntityID: 4, FeatureType: "adsize", FeatureGroup: 4, Operator: "=", FeatureValue: "4"},
 			},
 			config: getInfoConfig(
-				info.PresetMergeStrategyBaseInsUpdDel,
+				info.MergeStrategyInsUpdDel,
 				true, false, false,
 				false, false, false,
 				[]loption.Option{loption.WithUpsert()}, []loption.Option{loption.WithUpsert()}, []loption.Option{loption.WithUpsert()},
-				info.PresetMergeInsStrategyInsByLoad, info.PresetMergeUpdStrategyBase, info.PresetMergeDelStrategyBase,
-				[]loption.Option{loption.WithUpsert()}),
+				info.MergeInsStrategyInsByLoad, info.MergeUpdStrategyWithTransient, info.MergeDelStrategyWithTransient,
+				[]loption.Option{loption.WithUpsert()},
+				[]option.Option{},
+				nil),
+		},
+		{
+			description: "merger ins_upd_del strategy, ins/upd/del:insert_batch/use_transient/use_transient, all loaders with no upsert (dangerous) - matchKey without id",
+			table:       "CI_TARGETING_RULE_TEST",
+			options:     []moption.Option{},
+			dstRecords: []*Rule{
+				{ID: 2, Tag: "CI_CAMPAIGN:1", Entity: "CI_CAMPAIGN", EntityID: 1, FeatureType: "adsize", FeatureGroup: 1, Operator: "=", FeatureValue: "1"},
+				{ID: 1, Tag: "CI_CREATIVE:2", Entity: "CI_CREATIVE", EntityID: 2, FeatureType: "adsize", FeatureGroup: 2, Operator: "=", FeatureValue: "2"},
+				{ID: 3, Tag: "CI_CAMPAIGN:303", Entity: "CI_CAMPAIGN", EntityID: 303, FeatureType: "adsize", FeatureGroup: 303, Operator: "=", FeatureValue: "303"},
+			},
+			srcRecords: []*Rule{
+				{ID: 2, Tag: "CI_CREATIVE:2", Entity: "CI_CREATIVE", EntityID: 2, FeatureType: "adsize", FeatureGroup: 2, Operator: "=", FeatureValue: "2"},
+				{ID: 3, Tag: "CI_CAMPAIGN:304", Entity: "CI_CAMPAIGN", EntityID: 304, FeatureType: "adsize", FeatureGroup: 304, Operator: "=", FeatureValue: "304"},
+				{ID: 4, Tag: "CI_CAMPAIGN:4", Entity: "CI_CAMPAIGN", EntityID: 4, FeatureType: "adsize", FeatureGroup: 4, Operator: "=", FeatureValue: "4"},
+			},
+			expected: []*Rule{
+				{ID: 1, Tag: "CI_CREATIVE:2", Entity: "CI_CREATIVE", EntityID: 2, FeatureType: "adsize", FeatureGroup: 2, Operator: "=", FeatureValue: "2"},
+				{ID: 3, Tag: "CI_CAMPAIGN:304", Entity: "CI_CAMPAIGN", EntityID: 304, FeatureType: "adsize", FeatureGroup: 304, Operator: "=", FeatureValue: "304"},
+				{ID: 4, Tag: "CI_CAMPAIGN:4", Entity: "CI_CAMPAIGN", EntityID: 4, FeatureType: "adsize", FeatureGroup: 4, Operator: "=", FeatureValue: "4"},
+			},
+			config: getInfoConfig(
+				info.MergeStrategyInsUpdDel,
+				true, false, false,
+				false, false, false,
+				[]loption.Option{}, []loption.Option{}, []loption.Option{},
+				info.MergeInsStrategyInsBatch, info.MergeUpdStrategyWithTransient, info.MergeDelStrategyWithTransient,
+				nil,
+				[]option.Option{option.BatchSize(3), dialect.PresetIDWithTransientTransaction},
+				nil),
 		},
 		{
 			description: "merger ups_del strategy, ups/del:use_upsert_loader/use_transient, all loaders with upsert - matchKey without id",
@@ -499,12 +719,14 @@ func TestService_Exec(t *testing.T) {
 				{ID: 4, Tag: "CI_CAMPAIGN:4", Entity: "CI_CAMPAIGN", EntityID: 4, FeatureType: "adsize", FeatureGroup: 4, Operator: "=", FeatureValue: "4"},
 			},
 			config: getInfoConfig(
-				info.PresetMergeStrategyBaseUpsDel,
+				info.MergeStrategyUpsDel,
 				true, true, false,
 				false, true, false,
 				nil, nil, []loption.Option{loption.WithUpsert()},
-				info.PresetMergeInsStrategyInsByLoad, info.PresetMergeUpdStrategyBase, info.PresetMergeDelStrategyBase,
-				[]loption.Option{loption.WithUpsert()}),
+				info.MergeInsStrategyInsByLoad, info.MergeUpdStrategyWithTransient, info.MergeDelStrategyWithTransient,
+				[]loption.Option{loption.WithUpsert()},
+				[]option.Option{},
+				nil),
 		},
 		///////////////	with id below
 		{
@@ -527,13 +749,15 @@ func TestService_Exec(t *testing.T) {
 				{ID: 4, Tag: "CI_CAMPAIGN:4", Entity: "CI_CAMPAIGN", EntityID: 4, FeatureType: "adsize", FeatureGroup: 4, Operator: "=", FeatureValue: "4"},
 			},
 			config: getInfoConfigWithMatchKeyFn(
-				info.PresetMergeStrategyBaseInsDel,
+				info.MergeStrategyInsDel,
 				false, true, false,
 				false, true, false,
 				[]loption.Option{loption.WithUpsert()}, nil, []loption.Option{loption.WithUpsert()},
-				info.PresetMergeInsStrategyBase, "", info.PresetMergeDelStrategyBase,
+				info.MergeInsStrategyWithTransient, "", info.MergeDelStrategyWithTransient,
 				nil,
-				MatchKeyWithIdFn),
+				[]option.Option{},
+				MatchKeyWithIdFn,
+				nil),
 		},
 		{
 			description: "merger ins_del strategy, ins/upd/del:use_upsert_loader/none/use_transient, all loaders with upsert - matchKey with id",
@@ -555,13 +779,15 @@ func TestService_Exec(t *testing.T) {
 				{ID: 4, Tag: "CI_CAMPAIGN:4", Entity: "CI_CAMPAIGN", EntityID: 4, FeatureType: "adsize", FeatureGroup: 4, Operator: "=", FeatureValue: "4"},
 			},
 			config: getInfoConfigWithMatchKeyFn(
-				info.PresetMergeStrategyBaseInsDel,
+				info.MergeStrategyInsDel,
 				true, true, false,
 				false, true, false,
 				[]loption.Option{loption.WithUpsert()}, nil, []loption.Option{loption.WithUpsert()},
-				info.PresetMergeInsStrategyInsByLoad, "", info.PresetMergeDelStrategyBase,
+				info.MergeInsStrategyInsByLoad, "", info.MergeDelStrategyWithTransient,
 				[]loption.Option{loption.WithUpsert()},
-				MatchKeyWithIdFn),
+				[]option.Option{},
+				MatchKeyWithIdFn,
+				nil),
 		},
 		{
 			description: "merger ins_upd_del strategy, ins/upd/del:use_transient/use_transient/use_transient, all loaders with no upsert (dangerous) - matchKey with id",
@@ -583,13 +809,15 @@ func TestService_Exec(t *testing.T) {
 				{ID: 4, Tag: "CI_CAMPAIGN:4", Entity: "CI_CAMPAIGN", EntityID: 4, FeatureType: "adsize", FeatureGroup: 4, Operator: "=", FeatureValue: "4"},
 			},
 			config: getInfoConfigWithMatchKeyFn(
-				info.PresetMergeStrategyBaseInsUpdDel,
+				info.MergeStrategyInsUpdDel,
 				false, false, false,
 				false, false, false,
 				[]loption.Option{}, []loption.Option{}, []loption.Option{},
-				info.PresetMergeInsStrategyBase, info.PresetMergeUpdStrategyBase, info.PresetMergeDelStrategyBase,
+				info.MergeInsStrategyWithTransient, info.MergeUpdStrategyWithTransient, info.MergeDelStrategyWithTransient,
 				nil,
-				MatchKeyWithIdFn),
+				[]option.Option{},
+				MatchKeyWithIdFn,
+				nil),
 		},
 		{
 			description: "merger ins_upd_del strategy, ins/upd/del:use_transient/use_transient/use_transient, all loaders with upsert - matchKey with id",
@@ -611,13 +839,15 @@ func TestService_Exec(t *testing.T) {
 				{ID: 4, Tag: "CI_CAMPAIGN:4", Entity: "CI_CAMPAIGN", EntityID: 4, FeatureType: "adsize", FeatureGroup: 4, Operator: "=", FeatureValue: "4"},
 			},
 			config: getInfoConfigWithMatchKeyFn(
-				info.PresetMergeStrategyBaseInsUpdDel,
+				info.MergeStrategyInsUpdDel,
 				false, false, false,
 				false, false, false,
 				[]loption.Option{loption.WithUpsert()}, []loption.Option{loption.WithUpsert()}, []loption.Option{loption.WithUpsert()},
-				info.PresetMergeInsStrategyBase, info.PresetMergeUpdStrategyBase, info.PresetMergeDelStrategyBase,
+				info.MergeInsStrategyWithTransient, info.MergeUpdStrategyWithTransient, info.MergeDelStrategyWithTransient,
 				nil,
-				MatchKeyWithIdFn),
+				[]option.Option{},
+				MatchKeyWithIdFn,
+				nil),
 		},
 		{
 			description: "merger ins_upd_del strategy, ins/upd/del:use_upsert_loader/use_transient/use_transient, all loaders with upsert - matchKey with id",
@@ -639,13 +869,15 @@ func TestService_Exec(t *testing.T) {
 				{ID: 4, Tag: "CI_CAMPAIGN:4", Entity: "CI_CAMPAIGN", EntityID: 4, FeatureType: "adsize", FeatureGroup: 4, Operator: "=", FeatureValue: "4"},
 			},
 			config: getInfoConfigWithMatchKeyFn(
-				info.PresetMergeStrategyBaseInsUpdDel,
+				info.MergeStrategyInsUpdDel,
 				true, false, false,
 				false, false, false,
 				[]loption.Option{loption.WithUpsert()}, []loption.Option{loption.WithUpsert()}, []loption.Option{loption.WithUpsert()},
-				info.PresetMergeInsStrategyInsByLoad, info.PresetMergeUpdStrategyBase, info.PresetMergeDelStrategyBase,
+				info.MergeInsStrategyInsByLoad, info.MergeUpdStrategyWithTransient, info.MergeDelStrategyWithTransient,
 				[]loption.Option{loption.WithUpsert()},
-				MatchKeyWithIdFn),
+				[]option.Option{},
+				MatchKeyWithIdFn,
+				nil),
 		},
 		{
 			description: "merger ups_del strategy, ups/del:use_upsert_loader/use_transient, all loaders with upsert - matchKey with id",
@@ -667,13 +899,15 @@ func TestService_Exec(t *testing.T) {
 				{ID: 4, Tag: "CI_CAMPAIGN:4", Entity: "CI_CAMPAIGN", EntityID: 4, FeatureType: "adsize", FeatureGroup: 4, Operator: "=", FeatureValue: "4"},
 			},
 			config: getInfoConfigWithMatchKeyFn(
-				info.PresetMergeStrategyBaseUpsDel,
+				info.MergeStrategyUpsDel,
 				true, true, false,
 				false, true, false,
 				nil, nil, []loption.Option{loption.WithUpsert()},
-				info.PresetMergeInsStrategyInsByLoad, info.PresetMergeUpdStrategyBase, info.PresetMergeDelStrategyBase,
+				info.MergeInsStrategyInsByLoad, info.MergeUpdStrategyWithTransient, info.MergeDelStrategyWithTransient,
 				[]loption.Option{loption.WithUpsert()},
-				MatchKeyWithIdFn),
+				[]option.Option{},
+				MatchKeyWithIdFn,
+				nil),
 		},
 		// empty src
 		//////
@@ -689,11 +923,13 @@ func TestService_Exec(t *testing.T) {
 			srcRecords: []*Rule{},
 			expected:   []*Rule{},
 			config: getInfoConfig(
-				info.PresetMergeStrategyBaseInsDel,
+				info.MergeStrategyInsDel,
 				false, true, false,
 				false, true, false,
 				[]loption.Option{}, nil, []loption.Option{},
-				info.PresetMergeInsStrategyBase, "", info.PresetMergeDelStrategyBase,
+				info.MergeInsStrategyWithTransient, "", info.MergeDelStrategyWithTransient,
+				nil,
+				[]option.Option{},
 				nil),
 		},
 		{
@@ -708,11 +944,13 @@ func TestService_Exec(t *testing.T) {
 			srcRecords: []*Rule{},
 			expected:   []*Rule{},
 			config: getInfoConfig(
-				info.PresetMergeStrategyBaseInsDel,
+				info.MergeStrategyInsDel,
 				false, true, false,
 				false, true, false,
 				[]loption.Option{loption.WithUpsert()}, nil, []loption.Option{loption.WithUpsert()},
-				info.PresetMergeInsStrategyBase, "", info.PresetMergeDelStrategyBase,
+				info.MergeInsStrategyWithTransient, "", info.MergeDelStrategyWithTransient,
+				nil,
+				[]option.Option{},
 				nil),
 		},
 		{
@@ -727,12 +965,35 @@ func TestService_Exec(t *testing.T) {
 			srcRecords: []*Rule{},
 			expected:   []*Rule{},
 			config: getInfoConfig(
-				info.PresetMergeStrategyBaseInsDel,
+				info.MergeStrategyInsDel,
 				true, true, false,
 				false, true, false,
 				[]loption.Option{loption.WithUpsert()}, nil, []loption.Option{loption.WithUpsert()},
-				info.PresetMergeInsStrategyInsByLoad, "", info.PresetMergeDelStrategyBase,
-				[]loption.Option{loption.WithUpsert()}),
+				info.MergeInsStrategyInsByLoad, "", info.MergeDelStrategyWithTransient,
+				[]loption.Option{loption.WithUpsert()},
+				[]option.Option{},
+				nil),
+		},
+		{
+			description: "empty src: merger ins_del strategy, ins/upd/del:use_insert_batch/none/use_transient, all loaders with upsert - matchKey without id",
+			table:       "CI_TARGETING_RULE_TEST",
+			options:     []moption.Option{},
+			dstRecords: []*Rule{
+				{ID: 2, Tag: "CI_CAMPAIGN:1", Entity: "CI_CAMPAIGN", EntityID: 1, FeatureType: "adsize", FeatureGroup: 1, Operator: "=", FeatureValue: "1"},
+				{ID: 1, Tag: "CI_CREATIVE:2", Entity: "CI_CREATIVE", EntityID: 2, FeatureType: "adsize", FeatureGroup: 2, Operator: "=", FeatureValue: "2"},
+				{ID: 3, Tag: "CI_CAMPAIGN:303", Entity: "CI_CAMPAIGN", EntityID: 303, FeatureType: "adsize", FeatureGroup: 303, Operator: "=", FeatureValue: "303"},
+			},
+			srcRecords: []*Rule{},
+			expected:   []*Rule{},
+			config: getInfoConfig(
+				info.MergeStrategyInsDel,
+				true, true, false,
+				false, true, false,
+				[]loption.Option{loption.WithUpsert()}, nil, []loption.Option{loption.WithUpsert()},
+				info.MergeInsStrategyInsBatch, "", info.MergeDelStrategyWithTransient,
+				[]loption.Option{},
+				[]option.Option{option.BatchSize(3), dialect.PresetIDWithTransientTransaction},
+				nil),
 		},
 		{
 			description: "empty src: merger ins_upd_del strategy, ins/upd/del:use_transient/use_transient/use_transient, all loaders with no upsert (dangerous) - matchKey without id",
@@ -746,11 +1007,13 @@ func TestService_Exec(t *testing.T) {
 			srcRecords: []*Rule{},
 			expected:   []*Rule{},
 			config: getInfoConfig(
-				info.PresetMergeStrategyBaseInsUpdDel,
+				info.MergeStrategyInsUpdDel,
 				false, false, false,
 				false, false, false,
 				[]loption.Option{}, []loption.Option{}, []loption.Option{},
-				info.PresetMergeInsStrategyBase, info.PresetMergeUpdStrategyBase, info.PresetMergeDelStrategyBase,
+				info.MergeInsStrategyWithTransient, info.MergeUpdStrategyWithTransient, info.MergeDelStrategyWithTransient,
+				nil,
+				[]option.Option{},
 				nil),
 		},
 		{
@@ -765,11 +1028,13 @@ func TestService_Exec(t *testing.T) {
 			srcRecords: []*Rule{},
 			expected:   []*Rule{},
 			config: getInfoConfig(
-				info.PresetMergeStrategyBaseInsUpdDel,
+				info.MergeStrategyInsUpdDel,
 				false, false, false,
 				false, false, false,
 				[]loption.Option{loption.WithUpsert()}, []loption.Option{loption.WithUpsert()}, []loption.Option{loption.WithUpsert()},
-				info.PresetMergeInsStrategyBase, info.PresetMergeUpdStrategyBase, info.PresetMergeDelStrategyBase,
+				info.MergeInsStrategyWithTransient, info.MergeUpdStrategyWithTransient, info.MergeDelStrategyWithTransient,
+				nil,
+				[]option.Option{},
 				nil),
 		},
 		{
@@ -784,12 +1049,35 @@ func TestService_Exec(t *testing.T) {
 			srcRecords: []*Rule{},
 			expected:   []*Rule{},
 			config: getInfoConfig(
-				info.PresetMergeStrategyBaseInsUpdDel,
+				info.MergeStrategyInsUpdDel,
 				true, false, false,
 				false, false, false,
 				[]loption.Option{loption.WithUpsert()}, []loption.Option{loption.WithUpsert()}, []loption.Option{loption.WithUpsert()},
-				info.PresetMergeInsStrategyInsByLoad, info.PresetMergeUpdStrategyBase, info.PresetMergeDelStrategyBase,
-				[]loption.Option{loption.WithUpsert()}),
+				info.MergeInsStrategyInsByLoad, info.MergeUpdStrategyWithTransient, info.MergeDelStrategyWithTransient,
+				[]loption.Option{loption.WithUpsert()},
+				[]option.Option{},
+				nil),
+		},
+		{
+			description: "empty src: merger ins_upd_del strategy, ins/upd/del:use_insert_batch/use_transient/use_transient, all loaders with upsert - matchKey without id",
+			table:       "CI_TARGETING_RULE_TEST",
+			options:     []moption.Option{},
+			dstRecords: []*Rule{
+				{ID: 2, Tag: "CI_CAMPAIGN:1", Entity: "CI_CAMPAIGN", EntityID: 1, FeatureType: "adsize", FeatureGroup: 1, Operator: "=", FeatureValue: "1"},
+				{ID: 1, Tag: "CI_CREATIVE:2", Entity: "CI_CREATIVE", EntityID: 2, FeatureType: "adsize", FeatureGroup: 2, Operator: "=", FeatureValue: "2"},
+				{ID: 3, Tag: "CI_CAMPAIGN:303", Entity: "CI_CAMPAIGN", EntityID: 303, FeatureType: "adsize", FeatureGroup: 303, Operator: "=", FeatureValue: "303"},
+			},
+			srcRecords: []*Rule{},
+			expected:   []*Rule{},
+			config: getInfoConfig(
+				info.MergeStrategyInsUpdDel,
+				true, false, false,
+				false, false, false,
+				[]loption.Option{loption.WithUpsert()}, []loption.Option{loption.WithUpsert()}, []loption.Option{loption.WithUpsert()},
+				info.MergeInsStrategyInsBatch, info.MergeUpdStrategyWithTransient, info.MergeDelStrategyWithTransient,
+				[]loption.Option{loption.WithUpsert()},
+				[]option.Option{option.BatchSize(2), dialect.PresetIDWithTransientTransaction},
+				nil),
 		},
 		{
 			description: "empty src: merger ups_del strategy, ups/del:use_upsert_loader/use_transient, all loaders with upsert - matchKey without id",
@@ -803,12 +1091,14 @@ func TestService_Exec(t *testing.T) {
 			srcRecords: []*Rule{},
 			expected:   []*Rule{},
 			config: getInfoConfig(
-				info.PresetMergeStrategyBaseUpsDel,
+				info.MergeStrategyUpsDel,
 				true, true, false,
 				false, true, false,
 				nil, nil, []loption.Option{loption.WithUpsert()},
-				info.PresetMergeInsStrategyInsByLoad, info.PresetMergeUpdStrategyBase, info.PresetMergeDelStrategyBase,
-				[]loption.Option{loption.WithUpsert()}),
+				info.MergeInsStrategyInsByLoad, info.MergeUpdStrategyWithTransient, info.MergeDelStrategyWithTransient,
+				[]loption.Option{loption.WithUpsert()},
+				[]option.Option{},
+				nil),
 		},
 		/// empty dst
 		{
@@ -827,11 +1117,13 @@ func TestService_Exec(t *testing.T) {
 				{ID: 4, Tag: "CI_CAMPAIGN:4", Entity: "CI_CAMPAIGN", EntityID: 4, FeatureType: "adsize", FeatureGroup: 4, Operator: "=", FeatureValue: "4"},
 			},
 			config: getInfoConfig(
-				info.PresetMergeStrategyBaseInsDel,
+				info.MergeStrategyInsDel,
 				false, true, false,
 				false, true, false,
 				[]loption.Option{}, nil, []loption.Option{},
-				info.PresetMergeInsStrategyBase, "", info.PresetMergeDelStrategyBase,
+				info.MergeInsStrategyWithTransient, "", info.MergeDelStrategyWithTransient,
+				nil,
+				[]option.Option{},
 				nil),
 		},
 		{
@@ -850,11 +1142,13 @@ func TestService_Exec(t *testing.T) {
 				{ID: 4, Tag: "CI_CAMPAIGN:4", Entity: "CI_CAMPAIGN", EntityID: 4, FeatureType: "adsize", FeatureGroup: 4, Operator: "=", FeatureValue: "4"},
 			},
 			config: getInfoConfig(
-				info.PresetMergeStrategyBaseInsDel,
+				info.MergeStrategyInsDel,
 				false, true, false,
 				false, true, false,
 				[]loption.Option{loption.WithUpsert()}, nil, []loption.Option{loption.WithUpsert()},
-				info.PresetMergeInsStrategyBase, "", info.PresetMergeDelStrategyBase,
+				info.MergeInsStrategyWithTransient, "", info.MergeDelStrategyWithTransient,
+				nil,
+				[]option.Option{},
 				nil),
 		},
 		{
@@ -873,12 +1167,39 @@ func TestService_Exec(t *testing.T) {
 				{ID: 4, Tag: "CI_CAMPAIGN:4", Entity: "CI_CAMPAIGN", EntityID: 4, FeatureType: "adsize", FeatureGroup: 4, Operator: "=", FeatureValue: "4"},
 			},
 			config: getInfoConfig(
-				info.PresetMergeStrategyBaseInsDel,
+				info.MergeStrategyInsDel,
 				true, true, false,
 				false, true, false,
 				[]loption.Option{loption.WithUpsert()}, nil, []loption.Option{loption.WithUpsert()},
-				info.PresetMergeInsStrategyInsByLoad, "", info.PresetMergeDelStrategyBase,
-				[]loption.Option{loption.WithUpsert()}),
+				info.MergeInsStrategyInsByLoad, "", info.MergeDelStrategyWithTransient,
+				[]loption.Option{loption.WithUpsert()},
+				[]option.Option{},
+				nil),
+		},
+		{
+			description: "empty dst: merger ins_del strategy, ins/upd/del:use_insert_batch/none/use_transient, all loaders with upsert - matchKey without id",
+			table:       "CI_TARGETING_RULE_TEST",
+			options:     []moption.Option{},
+			dstRecords:  []*Rule{},
+			srcRecords: []*Rule{
+				{ID: 2, Tag: "CI_CREATIVE:2", Entity: "CI_CREATIVE", EntityID: 2, FeatureType: "adsize", FeatureGroup: 2, Operator: "=", FeatureValue: "2"},
+				{ID: 3, Tag: "CI_CAMPAIGN:304", Entity: "CI_CAMPAIGN", EntityID: 304, FeatureType: "adsize", FeatureGroup: 304, Operator: "=", FeatureValue: "304"},
+				{ID: 4, Tag: "CI_CAMPAIGN:4", Entity: "CI_CAMPAIGN", EntityID: 4, FeatureType: "adsize", FeatureGroup: 4, Operator: "=", FeatureValue: "4"},
+			},
+			expected: []*Rule{
+				{ID: 2, Tag: "CI_CREATIVE:2", Entity: "CI_CREATIVE", EntityID: 2, FeatureType: "adsize", FeatureGroup: 2, Operator: "=", FeatureValue: "2"},
+				{ID: 3, Tag: "CI_CAMPAIGN:304", Entity: "CI_CAMPAIGN", EntityID: 304, FeatureType: "adsize", FeatureGroup: 304, Operator: "=", FeatureValue: "304"},
+				{ID: 4, Tag: "CI_CAMPAIGN:4", Entity: "CI_CAMPAIGN", EntityID: 4, FeatureType: "adsize", FeatureGroup: 4, Operator: "=", FeatureValue: "4"},
+			},
+			config: getInfoConfig(
+				info.MergeStrategyInsDel,
+				true, true, false,
+				false, true, false,
+				[]loption.Option{loption.WithUpsert()}, nil, []loption.Option{loption.WithUpsert()},
+				info.MergeInsStrategyInsBatch, "", info.MergeDelStrategyWithTransient,
+				[]loption.Option{},
+				[]option.Option{option.BatchSize(3), dialect.PresetIDWithTransientTransaction},
+				nil),
 		},
 		{
 			description: "empty dst: merger ins_upd_del strategy, ins/upd/del:use_transient/use_transient/use_transient, all loaders with no upsert (dangerous) - matchKey without id",
@@ -896,11 +1217,13 @@ func TestService_Exec(t *testing.T) {
 				{ID: 4, Tag: "CI_CAMPAIGN:4", Entity: "CI_CAMPAIGN", EntityID: 4, FeatureType: "adsize", FeatureGroup: 4, Operator: "=", FeatureValue: "4"},
 			},
 			config: getInfoConfig(
-				info.PresetMergeStrategyBaseInsUpdDel,
+				info.MergeStrategyInsUpdDel,
 				false, false, false,
 				false, false, false,
 				[]loption.Option{}, []loption.Option{}, []loption.Option{},
-				info.PresetMergeInsStrategyBase, info.PresetMergeUpdStrategyBase, info.PresetMergeDelStrategyBase,
+				info.MergeInsStrategyWithTransient, info.MergeUpdStrategyWithTransient, info.MergeDelStrategyWithTransient,
+				nil,
+				[]option.Option{},
 				nil),
 		},
 		{
@@ -919,11 +1242,13 @@ func TestService_Exec(t *testing.T) {
 				{ID: 4, Tag: "CI_CAMPAIGN:4", Entity: "CI_CAMPAIGN", EntityID: 4, FeatureType: "adsize", FeatureGroup: 4, Operator: "=", FeatureValue: "4"},
 			},
 			config: getInfoConfig(
-				info.PresetMergeStrategyBaseInsUpdDel,
+				info.MergeStrategyInsUpdDel,
 				false, false, false,
 				false, false, false,
 				[]loption.Option{loption.WithUpsert()}, []loption.Option{loption.WithUpsert()}, []loption.Option{loption.WithUpsert()},
-				info.PresetMergeInsStrategyBase, info.PresetMergeUpdStrategyBase, info.PresetMergeDelStrategyBase,
+				info.MergeInsStrategyWithTransient, info.MergeUpdStrategyWithTransient, info.MergeDelStrategyWithTransient,
+				nil,
+				[]option.Option{},
 				nil),
 		},
 		{
@@ -942,12 +1267,39 @@ func TestService_Exec(t *testing.T) {
 				{ID: 4, Tag: "CI_CAMPAIGN:4", Entity: "CI_CAMPAIGN", EntityID: 4, FeatureType: "adsize", FeatureGroup: 4, Operator: "=", FeatureValue: "4"},
 			},
 			config: getInfoConfig(
-				info.PresetMergeStrategyBaseInsUpdDel,
+				info.MergeStrategyInsUpdDel,
 				true, false, false,
 				false, false, false,
 				[]loption.Option{loption.WithUpsert()}, []loption.Option{loption.WithUpsert()}, []loption.Option{loption.WithUpsert()},
-				info.PresetMergeInsStrategyInsByLoad, info.PresetMergeUpdStrategyBase, info.PresetMergeDelStrategyBase,
-				[]loption.Option{loption.WithUpsert()}),
+				info.MergeInsStrategyInsByLoad, info.MergeUpdStrategyWithTransient, info.MergeDelStrategyWithTransient,
+				[]loption.Option{loption.WithUpsert()},
+				[]option.Option{},
+				nil),
+		},
+		{
+			description: "empty dst: merger ins_upd_del strategy, ins/upd/del:use_insert_batch/use_transient/use_transient, all loaders with upsert - matchKey without id",
+			table:       "CI_TARGETING_RULE_TEST",
+			options:     []moption.Option{},
+			dstRecords:  []*Rule{},
+			srcRecords: []*Rule{
+				{ID: 2, Tag: "CI_CREATIVE:2", Entity: "CI_CREATIVE", EntityID: 2, FeatureType: "adsize", FeatureGroup: 2, Operator: "=", FeatureValue: "2"},
+				{ID: 3, Tag: "CI_CAMPAIGN:304", Entity: "CI_CAMPAIGN", EntityID: 304, FeatureType: "adsize", FeatureGroup: 304, Operator: "=", FeatureValue: "304"},
+				{ID: 4, Tag: "CI_CAMPAIGN:4", Entity: "CI_CAMPAIGN", EntityID: 4, FeatureType: "adsize", FeatureGroup: 4, Operator: "=", FeatureValue: "4"},
+			},
+			expected: []*Rule{
+				{ID: 2, Tag: "CI_CREATIVE:2", Entity: "CI_CREATIVE", EntityID: 2, FeatureType: "adsize", FeatureGroup: 2, Operator: "=", FeatureValue: "2"},
+				{ID: 3, Tag: "CI_CAMPAIGN:304", Entity: "CI_CAMPAIGN", EntityID: 304, FeatureType: "adsize", FeatureGroup: 304, Operator: "=", FeatureValue: "304"},
+				{ID: 4, Tag: "CI_CAMPAIGN:4", Entity: "CI_CAMPAIGN", EntityID: 4, FeatureType: "adsize", FeatureGroup: 4, Operator: "=", FeatureValue: "4"},
+			},
+			config: getInfoConfig(
+				info.MergeStrategyInsUpdDel,
+				true, false, false,
+				false, false, false,
+				[]loption.Option{loption.WithUpsert()}, []loption.Option{loption.WithUpsert()}, []loption.Option{loption.WithUpsert()},
+				info.MergeInsStrategyInsBatch, info.MergeUpdStrategyWithTransient, info.MergeDelStrategyWithTransient,
+				[]loption.Option{},
+				[]option.Option{option.BatchSize(3), dialect.PresetIDWithTransientTransaction},
+				nil),
 		},
 		{
 			description: "empty dst: merger ups_del strategy, ups/del:use_upsert_loader/use_transient, all loaders with upsert - matchKey without id",
@@ -965,12 +1317,14 @@ func TestService_Exec(t *testing.T) {
 				{ID: 4, Tag: "CI_CAMPAIGN:4", Entity: "CI_CAMPAIGN", EntityID: 4, FeatureType: "adsize", FeatureGroup: 4, Operator: "=", FeatureValue: "4"},
 			},
 			config: getInfoConfig(
-				info.PresetMergeStrategyBaseUpsDel,
+				info.MergeStrategyUpsDel,
 				true, true, false,
 				false, true, false,
 				nil, nil, []loption.Option{loption.WithUpsert()},
-				info.PresetMergeInsStrategyInsByLoad, info.PresetMergeUpdStrategyBase, info.PresetMergeDelStrategyBase,
-				[]loption.Option{loption.WithUpsert()}),
+				info.MergeInsStrategyInsByLoad, info.MergeUpdStrategyWithTransient, info.MergeDelStrategyWithTransient,
+				[]loption.Option{loption.WithUpsert()},
+				[]option.Option{},
+				nil),
 		},
 		/// empty src and dst
 		/// empty dst
@@ -982,11 +1336,13 @@ func TestService_Exec(t *testing.T) {
 			srcRecords:  []*Rule{},
 			expected:    []*Rule{},
 			config: getInfoConfig(
-				info.PresetMergeStrategyBaseInsDel,
+				info.MergeStrategyInsDel,
 				false, true, false,
 				false, true, false,
 				[]loption.Option{}, nil, []loption.Option{},
-				info.PresetMergeInsStrategyBase, "", info.PresetMergeDelStrategyBase,
+				info.MergeInsStrategyWithTransient, "", info.MergeDelStrategyWithTransient,
+				nil,
+				[]option.Option{},
 				nil),
 		},
 		{
@@ -997,11 +1353,13 @@ func TestService_Exec(t *testing.T) {
 			srcRecords:  []*Rule{},
 			expected:    []*Rule{},
 			config: getInfoConfig(
-				info.PresetMergeStrategyBaseInsDel,
+				info.MergeStrategyInsDel,
 				false, true, false,
 				false, true, false,
 				[]loption.Option{loption.WithUpsert()}, nil, []loption.Option{loption.WithUpsert()},
-				info.PresetMergeInsStrategyBase, "", info.PresetMergeDelStrategyBase,
+				info.MergeInsStrategyWithTransient, "", info.MergeDelStrategyWithTransient,
+				nil,
+				[]option.Option{},
 				nil),
 		},
 		{
@@ -1012,12 +1370,31 @@ func TestService_Exec(t *testing.T) {
 			srcRecords:  []*Rule{},
 			expected:    []*Rule{},
 			config: getInfoConfig(
-				info.PresetMergeStrategyBaseInsDel,
+				info.MergeStrategyInsDel,
 				true, true, false,
 				false, true, false,
 				[]loption.Option{loption.WithUpsert()}, nil, []loption.Option{loption.WithUpsert()},
-				info.PresetMergeInsStrategyInsByLoad, "", info.PresetMergeDelStrategyBase,
-				[]loption.Option{loption.WithUpsert()}),
+				info.MergeInsStrategyInsByLoad, "", info.MergeDelStrategyWithTransient,
+				[]loption.Option{loption.WithUpsert()},
+				[]option.Option{},
+				nil),
+		},
+		{
+			description: "empty src and dst: merger ins_del strategy, ins/upd/del:use_insert_batch/none/use_transient, all loaders with upsert - matchKey without id",
+			table:       "CI_TARGETING_RULE_TEST",
+			options:     []moption.Option{},
+			dstRecords:  []*Rule{},
+			srcRecords:  []*Rule{},
+			expected:    []*Rule{},
+			config: getInfoConfig(
+				info.MergeStrategyInsDel,
+				true, true, false,
+				false, true, false,
+				[]loption.Option{loption.WithUpsert()}, nil, []loption.Option{loption.WithUpsert()},
+				info.MergeInsStrategyInsBatch, "", info.MergeDelStrategyWithTransient,
+				[]loption.Option{},
+				[]option.Option{option.BatchSize(2), dialect.PresetIDWithTransientTransaction},
+				nil),
 		},
 		{
 			description: "empty src and dst: merger ins_upd_del strategy, ins/upd/del:use_transient/use_transient/use_transient, all loaders with no upsert (dangerous) - matchKey without id",
@@ -1027,11 +1404,13 @@ func TestService_Exec(t *testing.T) {
 			srcRecords:  []*Rule{},
 			expected:    []*Rule{},
 			config: getInfoConfig(
-				info.PresetMergeStrategyBaseInsUpdDel,
+				info.MergeStrategyInsUpdDel,
 				false, false, false,
 				false, false, false,
 				[]loption.Option{}, []loption.Option{}, []loption.Option{},
-				info.PresetMergeInsStrategyBase, info.PresetMergeUpdStrategyBase, info.PresetMergeDelStrategyBase,
+				info.MergeInsStrategyWithTransient, info.MergeUpdStrategyWithTransient, info.MergeDelStrategyWithTransient,
+				nil,
+				[]option.Option{},
 				nil),
 		},
 		{
@@ -1042,11 +1421,13 @@ func TestService_Exec(t *testing.T) {
 			srcRecords:  []*Rule{},
 			expected:    []*Rule{},
 			config: getInfoConfig(
-				info.PresetMergeStrategyBaseInsUpdDel,
+				info.MergeStrategyInsUpdDel,
 				false, false, false,
 				false, false, false,
 				[]loption.Option{loption.WithUpsert()}, []loption.Option{loption.WithUpsert()}, []loption.Option{loption.WithUpsert()},
-				info.PresetMergeInsStrategyBase, info.PresetMergeUpdStrategyBase, info.PresetMergeDelStrategyBase,
+				info.MergeInsStrategyWithTransient, info.MergeUpdStrategyWithTransient, info.MergeDelStrategyWithTransient,
+				nil,
+				[]option.Option{},
 				nil),
 		},
 		{
@@ -1057,44 +1438,63 @@ func TestService_Exec(t *testing.T) {
 			srcRecords:  []*Rule{},
 			expected:    []*Rule{},
 			config: getInfoConfig(
-				info.PresetMergeStrategyBaseInsUpdDel,
+				info.MergeStrategyInsUpdDel,
 				true, false, false,
 				false, false, false,
 				[]loption.Option{loption.WithUpsert()}, []loption.Option{loption.WithUpsert()}, []loption.Option{loption.WithUpsert()},
-				info.PresetMergeInsStrategyInsByLoad, info.PresetMergeUpdStrategyBase, info.PresetMergeDelStrategyBase,
-				[]loption.Option{loption.WithUpsert()}),
+				info.MergeInsStrategyInsByLoad, info.MergeUpdStrategyWithTransient, info.MergeDelStrategyWithTransient,
+				[]loption.Option{loption.WithUpsert()},
+				[]option.Option{},
+				nil),
 		},
 		{
-			description: "empty src and dst: merger ups_del strategy, ups/del:use_upsert_loader/use_transient, all loaders with upsert - matchKey without id",
+			description: "empty src and dst: merger ins_upd_del strategy, ins/upd/del:use_insert_batch/use_transient/use_transient, all loaders with upsert - matchKey without id",
 			table:       "CI_TARGETING_RULE_TEST",
 			options:     []moption.Option{},
 			dstRecords:  []*Rule{},
 			srcRecords:  []*Rule{},
 			expected:    []*Rule{},
 			config: getInfoConfig(
-				info.PresetMergeStrategyBaseUpsDel,
-				true, true, false,
-				false, true, false,
-				nil, nil, []loption.Option{loption.WithUpsert()},
-				info.PresetMergeInsStrategyInsByLoad, info.PresetMergeUpdStrategyBase, info.PresetMergeDelStrategyBase,
-				[]loption.Option{loption.WithUpsert()}),
+				info.MergeStrategyInsUpdDel,
+				true, false, false,
+				false, false, false,
+				[]loption.Option{loption.WithUpsert()}, []loption.Option{loption.WithUpsert()}, []loption.Option{loption.WithUpsert()},
+				info.MergeInsStrategyInsBatch, info.MergeUpdStrategyWithTransient, info.MergeDelStrategyWithTransient,
+				[]loption.Option{},
+				[]option.Option{option.BatchSize(2), dialect.PresetIDWithTransientTransaction},
+				nil),
+		},
+		{
+			description: "empty src and dst: merger ins_upd_del strategy, ins/upd/del:use_insert_batch/use_transient/use_transient, all loaders with upsert - matchKey without id",
+			table:       "CI_TARGETING_RULE_TEST",
+			options:     []moption.Option{},
+			dstRecords:  []*Rule{},
+			srcRecords:  []*Rule{},
+			expected:    []*Rule{},
+			config: getInfoConfig(
+				info.MergeStrategyInsUpdDel,
+				true, false, false,
+				false, false, false,
+				[]loption.Option{loption.WithUpsert()}, []loption.Option{loption.WithUpsert()}, []loption.Option{loption.WithUpsert()},
+				info.MergeInsStrategyInsByLoad, info.MergeUpdStrategyWithTransient, info.MergeDelStrategyWithTransient,
+				[]loption.Option{loption.WithUpsert()},
+				[]option.Option{},
+				nil),
 		},
 	}
 
 	//for i, testCase := range testCases[(len(testCases) - 1):] {
-	//for i, testCase := range testCases[0:1] {
-	for i, testCase := range testCases {
-		if i == 0 {
-		}
+	for _, testCase := range testCases {
+		//for _, testCase := range testCases[0:1] {
 
 		//fmt.Printf("\n\n")
 		//fmt.Println("================================================")
 		//fmt.Printf("==== TEST CASE: %d %s\n", i, testCase.description)
 		//fmt.Println("================================================")
+
 		initSQL := []string{
 			"DROP TABLE IF EXISTS `" + testCase.table + "`",
-			"CREATE TABLE IF NOT EXISTS `" + testCase.table + "` (\n  `ID` int(11) NOT NULL,\n  `TAG` varchar(255) DEFAULT NULL,\n  `ENTITY` varchar(255) DEFAULT NULL,\n  `ENTITY_ID` bigint(20) DEFAULT NULL,\n  `FEATURE_TYPE` varchar(255) DEFAULT NULL,\n  `FEATURE_GROUP` int(11) DEFAULT NULL,\n  `OPERATOR` varchar(255) DEFAULT NULL,\n  `FEATURE_VALUE` varchar(300) DEFAULT NULL,\n  PRIMARY KEY (`ID`)\n) ENGINE=InnoDB DEFAULT CHARSET=latin1",
-			//	"TRUNCATE TABLE " + testCase.table,
+			"CREATE TABLE IF NOT EXISTS `" + testCase.table + "` (\n  `ID` int(11) NOT NULL AUTO_INCREMENT,\n  `TAG` varchar(255) DEFAULT NULL,\n  `ENTITY` varchar(255) DEFAULT NULL,\n  `ENTITY_ID` bigint(20) DEFAULT NULL,\n  `FEATURE_TYPE` varchar(255) DEFAULT NULL,\n  `FEATURE_GROUP` int(11) DEFAULT NULL,\n  `OPERATOR` varchar(255) DEFAULT NULL,\n  `FEATURE_VALUE` varchar(300) DEFAULT NULL,\n  PRIMARY KEY (`ID`)\n) ENGINE=InnoDB DEFAULT CHARSET=latin1",
 		}
 
 		db, err := sql.Open(c.Driver, c.DSN)
@@ -1125,16 +1525,11 @@ func TestService_Exec(t *testing.T) {
 		if !testCase.hasError {
 			assert.Nil(t, err, testCase.description)
 		}
-		if result != nil {
-		}
-
-		// printing result
-		//if mysqlMergeMetric, ok := result.(*metric.Metric); ok {
-		//	fmt.Printf("Total time: %s\n", mysqlMergeMetric.TotalTime)
-		//	fmt.Println(mysqlMergeMetric.Report())
-		//}
+		result = result
+		//result.Report()
 
 		SQL := "SELECT * FROM " + testCase.table + " ORDER BY ID"
+
 		rows, err := db.QueryContext(context.TODO(), SQL)
 		assert.Nil(t, err, testCase.description)
 		actual := []*Rule{}
@@ -1146,15 +1541,35 @@ func TestService_Exec(t *testing.T) {
 			actual = append(actual, &rule)
 		}
 
-		if !assertly.AssertValues(t, testCase.expected, actual, testCase.description) {
-			//fmt.Println("EXPECTED")
-			//toolbox.DumpIndent(testCase.srcRecords, true)
-			//fmt.Println("ACTUAL")
-			//toolbox.DumpIndent(actual, true)
+		expected := testCase.expected.([]*Rule)
+
+		if testCase.ignoreIdAssertion {
+			for _, v := range expected {
+				v.ID = 0
+			}
+			for _, v := range actual {
+				v.ID = 0
+			}
+
+			sort.Slice(expected, func(i, j int) bool {
+				return expected[i].EntityID < expected[j].EntityID
+			})
+
+			sort.Slice(actual, func(i, j int) bool {
+				return actual[i].EntityID < actual[j].EntityID
+			})
 		}
-		if assertly.AssertValues(t, actual, testCase.expected, testCase.description) {
+
+		if !assertly.AssertValues(t, expected, actual, testCase.description) {
+			fmt.Println("EXPECTED")
+			toolbox.DumpIndent(expected, true)
+			fmt.Println("ACTUAL")
+			toolbox.DumpIndent(actual, true)
+		}
+
+		if assertly.AssertValues(t, actual, expected, testCase.description) {
 			//fmt.Println("EXPECTED")
-			//toolbox.DumpIndent(testCase.srcRecords, true)
+			//toolbox.DumpIndent(expected, true)
 			//fmt.Println("ACTUAL")
 			//toolbox.DumpIndent(actual, true)
 		}
@@ -1177,7 +1592,6 @@ func getTestData(name string, path string) []*Rule {
 		}
 	}
 
-	//file, _ := ioutil.ReadFile(`/Users/michael/Go/src/github.com/viant/sqlx/io/merge/TEST_DATA.json`)
 	file, err := ioutil.ReadFile(path)
 	if err != nil {
 		log.Fatalln(err)
@@ -1188,7 +1602,6 @@ func getTestData(name string, path string) []*Rule {
 		log.Fatalln(err)
 	}
 
-	////
 	fmt.Printf("Tag: %v,\n"+
 		"Entity: %v,\n"+
 		"EntityID: %v,\n"+
@@ -1205,11 +1618,6 @@ func getTestData(name string, path string) []*Rule {
 		data[0].Operator,
 		data[0].FeatureValue,
 		data[0].ID)
-	////
-
-	//for i := 0; i < len(data); i++ {
-	//	fmt.Println(data[i].ID)
-	//}
 
 	testCache = &cache{
 		name:  name,
@@ -1221,7 +1629,7 @@ func getTestData(name string, path string) []*Rule {
 }
 
 func getInfoConfig(
-	mergeStrategy info.PresetMergeStrategy,
+	mergeStrategy info.MergeStrategy,
 	omitInsTransient bool,
 	omitUpdTransient bool,
 	omitDelTransient bool,
@@ -1231,44 +1639,18 @@ func getInfoConfig(
 	insTransientLoadOptions []loption.Option,
 	updTransientLoadOptions []loption.Option,
 	delTransientLoadOptions []loption.Option,
-	insStartegy info.PresetMergeInsStrategy,
-	updStartegy info.PresetMergeUpdStrategy,
-	delStartegy info.PresetMergeDelStrategy,
-	insLoadOptions []loption.Option) info.MergeConfig {
+	insStartegy info.MergeInsStrategy,
+	updStartegy info.MergeUpdStrategy,
+	delStartegy info.MergeDelStrategy,
+	insLoadOptions []loption.Option,
+	insOptions []option.Option,
+	operationOrder []info.MergeSubOperationType) info.MergeConfig {
 	config := &mconfig.Config{
 		Strategy:   mergeStrategy,
 		MatchKeyFn: MatchKeyFn,
 		NewRowFn:   NewRowFn,
 		//				FetchSQL:      "SELECT ID, TAG, ENTITY, ENTITY_ID, FEATURE_TYPE, FEATURE_GROUP, OPERATOR, FEATURE_VALUE FROM CI_TARGETING_RULE_TEST",
 		FetchSQL: "SELECT ID, TAG, ENTITY, ENTITY_ID, FEATURE_TYPE, FEATURE_GROUP, OPERATOR, FEATURE_VALUE FROM CI_TARGETING_RULE_TEST",
-
-		Insert: &mconfig.Insert{
-			Transient: &mconfig.Transient{
-				TableName: "CI_TARGETING_RULE_INS_TMP",
-				InitSQL: []string{
-					"CREATE TABLE IF NOT EXISTS `CI_TARGETING_RULE_INS_TMP` (\n  `ID` int(11) NOT NULL,\n  `TAG` varchar(255) DEFAULT NULL,\n  `ENTITY` varchar(255) DEFAULT NULL,\n  `ENTITY_ID` bigint(20) DEFAULT NULL,\n  `FEATURE_TYPE` varchar(255) DEFAULT NULL,\n  `FEATURE_GROUP` int(11) DEFAULT NULL,\n  `OPERATOR` varchar(255) DEFAULT NULL,\n  `FEATURE_VALUE` varchar(300) DEFAULT NULL,\n  PRIMARY KEY (`ID`)\n) ENGINE=InnoDB DEFAULT CHARSET=latin1",
-					"TRUNCATE TABLE CI_TARGETING_RULE_INS_TMP",
-				},
-				LoadOptions: insTransientLoadOptions,
-			},
-			InsertSQL: `INSERT INTO CI_TARGETING_RULE_TEST (ID, TAG, ENTITY, ENTITY_ID, FEATURE_TYPE, FEATURE_GROUP, OPERATOR, FEATURE_VALUE) SELECT ID, TAG, ENTITY, ENTITY_ID, FEATURE_TYPE, FEATURE_GROUP, OPERATOR, FEATURE_VALUE FROM CI_TARGETING_RULE_INS_TMP`,
-			//InsertStrategy: info.PresetMergeInsStrategyInsByLoad,
-			//InsertStrategy: info.PresetMergeStrategyBase,
-			InsertStrategy: insStartegy,
-			LoadOptions:    insLoadOptions,
-		},
-		Delete: &mconfig.Delete{
-			Transient: &mconfig.Transient{
-				TableName: "CI_TARGETING_RULE_DEL_TMP",
-				InitSQL: []string{ // CREATE TABLE IF NOT EXISTS `CI_TARGETING_RULE_DEL_TMP` AS SELECT * FROM ...
-					"CREATE TABLE IF NOT EXISTS `CI_TARGETING_RULE_DEL_TMP` (\n  `ID` int(11) NOT NULL,\n  `TAG` varchar(255) DEFAULT NULL,\n  `ENTITY` varchar(255) DEFAULT NULL,\n  `ENTITY_ID` bigint(20) DEFAULT NULL,\n  `FEATURE_TYPE` varchar(255) DEFAULT NULL,\n  `FEATURE_GROUP` int(11) DEFAULT NULL,\n  `OPERATOR` varchar(255) DEFAULT NULL,\n  `FEATURE_VALUE` varchar(300) DEFAULT NULL,\n  PRIMARY KEY (`ID`)\n) ENGINE=InnoDB DEFAULT CHARSET=latin1",
-					"TRUNCATE TABLE CI_TARGETING_RULE_DEL_TMP",
-				},
-				LoadOptions: delTransientLoadOptions, // TODO try to pass nil
-			},
-			DeleteSQL: "DELETE t.* FROM CI_TARGETING_RULE_TEST t join CI_TARGETING_RULE_DEL_TMP d on t.id = d.id",
-		},
-
 		Update: &mconfig.Update{
 			Transient: &mconfig.Transient{
 				TableName: "CI_TARGETING_RULE_UPD_TMP",
@@ -1291,8 +1673,35 @@ dst.FEATURE_GROUP = tmp.FEATURE_GROUP,
 dst.OPERATOR = tmp.OPERATOR, 
 dst.FEATURE_VALUE = tmp.FEATURE_VALUE`,
 			UpdateStrategy: updStartegy,
-			LoadOptions:    insLoadOptions,
 		},
+		Insert: &mconfig.Insert{
+			Transient: &mconfig.Transient{
+				TableName: "CI_TARGETING_RULE_INS_TMP",
+				InitSQL: []string{
+					"CREATE TABLE IF NOT EXISTS `CI_TARGETING_RULE_INS_TMP` (\n  `ID` int(11) NOT NULL,\n  `TAG` varchar(255) DEFAULT NULL,\n  `ENTITY` varchar(255) DEFAULT NULL,\n  `ENTITY_ID` bigint(20) DEFAULT NULL,\n  `FEATURE_TYPE` varchar(255) DEFAULT NULL,\n  `FEATURE_GROUP` int(11) DEFAULT NULL,\n  `OPERATOR` varchar(255) DEFAULT NULL,\n  `FEATURE_VALUE` varchar(300) DEFAULT NULL,\n  PRIMARY KEY (`ID`)\n) ENGINE=InnoDB DEFAULT CHARSET=latin1",
+					"TRUNCATE TABLE CI_TARGETING_RULE_INS_TMP",
+				},
+				LoadOptions: insTransientLoadOptions,
+			},
+			InsertSQL: `INSERT INTO CI_TARGETING_RULE_TEST (ID, TAG, ENTITY, ENTITY_ID, FEATURE_TYPE, FEATURE_GROUP, OPERATOR, FEATURE_VALUE) SELECT ID, TAG, ENTITY, ENTITY_ID, FEATURE_TYPE, FEATURE_GROUP, OPERATOR, FEATURE_VALUE FROM CI_TARGETING_RULE_INS_TMP`,
+			//InsertStrategy: info.MergeInsStrategyInsByLoad,
+			//InsertStrategy: info.MergeStrategyBase,
+			InsertStrategy: insStartegy,
+			LoadOptions:    insLoadOptions,
+			Options:        insOptions,
+		},
+		Delete: &mconfig.Delete{
+			Transient: &mconfig.Transient{
+				TableName: "CI_TARGETING_RULE_DEL_TMP",
+				InitSQL: []string{ // CREATE TABLE IF NOT EXISTS `CI_TARGETING_RULE_DEL_TMP` AS SELECT * FROM ...
+					"CREATE TABLE IF NOT EXISTS `CI_TARGETING_RULE_DEL_TMP` (\n  `ID` int(11) NOT NULL,\n  `TAG` varchar(255) DEFAULT NULL,\n  `ENTITY` varchar(255) DEFAULT NULL,\n  `ENTITY_ID` bigint(20) DEFAULT NULL,\n  `FEATURE_TYPE` varchar(255) DEFAULT NULL,\n  `FEATURE_GROUP` int(11) DEFAULT NULL,\n  `OPERATOR` varchar(255) DEFAULT NULL,\n  `FEATURE_VALUE` varchar(300) DEFAULT NULL,\n  PRIMARY KEY (`ID`)\n) ENGINE=InnoDB DEFAULT CHARSET=latin1",
+					"TRUNCATE TABLE CI_TARGETING_RULE_DEL_TMP",
+				},
+				LoadOptions: delTransientLoadOptions, // TODO try to pass nil
+			},
+			DeleteSQL: "DELETE t.* FROM CI_TARGETING_RULE_TEST t join CI_TARGETING_RULE_DEL_TMP d on t.id = d.id",
+		},
+		OperationOrder: nil,
 	}
 
 	if omitInsTransient {
@@ -1322,7 +1731,6 @@ dst.FEATURE_VALUE = tmp.FEATURE_VALUE`,
 	return config
 }
 
-// TODO - use identities
 func MatchKeyFn(entity interface{}) (interface{}, interface{}, error) {
 	var builder strings.Builder //TODO use string Buffer?
 	rule, ok := entity.(*Rule)
@@ -1560,7 +1968,7 @@ func prepareSrcRules(name string, dbRules []*Rule, toInsCnt, toUpdCnt int, toDel
 }
 
 func getInfoConfigWithMatchKeyFn(
-	mergeStrategy info.PresetMergeStrategy,
+	mergeStrategy info.MergeStrategy,
 	omitInsTransient bool,
 	omitUpdTransient bool,
 	omitDelTransient bool,
@@ -1570,11 +1978,14 @@ func getInfoConfigWithMatchKeyFn(
 	insTransientLoadOptions []loption.Option,
 	updTransientLoadOptions []loption.Option,
 	delTransientLoadOptions []loption.Option,
-	insStartegy info.PresetMergeInsStrategy,
-	updStartegy info.PresetMergeUpdStrategy,
-	delStartegy info.PresetMergeDelStrategy,
+	insStartegy info.MergeInsStrategy,
+	updStartegy info.MergeUpdStrategy,
+	delStartegy info.MergeDelStrategy,
 	insLoadOptions []loption.Option,
-	matchKeyFn func(entity interface{}) (interface{}, interface{}, error)) info.MergeConfig {
+	insOptions []option.Option,
+	matchKeyFn func(entity interface{}) (interface{}, interface{}, error),
+	operationOrder []info.MergeSubOperationType,
+) info.MergeConfig {
 	config := getInfoConfig(
 		mergeStrategy,
 		omitInsTransient,
@@ -1589,7 +2000,9 @@ func getInfoConfigWithMatchKeyFn(
 		insStartegy,
 		updStartegy,
 		delStartegy,
-		insLoadOptions)
+		insLoadOptions,
+		insOptions,
+		operationOrder)
 	mconfig, ok := config.(*mconfig.Config)
 	if ok {
 		mconfig.MatchKeyFn = matchKeyFn

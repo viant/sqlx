@@ -19,7 +19,7 @@ type Metric struct {
 	ToUpsertCnt int
 	ToDeleteCnt int
 
-	Strategy                info.PresetMergeStrategy
+	Strategy                info.MergeStrategy
 	IndexTime               time.Duration
 	CategorizeTime          time.Duration
 	FetchAndPrepareSetsTime time.Duration
@@ -120,4 +120,44 @@ func (m *Metric) Report() string {
 		sb.WriteString(s)
 	}
 	return sb.String()
+}
+
+// InsertingTime returns inserting duration.
+func (m *Metric) InsertingTime() time.Duration {
+	if m.Err != nil {
+		return 0
+	}
+	return m.Insert.Total.Time
+}
+
+// UpsertingTime returns upserting duration.
+func (m *Metric) UpsertingTime() time.Duration {
+	if m.Err != nil {
+		return 0
+	}
+	return m.Upsert.Total.Time
+}
+
+// UpdatingTime returns updating duration.
+func (m *Metric) UpdatingTime() time.Duration {
+	if m.Err != nil {
+		return 0
+	}
+	return m.Update.Total.Time
+}
+
+// DeletingTime returns deleting duration.
+func (m *Metric) DeletingTime() time.Duration {
+	if m.Err != nil {
+		return 0
+	}
+	return m.Delete.Total.Time
+}
+
+// MergingTime returns total merging duration.
+func (m *Metric) MergingTime() time.Duration {
+	if m.Err != nil {
+		return 0
+	}
+	return m.TotalTime
 }

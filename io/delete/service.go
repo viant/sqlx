@@ -10,7 +10,7 @@ import (
 	"sync"
 )
 
-//Service represents deleter
+// Service represents deleter
 type Service struct {
 	*config.Config
 	initSession *session
@@ -18,9 +18,13 @@ type Service struct {
 	db          *sql.DB
 }
 
-//Exec runs delete statements
+// Exec runs delete statements
 func (s *Service) Exec(ctx context.Context, any interface{}, options ...option.Option) (int64, error) {
-	recordsFn, _, err := io.Iterator(any)
+	recordsFn, cnt, err := io.Iterator(any)
+	if cnt == 0 {
+		return 0, nil
+	}
+
 	if err != nil {
 		return 0, err
 	}
@@ -72,7 +76,7 @@ func (s *Service) ensureSession(record interface{}, batchSize int) (*session, er
 	return result, err
 }
 
-//New creates an deleter
+// New creates an deleter
 func New(ctx context.Context, db *sql.DB, tableName string, options ...option.Option) (*Service, error) {
 	var columnMapper io.ColumnMapper
 	if !option.Assign(options, &columnMapper) {

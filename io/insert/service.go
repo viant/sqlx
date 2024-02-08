@@ -3,7 +3,6 @@ package insert
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"fmt"
 	"github.com/viant/sqlx/io"
 	"github.com/viant/sqlx/io/config"
@@ -40,8 +39,6 @@ func New(ctx context.Context, db *sql.DB, tableName string, options ...option.Op
 // NextSequence resets next updateSequence
 func (s *Service) NextSequence(ctx context.Context, any interface{}, recordCount int, options ...option.Option) (*sink.Sequence, error) {
 	valueAt, count, err := io.Values(any)
-	data, _ := json.Marshal(any)
-	fmt.Printf("IN: %s\n", data)
 	if err != nil {
 		return nil, err
 	}
@@ -66,15 +63,9 @@ func (s *Service) NextSequence(ctx context.Context, any interface{}, recordCount
 	for _, updater := range sess.recordUpdaters {
 		asNumeric, ok := updater.(*numericSequencer)
 		if ok {
-			ret, err := asNumeric.nextSequence(ctx, sess, record, batchRecordBuffer, recordCount, options)
-			data, _ = json.Marshal(ret)
-			fmt.Printf("OUT: %s\n", data)
-
-			return ret, err
+			return asNumeric.nextSequence(ctx, sess, record, batchRecordBuffer, recordCount, options)
 		}
 	}
-	data, _ = json.Marshal(record)
-	fmt.Printf("OUT: %s\n", data)
 
 	return nil, fmt.Errorf("not found column with sequence")
 }

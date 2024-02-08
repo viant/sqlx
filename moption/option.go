@@ -3,12 +3,14 @@ package moption
 import (
 	"database/sql"
 	"github.com/viant/sqlx/loption"
+	"github.com/viant/sqlx/option"
 )
 
 type (
 	Options struct {
-		tx          *sql.Tx
-		loadOptions []loption.Option
+		tx            *sql.Tx
+		loadOptions   []loption.Option
+		commonOptions option.Options
 	}
 
 	Option func(o *Options)
@@ -34,6 +36,12 @@ func WithLoadOptions(loadOptionSlice []loption.Option) Option {
 	}
 }
 
+func WithCommonOptions(commonOptions option.Options) Option {
+	return func(o *Options) {
+		o.commonOptions = commonOptions
+	}
+}
+
 func (o *Options) Apply(opts ...Option) {
 	if len(opts) == 0 {
 		return
@@ -49,4 +57,8 @@ func (o *Options) GetTransaction() *sql.Tx {
 
 func (o *Options) GetLoadOptions() []loption.Option {
 	return o.loadOptions
+}
+
+func (o *Options) GetCommonOptions() option.Options {
+	return o.commonOptions
 }

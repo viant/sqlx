@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"github.com/viant/sqlx/io/delete"
+	"github.com/viant/sqlx/io/insert"
 	"github.com/viant/sqlx/loption"
 	"github.com/viant/sqlx/metadata/info"
 	"github.com/viant/sqlx/metadata/product/mysql/merge/metric"
@@ -27,6 +29,35 @@ func (e *Executor) delete(ctx context.Context, db *sql.DB, data []interface{}, s
 	cnt, err = e.execSQL(ctx, db, stmt)
 
 	return cnt, err
+}
+
+func (e *Executor) deleteBatch(ctx context.Context, db *sql.DB, data []interface{}, table string, options ...moption.Option) (int, error) {
+	cnt := int64(0)
+	var err error
+	start := time.Now()
+	defer func() {
+		e.metric.Delete.Main.Time = time.Now().Sub(start)
+		e.metric.Delete.Main.Affected = int(cnt)
+		e.metric.Total.Report = append(e.metric.Total.Report, fmt.Sprintf("### DELETING (BATCH) TIME %s FOR %d OF %d RECORDS \n", e.metric.Insert.Main.Time, cnt, len(data)))
+	}()
+
+	mopts := moption.NewOptions(options...)
+	copts := mopts.GetCommonOptions()
+
+	//TODO check if copts contains transaction (it's possible but has no sense)
+	if e.Transaction != nil && e.Transaction.Tx != nil {
+		copts = append(copts, e.Transaction.Tx)
+	} else {
+		return 0, fmt.Errorf("deletebatch - transaction is nil")
+	}
+
+	deleter, err := delete.New(ctx, db, table, copts...)
+	if err != nil {
+		return 0, err
+	}
+
+	cnt, err = deleter.Exec(ctx, data, copts...)
+	return int(cnt), err
 }
 
 func (e *Executor) update(ctx context.Context, db *sql.DB, data []interface{}, stmt string) (int, error) {
@@ -63,13 +94,42 @@ func (e *Executor) insert(ctx context.Context, db *sql.DB, data []interface{}, s
 	return cnt, err
 }
 
+func (e *Executor) insertBatch(ctx context.Context, db *sql.DB, data []interface{}, table string, options ...moption.Option) (int, error) {
+	cnt := int64(0)
+	var err error
+	start := time.Now()
+	defer func() {
+		e.metric.Insert.Main.Time = time.Now().Sub(start)
+		e.metric.Insert.Main.Affected = int(cnt)
+		e.metric.Total.Report = append(e.metric.Total.Report, fmt.Sprintf("### INSERTING (BATCH) TIME %s FOR %d OF %d RECORDS \n", e.metric.Insert.Main.Time, cnt, len(data)))
+	}()
+
+	mopts := moption.NewOptions(options...)
+	copts := mopts.GetCommonOptions()
+
+	//TODO check if copts contains transaction (it's possible but has no sense)
+	if e.Transaction != nil && e.Transaction.Tx != nil {
+		copts = append(copts, e.Transaction.Tx)
+	} else {
+		return 0, fmt.Errorf("insertBatch - transaction is nil")
+	}
+
+	inserter, err := insert.New(ctx, db, table, copts...)
+	if err != nil {
+		return 0, err
+	}
+
+	cnt, _, err = inserter.Exec(ctx, data, copts...)
+	return int(cnt), err
+}
+
 func (e *Executor) insertByLoad(ctx context.Context, db *sql.DB, data []interface{}, table string, options ...moption.Option) (int, error) {
 	cnt := 0
 	var err error
 	start := time.Now()
 	defer func() {
 		switch e.config.Strategy {
-		case info.PresetMergeStrategyBaseUpsDel:
+		case info.MergeStrategyUpsDel:
 			e.metric.Upsert.Main.Time = time.Now().Sub(start)
 			e.metric.Upsert.Main.Affected = cnt
 			e.metric.Total.Report = append(e.metric.Total.Report, fmt.Sprintf("### UPSERTING (LOAD) TIME %s FOR %d OF %d RECORDS \n", e.metric.Upsert.Main.Time, cnt, len(data)))
