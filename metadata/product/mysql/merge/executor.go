@@ -299,14 +299,14 @@ func (e *Executor) adjustConfig() error {
 	if e.config.Strategy == info.InsertFlag|info.DeleteFlag && e.config.Insert == nil {
 		e.config.Insert = &config.Insert{
 			InsertStrategy: info.InsertBatchFlag,
-			Options:        []option.Option{option.BatchSize(4096), dialect.PresetIDWithTransientTransaction},
+			Options:        []option.Option{option.BatchSize(500), dialect.PresetIDWithTransientTransaction},
 		}
 	}
 
 	if e.config.Strategy == info.InsertFlag|info.DeleteFlag && e.config.Delete == nil {
 		e.config.Delete = &config.Delete{
 			DeleteStrategy: info.DeleteBatchFlag,
-			Options:        []option.Option{option.BatchSize(4096)},
+			Options:        []option.Option{option.BatchSize(500)},
 		}
 	}
 

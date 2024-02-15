@@ -7,6 +7,7 @@ import (
 	"github.com/viant/sqlx/io"
 	"github.com/viant/sqlx/io/load"
 	"github.com/viant/sqlx/io/read"
+	"github.com/viant/sqlx/metadata/info"
 	"github.com/viant/sqlx/moption"
 	"strings"
 	"time"
@@ -338,7 +339,7 @@ func (e *Executor) fillMetricSrcDstComp(allInSrcCnt int, indexedSrcCnt int, allI
 	sb := strings.Builder{}
 	sb.WriteString("+++++++++++++++++++++++++++\n")
 	sb.WriteString("          DATA SETS ROWS SUMMARY:\n")
-	sb.WriteString(fmt.Sprintf("                   merge strategy: %s\n", e.config.Strategy))
+	sb.WriteString(fmt.Sprintf("                   merge strategy: %s\n", info.MergeStrategyDesc(e.config.Strategy)))
 	sb.WriteString(fmt.Sprintf("                  all rows in src: %d (%s)\n", allInSrcCnt, "raw data"))
 	sb.WriteString(fmt.Sprintf("              indexed rows in src: %d (%s)\n", indexedSrcCnt, "unique by match key"))
 	sb.WriteString(fmt.Sprintf("                  all rows in dst: %d\n", allInDstCnt))

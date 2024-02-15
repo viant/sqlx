@@ -1,6 +1,7 @@
 package info
 
 import (
+	"strings"
 	"time"
 )
 
@@ -56,4 +57,35 @@ type MergeResult interface {
 
 	// MergingTime returns total merging duration.
 	MergingTime() time.Duration
+}
+
+// MergeStrategyDesc describes merge strategy
+func MergeStrategyDesc(strategy uint8) string {
+	sb := strings.Builder{}
+	if strategy&InsertFlag == InsertFlag {
+		sb.WriteString("ins")
+	}
+
+	if strategy&UpdateFlag == UpdateFlag {
+		if sb.Len() > 0 {
+			sb.WriteString("/")
+		}
+		sb.WriteString("upd")
+	}
+
+	if strategy&UpsertFlag == UpsertFlag {
+		if sb.Len() > 0 {
+			sb.WriteString("/")
+		}
+		sb.WriteString("ups")
+	}
+
+	if strategy&DeleteFlag == DeleteFlag {
+		if sb.Len() > 0 {
+			sb.WriteString("/")
+		}
+		sb.WriteString("del")
+	}
+
+	return sb.String()
 }

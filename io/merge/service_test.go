@@ -1690,7 +1690,7 @@ dst.FEATURE_VALUE = tmp.FEATURE_VALUE`,
 			DeleteSQL:      "DELETE t.* FROM CI_TARGETING_RULE_TEST t join CI_TARGETING_RULE_DEL_TMP d on t.id = d.id",
 			Options:        []option.Option{option.BatchSize(8000)},
 		},
-		OperationOrder: nil,
+		OperationOrder: operationOrder,
 	}
 
 	if omitInsTransient {
