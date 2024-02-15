@@ -71,11 +71,11 @@ func (e *Executor) Exec(ctx context.Context, srcData interface{}, db *sql.DB, ta
 	var dataToInsert, dataToUpdate, dataToDelete []interface{}
 
 	switch e.config.Strategy {
-	case info.MergeStrategyInsDel:
+	case info.InsertFlag | info.DeleteFlag:
 		dataToInsert, dataToUpdate, dataToDelete, err = e.prepareDMLDataSetsInsDel(ctx, db, valueAt, allInSrcCnt)
-	case info.MergeStrategyInsUpdDel:
+	case info.InsertFlag | info.UpdateFlag | info.DeleteFlag:
 		dataToInsert, dataToUpdate, dataToDelete, err = e.prepareDMLDataSetsInsUpdDel(ctx, db, valueAt, allInSrcCnt)
-	case info.MergeStrategyUpsDel:
+	case info.UpsertFlag | info.DeleteFlag:
 		dataToInsert, dataToUpdate, dataToDelete, err = e.prepareDMLDataSetsUpsDel(ctx, db, valueAt, allInSrcCnt)
 	default:
 		return e.metric, fmt.Errorf("merge executor: unsupported strategy %v", e.config.Strategy)
@@ -105,13 +105,13 @@ func (e *Executor) Exec(ctx context.Context, srcData interface{}, db *sql.DB, ta
 		preDelOptions = []moption.Option{opt}
 	}
 
-	// MergeDelStrategyDelBatch
+	// DeleteBatchFlag
 	var delOptions []moption.Option
 	if e.config.Delete != nil {
 		switch e.config.Delete.DeleteStrategy {
-		case "", info.MergeDelStrategyWithTransient:
+		case info.DeleteWithTransientFlag:
 			del = e.delete
-		case info.MergeDelStrategyDelBatch:
+		case info.DeleteBatchFlag:
 			preDelete = nil
 			del = nil
 			deleteBatch = e.deleteBatch
@@ -131,7 +131,10 @@ func (e *Executor) Exec(ctx context.Context, srcData interface{}, db *sql.DB, ta
 	}
 
 	if e.config.Update != nil {
-		update = e.update
+		switch e.config.Update.UpdateStrategy {
+		case info.UpdateWithTransientFlag:
+			update = e.update
+		}
 	}
 
 	// INSERT
@@ -145,9 +148,9 @@ func (e *Executor) Exec(ctx context.Context, srcData interface{}, db *sql.DB, ta
 	var insOptions []moption.Option
 	if e.config.Insert != nil {
 		switch e.config.Insert.InsertStrategy {
-		case "", info.MergeInsStrategyWithTransient:
+		case info.InsertWithTransientFlag:
 			insert = e.insert
-		case info.MergeInsStrategyInsByLoad:
+		case info.InsertByLoadFlag:
 			preInsert = nil
 			insert = nil
 			insertByLoad = e.insertByLoad
@@ -155,7 +158,7 @@ func (e *Executor) Exec(ctx context.Context, srcData interface{}, db *sql.DB, ta
 			if e.config.Insert.LoadOptions != nil {
 				insOptions = append(insOptions, opts)
 			}
-		case info.MergeInsStrategyInsBatch:
+		case info.InsertBatchFlag:
 			preInsert = nil
 			insert = nil
 			insertByLoad = nil
@@ -198,7 +201,7 @@ func (e *Executor) Exec(ctx context.Context, srcData interface{}, db *sql.DB, ta
 
 	for _, operation := range e.config.OperationOrder {
 		switch operation {
-		case info.MergeSubOperationTypeInsert:
+		case info.InsertFlag:
 			if insert != nil {
 				_, err = insert(ctx, db, dataToInsert, e.config.Insert.InsertSQL)
 				if err != nil {
@@ -219,14 +222,14 @@ func (e *Executor) Exec(ctx context.Context, srcData interface{}, db *sql.DB, ta
 					return e.metric, e.end(err)
 				}
 			}
-		case info.MergeSubOperationTypeUpdate:
+		case info.UpdateFlag:
 			if update != nil {
 				_, err = update(ctx, db, dataToUpdate, e.config.Update.UpdateSQL)
 				if err != nil {
 					return e.metric, e.end(err)
 				}
 			}
-		case info.MergeSubOperationTypeDelete:
+		case info.DeleteFlag:
 			if del != nil {
 				_, err = del(ctx, db, dataToDelete, e.config.Delete.DeleteSQL)
 				if err != nil {
@@ -281,30 +284,38 @@ func (e *Executor) adjustConfig() error {
 		return fmt.Errorf("merge sesssion: empty config")
 	}
 
-	if e.config.Strategy == "" {
-		e.config.Strategy = info.MergeStrategyInsDel
+	if e.config.Strategy == 0 {
+		e.config.Strategy = info.InsertFlag | info.DeleteFlag
 	}
 
 	if len(e.config.OperationOrder) == 0 {
-		e.config.OperationOrder = []info.MergeSubOperationType{
-			info.MergeSubOperationTypeDelete,
-			info.MergeSubOperationTypeUpdate,
-			info.MergeSubOperationTypeInsert,
+		e.config.OperationOrder = []uint8{
+			info.DeleteFlag,
+			info.UpdateFlag,
+			info.InsertFlag,
 		}
 	}
 
-	if e.config.Strategy == info.MergeStrategyInsDel && e.config.Insert == nil {
+	if e.config.Strategy == info.InsertFlag|info.DeleteFlag && e.config.Insert == nil {
 		e.config.Insert = &config.Insert{
-			InsertStrategy: info.MergeInsStrategyInsBatch,
+			InsertStrategy: info.InsertBatchFlag,
 			Options:        []option.Option{option.BatchSize(4096), dialect.PresetIDWithTransientTransaction},
 		}
 	}
 
-	if e.config.Strategy == info.MergeStrategyInsDel && e.config.Delete == nil {
+	if e.config.Strategy == info.InsertFlag|info.DeleteFlag && e.config.Delete == nil {
 		e.config.Delete = &config.Delete{
-			DeleteStrategy: info.MergeDelStrategyDelBatch,
+			DeleteStrategy: info.DeleteBatchFlag,
 			Options:        []option.Option{option.BatchSize(4096)},
 		}
+	}
+
+	if e.config.Insert.InsertStrategy == 0 {
+		e.config.Insert.InsertStrategy = info.InsertBatchFlag
+	}
+
+	if e.config.Delete.DeleteStrategy == 0 {
+		e.config.Delete.DeleteStrategy = info.DeleteBatchFlag
 	}
 
 	return nil
@@ -313,7 +324,7 @@ func (e *Executor) adjustConfig() error {
 func (e *Executor) validateConfig() error {
 
 	switch e.config.Strategy {
-	case info.MergeStrategyInsDel:
+	case info.InsertFlag | info.DeleteFlag:
 		if e.config.Insert == nil {
 			return fmt.Errorf("merge session validate config: undefined insert config for strategy: %v", e.config.Strategy)
 		}
@@ -323,7 +334,7 @@ func (e *Executor) validateConfig() error {
 		if e.config.Delete == nil {
 			return fmt.Errorf("merge session validate config: undefined delete config for strategy: %v", e.config.Strategy)
 		}
-	case info.MergeStrategyInsUpdDel:
+	case info.InsertFlag | info.UpdateFlag | info.DeleteFlag:
 		if e.config.Insert == nil {
 			return fmt.Errorf("merge session validate config: undefined insert config for strategy: %v", e.config.Strategy)
 		}
@@ -333,7 +344,7 @@ func (e *Executor) validateConfig() error {
 		if e.config.Delete == nil {
 			return fmt.Errorf("merge session validate config: undefined delete config for strategy: %v", e.config.Strategy)
 		}
-	case info.MergeStrategyUpsDel:
+	case info.UpsertFlag | info.DeleteFlag:
 		if e.config.Insert == nil {
 			return fmt.Errorf("merge session validate config: undefined insert config for strategy: %v", e.config.Strategy)
 		}
@@ -345,7 +356,7 @@ func (e *Executor) validateConfig() error {
 		}
 
 		switch e.config.Insert.InsertStrategy {
-		case info.MergeInsStrategyInsByLoad:
+		case info.InsertByLoadFlag:
 			opts := loption.NewOptions(e.config.Insert.LoadOptions...)
 			if !opts.GetWithUpsert() {
 				return fmt.Errorf("merge session validate config: merge strategy %v combined with insert strategy %v require upsert option for insert loader", e.config.Strategy, e.config.Insert.InsertStrategy)

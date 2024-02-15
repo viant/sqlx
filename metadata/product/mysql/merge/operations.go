@@ -34,15 +34,17 @@ func (e *Executor) delete(ctx context.Context, db *sql.DB, data []interface{}, s
 func (e *Executor) deleteBatch(ctx context.Context, db *sql.DB, data []interface{}, table string, options ...moption.Option) (int, error) {
 	cnt := int64(0)
 	var err error
+	var batchSize int
 	start := time.Now()
 	defer func() {
 		e.metric.Delete.Main.Time = time.Now().Sub(start)
 		e.metric.Delete.Main.Affected = int(cnt)
-		e.metric.Total.Report = append(e.metric.Total.Report, fmt.Sprintf("### DELETING (BATCH) TIME %s FOR %d OF %d RECORDS \n", e.metric.Insert.Main.Time, cnt, len(data)))
+		e.metric.Total.Report = append(e.metric.Total.Report, fmt.Sprintf("### DELETING (BATCHSIZE == %d) TIME %s FOR %d OF %d RECORDS \n", batchSize, e.metric.Delete.Main.Time, cnt, len(data)))
 	}()
 
 	mopts := moption.NewOptions(options...)
 	copts := mopts.GetCommonOptions()
+	batchSize = copts.BatchSize()
 
 	//TODO check if copts contains transaction (it's possible but has no sense)
 	if e.Transaction != nil && e.Transaction.Tx != nil {
@@ -97,15 +99,17 @@ func (e *Executor) insert(ctx context.Context, db *sql.DB, data []interface{}, s
 func (e *Executor) insertBatch(ctx context.Context, db *sql.DB, data []interface{}, table string, options ...moption.Option) (int, error) {
 	cnt := int64(0)
 	var err error
+	var batchSize int
 	start := time.Now()
 	defer func() {
 		e.metric.Insert.Main.Time = time.Now().Sub(start)
 		e.metric.Insert.Main.Affected = int(cnt)
-		e.metric.Total.Report = append(e.metric.Total.Report, fmt.Sprintf("### INSERTING (BATCH) TIME %s FOR %d OF %d RECORDS \n", e.metric.Insert.Main.Time, cnt, len(data)))
+		e.metric.Total.Report = append(e.metric.Total.Report, fmt.Sprintf("### INSERTING (BATCHSIZE == %d) TIME %s FOR %d OF %d RECORDS \n", batchSize, e.metric.Insert.Main.Time, cnt, len(data)))
 	}()
 
 	mopts := moption.NewOptions(options...)
 	copts := mopts.GetCommonOptions()
+	batchSize = copts.BatchSize()
 
 	//TODO check if copts contains transaction (it's possible but has no sense)
 	if e.Transaction != nil && e.Transaction.Tx != nil {
@@ -129,7 +133,7 @@ func (e *Executor) insertByLoad(ctx context.Context, db *sql.DB, data []interfac
 	start := time.Now()
 	defer func() {
 		switch e.config.Strategy {
-		case info.MergeStrategyUpsDel:
+		case info.UpsertFlag | info.DeleteFlag:
 			e.metric.Upsert.Main.Time = time.Now().Sub(start)
 			e.metric.Upsert.Main.Affected = cnt
 			e.metric.Total.Report = append(e.metric.Total.Report, fmt.Sprintf("### UPSERTING (LOAD) TIME %s FOR %d OF %d RECORDS \n", e.metric.Upsert.Main.Time, cnt, len(data)))

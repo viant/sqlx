@@ -2,7 +2,6 @@ package config
 
 import (
 	"github.com/viant/sqlx/loption"
-	"github.com/viant/sqlx/metadata/info"
 	"github.com/viant/sqlx/option"
 )
 
@@ -11,7 +10,7 @@ func (c *Config) DummyMergerConfigFn() {}
 
 // Config represents merger config
 type Config struct {
-	Strategy   info.MergeStrategy
+	Strategy   uint8
 	MatchKeyFn func(entity interface{}) (interface{}, interface{}, error)
 	NewRowFn   func() interface{}
 	FetchSQL   string
@@ -19,14 +18,14 @@ type Config struct {
 	Update         *Update
 	Insert         *Insert
 	Delete         *Delete
-	OperationOrder []info.MergeSubOperationType
+	OperationOrder []uint8
 }
 
 // Insert represents config for insert/upsert used by merge
 type Insert struct {
 	Transient      *Transient
 	InsertSQL      string
-	InsertStrategy info.MergeInsStrategy
+	InsertStrategy uint8
 	LoadOptions    []loption.Option
 	Options        []option.Option
 }
@@ -34,14 +33,14 @@ type Insert struct {
 // Update represents config for update used by merge
 type Update struct {
 	Transient      *Transient
-	UpdateStrategy info.MergeUpdStrategy
+	UpdateStrategy uint8
 	UpdateSQL      string
 }
 
 // Delete represents config for update used by merge
 type Delete struct {
 	Transient      *Transient
-	DeleteStrategy info.MergeDelStrategy
+	DeleteStrategy uint8
 	DeleteSQL      string
 	Options        []option.Option
 }

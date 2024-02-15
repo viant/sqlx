@@ -1,52 +1,22 @@
 package info
 
-import "time"
-
-// MergeStrategy represents strategy of merging data
-type MergeStrategy string
-
-// MergeInsStrategy represents strategy of inserting when merging data
-type MergeInsStrategy string
-
-// MergeUpdStrategy represents strategy of updating when merging data
-type MergeUpdStrategy string
-
-// MergeDelStrategy represents strategy of deleting when merging data
-type MergeDelStrategy string
-
-// MergeOperationType represents merge operation i.e. INSERT, UPDATE, DELETE
-type MergeSubOperationType string
-
-const (
-	// MergeStrategyInsUpdDel represents merge strategy that performs insert, update and delete operations
-	MergeStrategyInsUpdDel = MergeStrategy("ins_upd_del")
-	// MergeStrategyInsDel represents merge strategy that performs insert and delete operations
-	MergeStrategyInsDel = MergeStrategy("ins_del")
-	// MergeStrategyUpsDel represents merge strategy that performs upsert and delete operations
-	MergeStrategyUpsDel = MergeStrategy("ups_del")
-
-	// MergeInsStrategyWithTransient represents insert strategy that uses transient/temporary table
-	MergeInsStrategyWithTransient = MergeInsStrategy("insert_with_transient_table")
-	// MergeUpdStrategyWithTransient represents update strategy that uses transient/temporary table
-	MergeUpdStrategyWithTransient = MergeUpdStrategy("update_with_transient_table")
-	// MergeDelStrategyWithTransient represents delete strategy that uses transient/temporary table
-	MergeDelStrategyWithTransient = MergeDelStrategy("delete_with_transient_table")
-
-	// MergeDelStrategyDelBatch represents batch delete strategy
-	MergeDelStrategyDelBatch = MergeDelStrategy("delete_batch")
-
-	// MergeInsStrategyInsByLoad represents insert strategy that uses loader to insert data
-	MergeInsStrategyInsByLoad = MergeInsStrategy("insert_by_load")
-	// MergeInsStrategyInsBatch represents batch delete strategy
-	MergeInsStrategyInsBatch = MergeInsStrategy("insert_batch")
-
-	// MergeSubOperationTypeInsert represents insert type sub-operation
-	MergeSubOperationTypeInsert = MergeSubOperationType("insert")
-	// MergeSubOperationTypeUpdate represents update type sub-operation
-	MergeSubOperationTypeUpdate = MergeSubOperationType("update")
-	// MergeSubOperationTypeDelete represents delete type sub-operation
-	MergeSubOperationTypeDelete = MergeSubOperationType("delete")
+import (
+	"time"
 )
+
+const InsertFlag uint8 = 0x1
+const UpdateFlag uint8 = 0x2
+const DeleteFlag uint8 = 0x4
+const UpsertFlag uint8 = 0x8
+
+const InsertBatchFlag uint8 = 0x1
+const InsertWithTransientFlag uint8 = 0x2
+const InsertByLoadFlag uint8 = 0x4
+
+const UpdateWithTransientFlag uint8 = 0x1
+
+const DeleteBatchFlag uint8 = 0x1
+const DeleteWithTransientFlag uint8 = 0x2
 
 // MergeConfig represents merger config
 type MergeConfig interface {

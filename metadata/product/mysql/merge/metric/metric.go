@@ -1,7 +1,6 @@
 package metric
 
 import (
-	"github.com/viant/sqlx/metadata/info"
 	"strings"
 	"time"
 )
@@ -19,7 +18,7 @@ type Metric struct {
 	ToUpsertCnt int
 	ToDeleteCnt int
 
-	Strategy                info.MergeStrategy
+	Strategy                uint8
 	IndexTime               time.Duration
 	CategorizeTime          time.Duration
 	FetchAndPrepareSetsTime time.Duration
