@@ -17,6 +17,7 @@ func (e *Executor) prepareDMLDataSetsInsUpdDel(ctx context.Context, db *sql.DB, 
 	if err != nil {
 		return nil, nil, nil, err
 	}
+	indexedSrcCnt := len(srcRowsByKey)
 
 	dstDataReader, err := read.New(ctx, db, e.config.FetchSQL, e.config.NewRowFn)
 	if err != nil {
@@ -28,7 +29,7 @@ func (e *Executor) prepareDMLDataSetsInsUpdDel(ctx context.Context, db *sql.DB, 
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("merge session exec: failed to fetch target data due to: %w", err)
 	}
-	e.fillMetricSrcDstComparison(allInSrcCnt, allInDstCnt, justInSrcByKeyAndId, justInDstByKeyAndId, inSrcAndDstByKey, inSrcAndDstByIdButNotByKey)
+	e.fillMetricSrcDstComparison(allInSrcCnt, indexedSrcCnt, allInDstCnt, justInSrcByKeyAndId, justInDstByKeyAndId, inSrcAndDstByKey, inSrcAndDstByIdButNotByKey)
 
 	dataToInsert, dataToUpdate, dataToDelete := e.categorize(justInDstByKeyAndId, justInSrcByKeyAndId, inSrcAndDstByIdButNotByKey)
 	e.fillMetricInsUpdDelSetsSummary(dataToInsert, dataToUpdate, dataToDelete)
@@ -41,6 +42,7 @@ func (e *Executor) prepareDMLDataSetsInsDel(ctx context.Context, db *sql.DB, val
 	if err != nil {
 		return nil, nil, nil, err
 	}
+	indexedSrcCnt := len(srcRowsByKey)
 
 	dstDataReader, err := read.New(ctx, db, e.config.FetchSQL, e.config.NewRowFn)
 	if err != nil {
@@ -52,7 +54,7 @@ func (e *Executor) prepareDMLDataSetsInsDel(ctx context.Context, db *sql.DB, val
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("merge session exec: failed to fetch target data due to: %w", err)
 	}
-	e.fillMetricSrcDstComparisonInsDel(allInSrcCnt, allInDstCnt, justInSrcByKeyAndId, justInDstByKeyAndId, inSrcAndDstByKey)
+	e.fillMetricSrcDstComparisonInsDel(allInSrcCnt, indexedSrcCnt, allInDstCnt, justInSrcByKeyAndId, justInDstByKeyAndId, inSrcAndDstByKey)
 
 	dataToInsert, dataToUpdate, dataToDelete := e.categorizeInsDel(justInDstByKeyAndId, justInSrcByKeyAndId)
 	e.fillMetricInsUpdDelSetsSummary(dataToInsert, dataToUpdate, dataToDelete)
@@ -65,6 +67,7 @@ func (e *Executor) prepareDMLDataSetsUpsDel(ctx context.Context, db *sql.DB, val
 	if err != nil {
 		return nil, nil, nil, err
 	}
+	indexedSrcCnt := len(srcRowsByKey)
 
 	dstDataReader, err := read.New(ctx, db, e.config.FetchSQL, e.config.NewRowFn)
 	if err != nil {
@@ -76,7 +79,7 @@ func (e *Executor) prepareDMLDataSetsUpsDel(ctx context.Context, db *sql.DB, val
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("merge session exec: failed to fetch target data due to: %w", err)
 	}
-	e.fillMetricSrcDstComparison(allInSrcCnt, allInDstCnt, justInSrcByKeyAndId, justInDstByKeyAndId, inSrcAndDstByKey, inSrcAndDstByIdButNotByKey)
+	e.fillMetricSrcDstComparison(allInSrcCnt, indexedSrcCnt, allInDstCnt, justInSrcByKeyAndId, justInDstByKeyAndId, inSrcAndDstByKey, inSrcAndDstByIdButNotByKey)
 
 	dataToInsert, dataToUpdate, dataToDelete := e.categorizeUpsDel(justInDstByKeyAndId, justInSrcByKeyAndId, inSrcAndDstByIdButNotByKey)
 	e.fillMetricUpsDelSetsSummary(dataToInsert, dataToUpdate, dataToDelete)
@@ -315,15 +318,15 @@ func (e *Executor) ensureLoader(ctx context.Context, db *sql.DB, table string, o
 	return loader, err
 }
 
-func (e *Executor) fillMetricSrcDstComparison(allInSrcCnt int, allInDstCnt int, justInSrcByKeyAndId, justInDstByKeyAndId map[interface{}]interface{}, inSrcAndDstByKey, inSrcAndDstByIdButNotByKey []interface{}) {
-	e.fillMetricSrcDstComp(allInSrcCnt, allInDstCnt, len(justInSrcByKeyAndId), len(justInDstByKeyAndId), len(inSrcAndDstByKey), len(inSrcAndDstByIdButNotByKey))
+func (e *Executor) fillMetricSrcDstComparison(allInSrcCnt int, indexedSrcCnt int, allInDstCnt int, justInSrcByKeyAndId, justInDstByKeyAndId map[interface{}]interface{}, inSrcAndDstByKey, inSrcAndDstByIdButNotByKey []interface{}) {
+	e.fillMetricSrcDstComp(allInSrcCnt, indexedSrcCnt, allInDstCnt, len(justInSrcByKeyAndId), len(justInDstByKeyAndId), len(inSrcAndDstByKey), len(inSrcAndDstByIdButNotByKey))
 }
 
-func (e *Executor) fillMetricSrcDstComparisonInsDel(allInSrcCnt, allInDstCnt int, justInSrcByKeyAndId map[interface{}]interface{}, justInDstByKeyAndId, inSrcAndDstByKey []interface{}) {
-	e.fillMetricSrcDstComp(allInSrcCnt, allInDstCnt, len(justInSrcByKeyAndId), len(justInDstByKeyAndId), len(inSrcAndDstByKey), 0)
+func (e *Executor) fillMetricSrcDstComparisonInsDel(allInSrcCnt, indexedSrcCnt, allInDstCnt int, justInSrcByKeyAndId map[interface{}]interface{}, justInDstByKeyAndId, inSrcAndDstByKey []interface{}) {
+	e.fillMetricSrcDstComp(allInSrcCnt, indexedSrcCnt, allInDstCnt, len(justInSrcByKeyAndId), len(justInDstByKeyAndId), len(inSrcAndDstByKey), 0)
 }
 
-func (e *Executor) fillMetricSrcDstComp(allInSrcCnt int, allInDstCnt int, justInSrcByKeyAndIdCnt, justInDstByKeyAndIdCnt, inSrcAndDstByKeyCnt, inSrcAndDstByIdButNotByKeyCnt int) {
+func (e *Executor) fillMetricSrcDstComp(allInSrcCnt int, indexedSrcCnt int, allInDstCnt int, justInSrcByKeyAndIdCnt, justInDstByKeyAndIdCnt, inSrcAndDstByKeyCnt, inSrcAndDstByIdButNotByKeyCnt int) {
 	e.metric.Strategy = e.config.Strategy
 	e.metric.InSrcCnt = allInSrcCnt
 	e.metric.InDstCnt = allInDstCnt
@@ -335,13 +338,14 @@ func (e *Executor) fillMetricSrcDstComp(allInSrcCnt int, allInDstCnt int, justIn
 	sb := strings.Builder{}
 	sb.WriteString("+++++++++++++++++++++++++++\n")
 	sb.WriteString("          DATA SETS ROWS SUMMARY:\n")
-	sb.WriteString(fmt.Sprintf("                  merge strategy: %s\n", e.config.Strategy))
-	sb.WriteString(fmt.Sprintf("                 all rows in src: %d\n", allInSrcCnt))
-	sb.WriteString(fmt.Sprintf("                 all rows in dst: %d\n", allInDstCnt))
-	sb.WriteString(fmt.Sprintf("           in src and dst by key: %d (%d => src + dst)\n", inSrcAndDstByKeyCnt, 2*inSrcAndDstByKeyCnt))
-	sb.WriteString(fmt.Sprintf(" in src and dst by id not by key: %d (%d => src + dst)\n", inSrcAndDstByIdButNotByKeyCnt, 2*inSrcAndDstByIdButNotByKeyCnt))
-	sb.WriteString(fmt.Sprintf("       just in src by key and id: %d\n", justInSrcByKeyAndIdCnt))
-	sb.WriteString(fmt.Sprintf("       just in dst by key and id: %d\n", justInDstByKeyAndIdCnt))
+	sb.WriteString(fmt.Sprintf("                   merge strategy: %s\n", e.config.Strategy))
+	sb.WriteString(fmt.Sprintf("                  all rows in src: %d (%s)\n", allInSrcCnt, "raw data"))
+	sb.WriteString(fmt.Sprintf("              indexed rows in src: %d (%s)\n", indexedSrcCnt, "unique by match key"))
+	sb.WriteString(fmt.Sprintf("                  all rows in dst: %d\n", allInDstCnt))
+	sb.WriteString(fmt.Sprintf("            in src and dst by key: %d (%d => src + dst)\n", inSrcAndDstByKeyCnt, 2*inSrcAndDstByKeyCnt))
+	sb.WriteString(fmt.Sprintf("  in src and dst by id not by key: %d (%d => src + dst)\n", inSrcAndDstByIdButNotByKeyCnt, 2*inSrcAndDstByIdButNotByKeyCnt))
+	sb.WriteString(fmt.Sprintf("        just in src by key and id: %d\n", justInSrcByKeyAndIdCnt))
+	sb.WriteString(fmt.Sprintf("        just in dst by key and id: %d\n", justInDstByKeyAndIdCnt))
 	sb.WriteString("+++++++++++++++++++++++++++\n")
 
 	e.metric.Total.Report = append(e.metric.Total.Report, sb.String())
