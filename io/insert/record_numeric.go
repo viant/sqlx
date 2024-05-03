@@ -102,9 +102,6 @@ func (n *numericSequencer) transientDMLBuilder(sess *session, record interface{}
 		var passedValue int64
 
 		switch recordCount {
-		case 1: // TODO not proved that miss some edge cases, if does then only default case should be used
-			passedValue = sequence.Value
-			sequence.Value += sequence.IncrementBy
 		default:
 			sequence.Value = sequence.NextValue(recordCount)
 			if diff := sequence.Value - oldValue; diff < recordCount {
