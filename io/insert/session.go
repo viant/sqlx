@@ -10,7 +10,6 @@ import (
 	"github.com/viant/sqlx/option"
 	"reflect"
 	"strings"
-	"time"
 )
 
 type session struct {
