@@ -50,7 +50,7 @@ func (r *Reader) QuerySingle(ctx context.Context, emit func(row interface{}) err
 
 	rows, err := r.stmt.QueryContext(ctx, args...)
 	if err != nil {
-		return fmt.Errorf("failed to run query: %v, due to %s", r.query, err)
+		return fmt.Errorf("failed to run query: %v, due to %w", r.query, err)
 	}
 
 	defer rows.Close()
@@ -104,7 +104,7 @@ func (r *Reader) createSource(ctx context.Context, entry *cache.Entry, args []in
 
 		rows, err := r.stmt.QueryContext(ctx, args...)
 		if err != nil {
-			return nil, nil, fmt.Errorf("failed to run query: %v, due to %s", r.query, err)
+			return nil, nil, fmt.Errorf("failed to run query: %v, due to %w", r.query, err)
 		}
 
 		source, err := NewRows(rows, r.cache, entry, matcher)

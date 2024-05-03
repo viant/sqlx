@@ -10,6 +10,7 @@ import (
 	"github.com/viant/sqlx/option"
 	"reflect"
 	"strings"
+	"time"
 )
 
 type session struct {
@@ -160,7 +161,6 @@ func (s *session) flush(ctx context.Context, values []interface{}, identities []
 	if s.Dialect.CanReturning {
 		return s.flushQuery(ctx, values, identities)
 	}
-
 	result, err := s.stmt.ExecContext(ctx, values...)
 	if err != nil {
 		return 0, 0, err

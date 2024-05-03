@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/viant/sqlx/metadata/sink"
 	"github.com/viant/sqlx/option"
+	"os"
 	"strconv"
 	"strings"
 )
@@ -47,8 +48,13 @@ func updateSequence(ctx context.Context, db *sql.DB, sequence *sink.Sequence, tx
 	if err := runQuery(ctx, db, SQL, []interface{}{&name, &DDL}, tx); err != nil {
 		return err
 	}
+
 	if index := strings.Index(DDL, autoincrementAssignment); index != -1 {
 		seqValueFragment := DDL[index+len(autoincrementAssignment):]
+		debugSequencer := os.Getenv("DEBUG_SEQUENCER") == "true"
+		if debugSequencer {
+			fmt.Printf("sequencer: %v, value: %v\n", sequence.Name, seqValueFragment)
+		}
 		if index := strings.Index(seqValueFragment, " "); index != -1 {
 			seqValueFragment = seqValueFragment[:index]
 			value, err := strconv.Atoi(seqValueFragment)
@@ -79,6 +85,7 @@ func ensureIncrementsAndValues(ctx context.Context, db *sql.DB, sequence *sink.S
 		if err := runQuery(ctx, db, "SELECT @@SESSION.auto_increment_increment, @@SESSION.auto_increment_offset", []interface{}{&sequence.IncrementBy, &offset}, tx); err != nil {
 			return err
 		}
+
 		if sequence.Value == 0 {
 			sequence.Value = offset
 		}
@@ -93,6 +100,11 @@ func ensureIncrementsAndValues(ctx context.Context, db *sql.DB, sequence *sink.S
 
 	if sequence.MaxValue == 0 {
 		sequence.MaxValue = MaxSeqValue
+	}
+
+	debugSequencer := os.Getenv("DEBUG_SEQUENCER") == "true"
+	if debugSequencer {
+		fmt.Printf("sequencer: %v, start: %v, value: %v, max: %v, increment: %v\n", sequence.Name, sequence.StartValue, sequence.Value, sequence.MaxValue, sequence.IncrementBy)
 	}
 	return nil
 }
