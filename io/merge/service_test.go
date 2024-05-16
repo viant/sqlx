@@ -1634,8 +1634,7 @@ func getInfoConfig(mergeStrategy uint8, omitInsTransient bool, omitUpdTransient 
 		Strategy:   mergeStrategy,
 		MatchKeyFn: MatchKeyFn,
 		NewRowFn:   NewRowFn,
-		//				FetchSQL:      "SELECT ID, TAG, ENTITY, ENTITY_ID, FEATURE_TYPE, FEATURE_GROUP, OPERATOR, FEATURE_VALUE FROM CI_TARGETING_RULE_TEST",
-		FetchSQL: "SELECT ID, TAG, ENTITY, ENTITY_ID, FEATURE_TYPE, FEATURE_GROUP, OPERATOR, FEATURE_VALUE FROM CI_TARGETING_RULE_TEST",
+		FetchSQL:   "SELECT ID, TAG, ENTITY, ENTITY_ID, FEATURE_TYPE, FEATURE_GROUP, OPERATOR, FEATURE_VALUE FROM CI_TARGETING_RULE_TEST",
 		Update: &mconfig.Update{
 			Transient: &mconfig.Transient{
 				TableName: "CI_TARGETING_RULE_UPD_TMP",
