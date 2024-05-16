@@ -28,7 +28,7 @@ func (e *Executor) prepareDMLDataSetsInsUpdDel(ctx context.Context, db *sql.DB, 
 	justInDstByKeyAndId, inSrcAndDstByKey, inSrcAndDstByIdButNotByKey, allInDstCnt, err := e.prepareDataSets(ctx, dstDataReader, srcRowsByKey, srcRowsIdsByKey)
 	justInSrcByKeyAndId := srcRowsByKey
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("merge session exec: failed to fetch target data due to: %w", err)
+		return nil, nil, nil, fmt.Errorf("preparedmldatasetsinsupddel: failed to fetch target data due to: %w, (used query: %s)", err, e.config.FetchSQL)
 	}
 	e.fillMetricSrcDstComparison(allInSrcCnt, indexedSrcCnt, allInDstCnt, justInSrcByKeyAndId, justInDstByKeyAndId, inSrcAndDstByKey, inSrcAndDstByIdButNotByKey)
 
@@ -53,7 +53,7 @@ func (e *Executor) prepareDMLDataSetsInsDel(ctx context.Context, db *sql.DB, val
 	justInDstByKeyAndId, inSrcAndDstByKey, allInDstCnt, err := e.prepareDataSetsInsDel(ctx, dstDataReader, srcRowsByKey)
 	justInSrcByKeyAndId := srcRowsByKey
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("merge session exec: failed to fetch target data due to: %w", err)
+		return nil, nil, nil, fmt.Errorf("preparedmldatasetsinsdel: failed to fetch target data due to: %w, (used query: %s)", err, e.config.FetchSQL)
 	}
 	e.fillMetricSrcDstComparisonInsDel(allInSrcCnt, indexedSrcCnt, allInDstCnt, justInSrcByKeyAndId, justInDstByKeyAndId, inSrcAndDstByKey)
 
@@ -78,7 +78,7 @@ func (e *Executor) prepareDMLDataSetsUpsDel(ctx context.Context, db *sql.DB, val
 	justInDstByKeyAndId, inSrcAndDstByKey, inSrcAndDstByIdButNotByKey, allInDstCnt, err := e.prepareDataSets(ctx, dstDataReader, srcRowsByKey, srcRowsIdsByKey)
 	justInSrcByKeyAndId := srcRowsByKey
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("merge session exec: failed to fetch target data due to: %w", err)
+		return nil, nil, nil, fmt.Errorf("preparedmldatasetsupsdel: failed to fetch target data due to: %w, (used query: %s)", err, e.config.FetchSQL)
 	}
 	e.fillMetricSrcDstComparison(allInSrcCnt, indexedSrcCnt, allInDstCnt, justInSrcByKeyAndId, justInDstByKeyAndId, inSrcAndDstByKey, inSrcAndDstByIdButNotByKey)
 
