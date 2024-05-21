@@ -76,3 +76,7 @@ func (s *Source) ensureXTypesHolder() {
 
 	s.xtypesHolder = cache.NewXTypeHolder(s.entry)
 }
+
+func (s *Source) Err() error {
+	return nil
+}
