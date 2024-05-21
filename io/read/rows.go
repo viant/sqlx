@@ -53,6 +53,10 @@ func NewRows(rows *sql.Rows, cache cache.Cache, entry *cache.Entry, matcher *cac
 	return readerRows, nil
 }
 
+func (c *Rows) Err() error {
+	return c.rows.Err()
+}
+
 func (c *Rows) ConvertColumns() ([]io.Column, error) {
 	if len(c.columns) == 0 {
 		if err := c.initColumns(); err != nil {

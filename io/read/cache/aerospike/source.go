@@ -15,6 +15,10 @@ type Source struct {
 	xtypesHolder  *cache.XTypesHolder
 }
 
+func (s *Source) Err() error {
+	return nil
+}
+
 func (s *Source) ConvertColumns() ([]io.Column, error) {
 	s.ensureColumnsHolder()
 	return s.columnsHolder.ConvertColumns()

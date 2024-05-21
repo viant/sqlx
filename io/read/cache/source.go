@@ -14,4 +14,5 @@ type Source interface {
 	Close(ctx context.Context) error
 	Next() bool
 	Rollback(ctx context.Context) error
+	Err() error
 }

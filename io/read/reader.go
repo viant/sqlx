@@ -65,8 +65,7 @@ func (r *Reader) QuerySingle(ctx context.Context, emit func(row interface{}) err
 			return err
 		}
 	}
-
-	return nil
+	return rows.Err()
 }
 
 // QueryAll query all
@@ -145,16 +144,16 @@ func (r *Reader) readAll(ctx context.Context, emit func(row interface{}) error, 
 	for source.Next() && err == nil {
 		err = r.read(ctx, source, &mapper, emit, cacheEntry)
 	}
-
 	if r.row != nil && r.matcher != nil && r.matcher.OnSkip != nil {
 		_ = r.matcher.OnSkip(*r.row.values)
 	}
-
 	if err == nil || errors.Is(err, goIo.EOF) {
 		return source.Close(ctx)
 	}
-
 	_ = source.Rollback(ctx)
+	if err == nil {
+		err = source.Err()
+	}
 	return err
 }
 
@@ -208,12 +207,10 @@ func (r *Reader) read(ctx context.Context, source cache.Source, mapperPtr *RowMa
 		if errors.Is(err, goIo.EOF) {
 			return err
 		}
-
 		_, ok := err.(SkipError)
 		if !ok {
 			return fmt.Errorf("failed to scan %v, due to %w", r.query, err)
 		}
-
 		err = nil
 		skipped = true
 	}
@@ -223,7 +220,7 @@ func (r *Reader) read(ctx context.Context, source cache.Source, mapperPtr *RowMa
 	}
 
 	if skipped {
-		return nil
+		return source.Err()
 	}
 
 	if err = r.ensureDereferences(row, source, values); err != nil {
@@ -236,7 +233,7 @@ func (r *Reader) read(ctx context.Context, source cache.Source, mapperPtr *RowMa
 
 	r.row = nil
 
-	return nil
+	return source.Err()
 }
 
 func (r *Reader) addToEntry(ctx context.Context, cacheEntry *cache.Entry, values []interface{}) error {
