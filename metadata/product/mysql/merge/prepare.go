@@ -4,17 +4,20 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"github.com/minio/highwayhash"
 	"github.com/viant/sqlx/io"
 	"github.com/viant/sqlx/io/load"
 	"github.com/viant/sqlx/io/read"
 	"github.com/viant/sqlx/metadata/info"
 	"github.com/viant/sqlx/moption"
+	"github.com/viant/sqlx/shared"
 	"strings"
+	"sync"
 	"time"
 )
 
 func (e *Executor) prepareDMLDataSetsInsUpdDel(ctx context.Context, db *sql.DB, valueAt io.ValueAccessor, allInSrcCnt int) ([]interface{}, []interface{}, []interface{}, error) {
-	srcRowsByKey, srcRowsIdsByKey, err := e.index(allInSrcCnt, valueAt)
+	srcRowsByKey, srcRowsIdsByKey, err := e.index(allInSrcCnt, valueAt, true)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -28,7 +31,7 @@ func (e *Executor) prepareDMLDataSetsInsUpdDel(ctx context.Context, db *sql.DB, 
 	justInDstByKeyAndId, inSrcAndDstByKey, inSrcAndDstByIdButNotByKey, allInDstCnt, err := e.prepareDataSets(ctx, dstDataReader, srcRowsByKey, srcRowsIdsByKey)
 	justInSrcByKeyAndId := srcRowsByKey
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("preparedmldatasetsinsupddel: failed to fetch target data due to: %w, (used query: %s)", err, e.config.FetchSQL)
+		return nil, nil, nil, fmt.Errorf("merge session exec: failed to fetch target data due to: %w", err)
 	}
 	e.fillMetricSrcDstComparison(allInSrcCnt, indexedSrcCnt, allInDstCnt, justInSrcByKeyAndId, justInDstByKeyAndId, inSrcAndDstByKey, inSrcAndDstByIdButNotByKey)
 
@@ -38,33 +41,31 @@ func (e *Executor) prepareDMLDataSetsInsUpdDel(ctx context.Context, db *sql.DB, 
 	return dataToInsert, dataToUpdate, dataToDelete, err
 }
 
-func (e *Executor) prepareDMLDataSetsInsDel(ctx context.Context, db *sql.DB, valueAt io.ValueAccessor, allInSrcCnt int) ([]interface{}, []interface{}, []interface{}, error) {
-	srcRowsByKey, _, err := e.index(allInSrcCnt, valueAt)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-	indexedSrcCnt := len(srcRowsByKey)
+func (e *Executor) prepareDMLDataSetsInsDel(ctx context.Context, db *sql.DB, valueAt io.ValueAccessor, rawSrcRowCnt int, tableName string) ([]interface{}, []interface{}, []interface{}, error) {
+	fName := "preparedmldatasetsinsdel"
 
-	dstDataReader, err := read.New(ctx, db, e.config.FetchSQL, e.config.NewRowFn)
+	allSrcHashToIdxMap, allSrcHashToIdxMapCnt, err := e.indexFast(rawSrcRowCnt, valueAt, false)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, fmt.Errorf("merge session exec %s: failed to index src data due to: %w", fName, err)
 	}
 
-	justInDstByKeyAndId, inSrcAndDstByKey, allInDstCnt, err := e.prepareDataSetsInsDel(ctx, dstDataReader, srcRowsByKey)
-	justInSrcByKeyAndId := srcRowsByKey
+	onlyInDst, srcExistsInBoth, allInDstCnt, onlyInSrcCnt, inBothCnt, err := e.prepareDataSetsInsDel(ctx, allSrcHashToIdxMap, allSrcHashToIdxMapCnt, rawSrcRowCnt, db, tableName)
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("preparedmldatasetsinsdel: failed to fetch target data due to: %w, (used query: %s)", err, e.config.FetchSQL)
+		return nil, nil, nil, fmt.Errorf("merge session exec %s: failed to prepare data sets (ins, del) due to: %w", fName, err)
 	}
-	e.fillMetricSrcDstComparisonInsDel(allInSrcCnt, indexedSrcCnt, allInDstCnt, justInSrcByKeyAndId, justInDstByKeyAndId, inSrcAndDstByKey)
+	e.fillMetricSrcDstComp(rawSrcRowCnt, allSrcHashToIdxMapCnt, allInDstCnt, onlyInSrcCnt, len(onlyInDst), inBothCnt, 0)
 
-	dataToInsert, dataToUpdate, dataToDelete := e.categorizeInsDel(justInDstByKeyAndId, justInSrcByKeyAndId)
+	dataToInsert, dataToUpdate, dataToDelete, err := e.categorizeInsDel(onlyInDst, allSrcHashToIdxMap, onlyInSrcCnt, valueAt, srcExistsInBoth)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("merge session exec %s: failed to categorize data sets (ins, del) due to: %w", fName, err)
+	}
 	e.fillMetricInsUpdDelSetsSummary(dataToInsert, dataToUpdate, dataToDelete)
 
 	return dataToInsert, dataToUpdate, dataToDelete, nil
 }
 
 func (e *Executor) prepareDMLDataSetsUpsDel(ctx context.Context, db *sql.DB, valueAt io.ValueAccessor, allInSrcCnt int) ([]interface{}, []interface{}, []interface{}, error) {
-	srcRowsByKey, srcRowsIdsByKey, err := e.index(allInSrcCnt, valueAt)
+	srcRowsByKey, srcRowsIdsByKey, err := e.index(allInSrcCnt, valueAt, true)
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -78,7 +79,7 @@ func (e *Executor) prepareDMLDataSetsUpsDel(ctx context.Context, db *sql.DB, val
 	justInDstByKeyAndId, inSrcAndDstByKey, inSrcAndDstByIdButNotByKey, allInDstCnt, err := e.prepareDataSets(ctx, dstDataReader, srcRowsByKey, srcRowsIdsByKey)
 	justInSrcByKeyAndId := srcRowsByKey
 	if err != nil {
-		return nil, nil, nil, fmt.Errorf("preparedmldatasetsupsdel: failed to fetch target data due to: %w, (used query: %s)", err, e.config.FetchSQL)
+		return nil, nil, nil, fmt.Errorf("merge session exec: failed to fetch target data due to: %w", err)
 	}
 	e.fillMetricSrcDstComparison(allInSrcCnt, indexedSrcCnt, allInDstCnt, justInSrcByKeyAndId, justInDstByKeyAndId, inSrcAndDstByKey, inSrcAndDstByIdButNotByKey)
 
@@ -92,8 +93,8 @@ func (e *Executor) prepareDMLDataSetsUpsDel(ctx context.Context, db *sql.DB, val
 func (e *Executor) prepareDataSets(ctx context.Context, dstDataReader *read.Reader, justInSrcByKey map[interface{}]interface{}, justInSrcIdsKeys map[interface{}]interface{}) (map[interface{}]interface{}, []interface{}, []interface{}, int, error) {
 	start := time.Now()
 	defer func() {
-		e.metric.FetchAndPrepareSetsTime = time.Now().Sub(start)
-		e.metric.Total.Report = append(e.metric.Total.Report, fmt.Sprintf("# FETCHING AND COMPARE TIME: %s\n", e.metric.FetchAndPrepareSetsTime))
+		e.metric.FetchTime = time.Now().Sub(start)
+		e.metric.Total.Report = append(e.metric.Total.Report, fmt.Sprintf("# FETCHING AND COMPARE TIME: %s\n", e.metric.FetchTime))
 	}()
 
 	var inSrcAndDstByKey = make([]interface{}, 0)
@@ -142,47 +143,340 @@ func (e *Executor) prepareDataSets(ctx context.Context, dstDataReader *read.Read
 	return justInDstByKeyAndId, inSrcAndDstByKey, inSrcAndDstByIdButNotByKey, allInDstCnt, nil
 }
 
-func (e *Executor) prepareDataSetsInsDel(ctx context.Context, dstDataReader *read.Reader, justInSrcData map[interface{}]interface{}) ([]interface{}, []interface{}, int, error) {
-	start := time.Now()
+func (e *Executor) prepareDataSetsInsDel(ctx context.Context, allSrcHashToIdxMap interface{}, allSrcHashToIdxMapCnt int, allRawSrcCnt int, db *sql.DB, tableName string) (
+	[]interface{}, []bool, int, int, int, error) {
+
 	defer func() {
-		e.metric.FetchAndPrepareSetsTime = time.Now().Sub(start)
-		e.metric.Total.Report = append(e.metric.Total.Report, fmt.Sprintf("# FETCHING AND COMPARE TIME: %s\n", e.metric.FetchAndPrepareSetsTime))
+		e.metric.Total.Report = append(e.metric.Total.Report, fmt.Sprintf("# FETCHING DATA TIME: %s\n", e.metric.FetchTime))
+		e.metric.Total.Report = append(e.metric.Total.Report, fmt.Sprintf("# COMPARING DATA TIME: %s\n", e.metric.CompareDataTime))
 	}()
 
-	var justInDstByKey = make([]interface{}, 0)
-	var inSrcAndDstByKey = make([]interface{}, 0)
+	startFetch := time.Now()
+	allDstRows, err := e.fetchData(ctx, db, tableName)
+	e.metric.FetchTime = time.Now().Sub(startFetch)
+	if err != nil {
+		return nil, nil, 0, 0, 0, err
+	}
 
-	allInDstCnt := 0
+	startCompare := time.Now()
+	srcExistsInBoth, onlyInDst, inBothCnt, onlyInSrcCnt, err := e.compare(allRawSrcCnt, allSrcHashToIdxMap, allDstRows, allSrcHashToIdxMapCnt)
+	if err != nil {
+		return nil, nil, 0, 0, 0, err
+	}
+	e.metric.CompareDataTime = time.Now().Sub(startCompare)
 
-	err := dstDataReader.QueryAll(ctx, func(row interface{}) error {
-		key, _, err := e.config.MatchKeyFn(row)
-		if err != nil {
-			return err
+	return onlyInDst, srcExistsInBoth, len(allDstRows), onlyInSrcCnt, inBothCnt, nil
+}
+
+func (e *Executor) compare(allRawSrcCnt int, allSrcHashToIdxMap interface{}, allDstRows []interface{}, allSrcHashToIdxMapCnt int) ([]bool, []interface{}, int, int, error) {
+	dstExistsOnlyInDst, srcExistsInBoth, inBothPartialCounts, onlyInDstCounts, err := e.compareData(allRawSrcCnt, allSrcHashToIdxMap, allDstRows)
+	if err != nil {
+		return nil, nil, 0, 0, err
+	}
+
+	onlyInDst := e.getOnlyInDst(onlyInDstCounts, dstExistsOnlyInDst, allDstRows)
+
+	inBothCnt, onlyInSrcCnt, err := e.total(inBothPartialCounts, allSrcHashToIdxMapCnt)
+	if err != nil {
+		return nil, nil, 0, 0, err
+	}
+	return srcExistsInBoth, onlyInDst, inBothCnt, onlyInSrcCnt, nil
+}
+
+func (e *Executor) total(inSrcAndDstByKeyCounters []int, allSrcRowIdxByKeyCnt int) (int, int, error) {
+	fName := "total"
+	inSrcAndDstByKeyCnt := 0
+	for _, c := range inSrcAndDstByKeyCounters {
+		inSrcAndDstByKeyCnt += c
+	}
+
+	onlyInSrcByKeyCnt := allSrcRowIdxByKeyCnt - inSrcAndDstByKeyCnt
+	if onlyInSrcByKeyCnt < 0 {
+		err := fmt.Errorf("%s - the number of rows occurring only in the source was less than 0", fName)
+		return 0, 0, err
+	}
+	return inSrcAndDstByKeyCnt, onlyInSrcByKeyCnt, nil
+}
+
+func (e *Executor) getOnlyInDst(onlyInDstCounts []int, dstExistsOnlyInDst []bool, allDstRows []interface{}) []interface{} {
+	onlyInDstCnt := 0
+	for _, x := range onlyInDstCounts {
+		onlyInDstCnt += x
+	}
+
+	onlyInDst := make([]interface{}, onlyInDstCnt)
+	k := 0
+	for i, exists := range dstExistsOnlyInDst {
+		if exists {
+			onlyInDst[k] = allDstRows[i]
+			k++
+		}
+	}
+	return onlyInDst
+}
+
+func (e *Executor) compareData(rawSrcRowCnt int, allSrcHashToIdxMap interface{}, allDstRows []interface{}) ([]bool, []bool, []int, []int, error) {
+	fName := "comparedata"
+
+	var (
+		errors             = &shared.Errors{}
+		wg                 = &sync.WaitGroup{}
+		allInDstCnt        = len(allDstRows)
+		dstExistsOnlyInDst = make([]bool, allInDstCnt)
+		srcExistsInBoth    = make([]bool, rawSrcRowCnt)
+		routineCnt         = e.config.CompareConcurrency
+	)
+
+	if routineCnt < 1 {
+		routineCnt = 1
+	}
+
+	chunkSize := allInDstCnt / routineCnt
+
+	inBothCounts := make([]int, routineCnt)
+	onlyInDstCounts := make([]int, routineCnt)
+
+	for n := 0; n < routineCnt; n++ {
+		begin := n * chunkSize
+		end := (n + 1) * chunkSize
+		if n == routineCnt-1 {
+			end = allInDstCnt
 		}
 
-		if _, ok := justInSrcData[key]; ok { // row with match key is present in target table and source data
-			delete(justInSrcData, key)
-			inSrcAndDstByKey = append(inSrcAndDstByKey, row)
-		} else { // row with match key is present in target table but is not present in source data
-			justInDstByKey = append(justInDstByKey, row)
-		}
+		switch len(e.hashKey) {
+		case 0:
+			aAllSrcHashToIdxMap, ok := allSrcHashToIdxMap.(map[interface{}]int)
+			if !ok {
+				errors.Add(fmt.Errorf("%s - invalid type, expected: %T got %T", fName, aAllSrcHashToIdxMap, allSrcHashToIdxMap))
+				continue
+			}
 
-		allInDstCnt++
+			wg.Add(1)
+			go e.compareWithKey(begin, end, allDstRows, wg, aAllSrcHashToIdxMap,
+				srcExistsInBoth, dstExistsOnlyInDst, &inBothCounts[n], &onlyInDstCounts[n], errors)
+		default:
+			aAllSrcHashToIdxMap, ok := allSrcHashToIdxMap.(map[uint64]int)
+			if !ok {
+				errors.Add(fmt.Errorf("%s - invalid type, expected: %T got %T", fName, aAllSrcHashToIdxMap, allSrcHashToIdxMap))
+				continue
+			}
+
+			wg.Add(1)
+			go e.compareWithKeyAndHash(begin, end, allDstRows, wg, aAllSrcHashToIdxMap,
+				srcExistsInBoth, dstExistsOnlyInDst, &inBothCounts[n], &onlyInDstCounts[n], errors)
+		}
+	}
+
+	wg.Wait()
+	if err := errors.First(); err != nil {
+		return nil, nil, nil, nil, err
+	}
+
+	return dstExistsOnlyInDst, srcExistsInBoth, inBothCounts, onlyInDstCounts, nil
+}
+
+func (e *Executor) fetchData(ctx context.Context, db *sql.DB, tableName string) ([]interface{}, error) {
+	if e.config.FetchConcurrency < 2 {
+		return e.fetchDataSequential(ctx, db)
+	} else {
+		return e.fetchDataConcurrent(ctx, db, tableName, e.config.FetchConcurrency)
+	}
+}
+
+func (e *Executor) fetchDataSequential(ctx context.Context, db *sql.DB) ([]interface{}, error) {
+	dstDataReader, err := read.New(ctx, db, e.config.FetchSQL, e.config.NewRowFn)
+	if err != nil {
+		return nil, err
+	}
+
+	allRows := make([]interface{}, 0, 1000)
+	err = dstDataReader.QueryAll(ctx, func(row interface{}) error {
+		allRows = append(allRows, row)
 		return nil
 	})
 
 	if err != nil {
-		return nil, nil, 0, err
+		return nil, err
 	}
 
-	return justInDstByKey, inSrcAndDstByKey, allInDstCnt, nil
+	return allRows, nil
+}
+
+func (e *Executor) fetchDataConcurrent(ctx context.Context, db *sql.DB, tableName string, bucketCnt int) ([]interface{}, error) {
+	start := time.Now()
+	errors := &shared.Errors{}
+
+	ids, err := e.getIds(db, tableName)
+	if err != nil {
+		return nil, err
+	}
+
+	count := len(ids)
+	allRows := make([]interface{}, count)
+	overflow := make([][]interface{}, bucketCnt)
+	missing := make([][]int, bucketCnt)
+	wg := sync.WaitGroup{}
+
+	if bucketCnt < 1 {
+		bucketCnt = 1
+	}
+	bucketSize := count / bucketCnt
+
+	for n := 0; n < bucketCnt; n++ {
+		begin := n * bucketSize
+		end := (n+1)*bucketSize - 1
+		if n == bucketCnt-1 {
+			end = count - 1
+		}
+
+		if end < 0 {
+			continue
+		}
+
+		wg.Add(1)
+		go func(begin, end, bucketIdx int) {
+			defer wg.Done()
+			//TODO consider config in future
+			query := fmt.Sprintf("SELECT * FROM %s WHERE ID BETWEEN %d AND %d", tableName, ids[begin], ids[end])
+
+			partDataReader, err := read.New(ctx, db, query, e.config.NewRowFn)
+			if err != nil {
+				errors.Add(err)
+				return
+			}
+
+			partIdx := 0
+			err = partDataReader.QueryAll(ctx, func(row interface{}) error {
+				// in case of data change in db between queries: select count(*) and select *
+				if partIdx > end-begin {
+					overflow[bucketIdx] = append(overflow[bucketIdx], row)
+					return nil
+				}
+
+				allRows[begin+partIdx] = row
+				partIdx++
+				return nil
+			})
+
+			// in case of data change in db between queries: select count(*) and select *
+			if partIdx <= end-begin {
+				missing[bucketIdx] = []int{begin + partIdx, end}
+			}
+
+			if err != nil {
+				errors.Add(err)
+				return
+			}
+
+		}(begin, end, n)
+	}
+
+	wg.Wait()
+
+	if err := errors.First(); err != nil {
+		return nil, err
+	}
+
+	// repair is needed in case of data change in db between queries: select count(*) and select *
+	allRows = e.repairIfNeeded(missing, overflow, allRows, count)
+	e.metric.FetchTime = time.Now().Sub(start)
+
+	return allRows, nil
+}
+
+func (e *Executor) getIds(db *sql.DB, tableName string) (result []int, err error) {
+	start := time.Now()
+	result = make([]int, 0, 1000)
+
+	defer func() {
+		e.metric.Total.Report = append(e.metric.Total.Report, fmt.Sprintf("# FETCHING DATA - GETTING IDS SUBTIME: %s\n", time.Now().Sub(start)))
+	}()
+
+	//TODO consider config in future
+	rows, err := db.Query(fmt.Sprintf("SELECT ID FROM %s ORDER BY ID", tableName))
+	if err != nil {
+		return nil, err
+	}
+
+	defer func() {
+		if err2 := rows.Close(); err2 != nil {
+			if err == nil {
+				err = err2
+			} else {
+				err = fmt.Errorf("%v; %v", err, err2)
+			}
+		}
+	}()
+
+	for rows.Next() {
+		var id int
+		err = rows.Scan(&id)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, id)
+	}
+
+	return result, err
+}
+
+func (e *Executor) repairIfNeeded(missing [][]int, overflow [][]interface{}, allRows []interface{}, count int) []interface{} {
+	foundMissing := false
+	foundOverflow := false
+	missedCnt := 0
+	overflowCnt := 0
+
+	for _, v := range missing {
+		if len(v) == 2 {
+			foundMissing = true
+			missedCnt += v[1] - v[0] + 1
+		}
+	}
+
+	for _, v := range overflow {
+		if len(v) > 0 {
+			foundOverflow = true
+			overflowCnt += len(v)
+		}
+	}
+
+	if !foundMissing && !foundOverflow {
+		return allRows
+	}
+
+	repaired := make([]interface{}, 0, count-missedCnt+overflowCnt)
+
+	if foundMissing {
+		begin := 0
+		end := 0
+
+		for _, v := range missing {
+			if len(v) == 2 {
+				end = v[0]
+				repaired = append(repaired, allRows[begin:end]...)
+				begin = v[1] + 1
+			}
+		}
+
+		if begin < count {
+			repaired = append(repaired, allRows[begin:]...)
+		}
+	}
+
+	if foundOverflow {
+		for _, o := range overflow {
+			repaired = append(repaired, o...)
+		}
+	}
+
+	return repaired
 }
 
 func (e *Executor) categorize(justInDstByKeyAndId map[interface{}]interface{}, justInSrcByKeyAndId map[interface{}]interface{}, inSrcAndDstByIdButNotByKey []interface{}) ([]interface{}, []interface{}, []interface{}) {
 	start := time.Now()
 	defer func() {
 		e.metric.CategorizeTime = time.Now().Sub(start)
-		e.metric.Total.Report = append(e.metric.Total.Report, fmt.Sprintf("CREATING (categorize) INS/UPD/DEL SETS time: %s\n", e.metric.FetchAndPrepareSetsTime))
+		e.metric.Total.Report = append(e.metric.Total.Report, fmt.Sprintf("CREATING (categorize) INS/UPD/DEL SETS time: %s\n", e.metric.CategorizeTime))
 	}()
 
 	dataToInsert := make([]interface{}, len(justInSrcByKeyAndId))
@@ -203,30 +497,47 @@ func (e *Executor) categorize(justInDstByKeyAndId map[interface{}]interface{}, j
 	return dataToInsert, dataToUpdate, dataToDelete
 }
 
-func (e *Executor) categorizeInsDel(justInDstByKeyAndId []interface{}, justInSrcByKeyAndId map[interface{}]interface{}) ([]interface{}, []interface{}, []interface{}) {
+func (e *Executor) categorizeInsDel(onlyInDst []interface{}, onlyInSrc interface{}, onlyInSrcCnt int, valueAt io.ValueAccessor, srcExistsInBoth []bool) ([]interface{}, []interface{}, []interface{}, error) {
 	start := time.Now()
 	defer func() {
 		e.metric.CategorizeTime = time.Now().Sub(start)
-		e.metric.Total.Report = append(e.metric.Total.Report, fmt.Sprintf("CREATING INS/UPD/DEL SETS time: %s\n", e.metric.FetchAndPrepareSetsTime))
+		e.metric.Total.Report = append(e.metric.Total.Report, fmt.Sprintf("CREATING INS/UPD/DEL SETS time: %s\n", e.metric.CategorizeTime))
 	}()
 
-	dataToInsert := make([]interface{}, len(justInSrcByKeyAndId))
+	dataToInsert := make([]interface{}, onlyInSrcCnt)
 	dataToUpdate := make([]interface{}, 0)
-	dataToDelete := justInDstByKeyAndId
+	dataToDelete := onlyInDst
 
 	i := 0
-	for _, record := range justInSrcByKeyAndId {
-		dataToInsert[i] = record
-		i++
+	switch onlyInSrc.(type) {
+	case map[uint64]int:
+		for _, index := range onlyInSrc.(map[uint64]int) {
+			if srcExistsInBoth[index] {
+				continue
+			}
+			dataToInsert[i] = valueAt(index)
+			i++
+		}
+	case map[interface{}]int:
+		for _, index := range onlyInSrc.(map[interface{}]int) {
+			if srcExistsInBoth[index] {
+				continue
+			}
+			dataToInsert[i] = valueAt(index)
+			i++
+		}
+	default:
+		return nil, nil, nil, fmt.Errorf("categorizeinsdel - unsupported type %T", onlyInSrc)
 	}
-	return dataToInsert, dataToUpdate, dataToDelete
+
+	return dataToInsert, dataToUpdate, dataToDelete, nil
 }
 
 func (e *Executor) categorizeUpsDel(justInDstByKeyAndId map[interface{}]interface{}, justInSrcByKeyAndId map[interface{}]interface{}, inSrcAndDstByIdButNotByKey []interface{}) ([]interface{}, []interface{}, []interface{}) {
 	start := time.Now()
 	defer func() {
 		e.metric.CategorizeTime = time.Now().Sub(start)
-		e.metric.Total.Report = append(e.metric.Total.Report, fmt.Sprintf("CREATING INS/UPD/DEL SETS time: %s\n", e.metric.FetchAndPrepareSetsTime))
+		e.metric.Total.Report = append(e.metric.Total.Report, fmt.Sprintf("CREATING INS/UPD/DEL SETS time: %s\n", e.metric.CategorizeTime))
 	}()
 
 	dataToInsert := make([]interface{}, len(justInSrcByKeyAndId)+len(inSrcAndDstByIdButNotByKey))
@@ -260,7 +571,7 @@ func prepareIdsSets(a map[interface{}]interface{}, b map[interface{}]interface{}
 		m[id] |= 1
 	}
 
-	for id, _ := range b {
+	for id := range b {
 		m[id] |= 2
 	}
 
@@ -280,7 +591,7 @@ func prepareIdsSets(a map[interface{}]interface{}, b map[interface{}]interface{}
 	return inAAndB, inAButNotB, inBButNotA
 }
 
-func (e *Executor) index(srcCnt int, valueAt io.ValueAccessor) (map[interface{}]interface{}, map[interface{}]interface{}, error) {
+func (e *Executor) index(srcCnt int, valueAt io.ValueAccessor, withIds bool) (map[interface{}]interface{}, map[interface{}]interface{}, error) {
 	start := time.Now()
 	defer func() {
 		e.metric.IndexTime = time.Now().Sub(start)
@@ -296,10 +607,75 @@ func (e *Executor) index(srcCnt int, valueAt io.ValueAccessor) (map[interface{}]
 			return nil, nil, err
 		}
 		srcRowsByKey[key] = rec
-		srcRowsIdsByKey[key] = identity
+		if withIds {
+			srcRowsIdsByKey[key] = identity
+		}
 	}
 
 	return srcRowsByKey, srcRowsIdsByKey, nil
+}
+
+func (e *Executor) indexFast(srcCnt int, valueAt io.ValueAccessor, withIds bool) (interface{}, int, error) {
+	start := time.Now()
+	defer func() {
+		e.metric.IndexTime = time.Now().Sub(start)
+		e.metric.Total.Report = append(e.metric.Total.Report, fmt.Sprintf("# INDEXING TIME: %s\n", e.metric.IndexTime))
+	}()
+
+	switch len(e.hashKey) {
+	case 0:
+		return e.indexWithKey(srcCnt, valueAt)
+	default:
+		return e.indexWithKeyAndHash(srcCnt, valueAt)
+	}
+}
+
+func (e *Executor) indexWithKey(srcCnt int, valueAt io.ValueAccessor) (interface{}, int, error) {
+	var result = make(map[interface{}]int)
+
+	for i := 0; i < srcCnt; i++ {
+		rec := valueAt(i)
+		key, _ /*identity*/, err := e.config.MatchKeyFn(rec)
+		if err != nil {
+			return nil, 0, err
+		}
+		result[key] = i
+	}
+
+	return result, len(result), nil
+}
+
+func (e *Executor) indexWithKeyAndHash(srcCnt int, valueAt io.ValueAccessor) (interface{}, int, error) {
+	var result = make(map[uint64]int)
+
+	hash, err := highwayhash.New64(e.hashKey)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	for i := 0; i < srcCnt; i++ {
+		rec := valueAt(i)
+		key, _ /*identity*/, err := e.config.MatchKeyFn(rec)
+		if err != nil {
+			return nil, 0, err
+		}
+
+		if i == 0 {
+			aKey, ok := key.(string)
+			if !ok {
+				return nil, 0, fmt.Errorf("invalid type - expected %T but got %T", aKey, key)
+			}
+		}
+
+		sKey, err := e.sum64(&hash, key.(string))
+		if err != nil {
+			return nil, 0, err
+		}
+
+		result[sKey] = i
+	}
+
+	return result, len(result), nil
 }
 
 func (e *Executor) ensureLoader(ctx context.Context, db *sql.DB, table string, options ...moption.Option) (*load.Service, error) {
@@ -325,6 +701,10 @@ func (e *Executor) fillMetricSrcDstComparison(allInSrcCnt int, indexedSrcCnt int
 
 func (e *Executor) fillMetricSrcDstComparisonInsDel(allInSrcCnt, indexedSrcCnt, allInDstCnt int, justInSrcByKeyAndId map[interface{}]interface{}, justInDstByKeyAndId, inSrcAndDstByKey []interface{}) {
 	e.fillMetricSrcDstComp(allInSrcCnt, indexedSrcCnt, allInDstCnt, len(justInSrcByKeyAndId), len(justInDstByKeyAndId), len(inSrcAndDstByKey), 0)
+}
+
+func (e *Executor) fillMetricSrcDstComparisonInsDelZ(allInSrcCnt, indexedSrcCnt, allInDstCnt int, justInSrcByKeyAndIdLen int, justInDstByKeyAndId []interface{}, inSrcAndDstByKeyCnt int) {
+	e.fillMetricSrcDstComp(allInSrcCnt, indexedSrcCnt, allInDstCnt, justInSrcByKeyAndIdLen, len(justInDstByKeyAndId), inSrcAndDstByKeyCnt, 0)
 }
 
 func (e *Executor) fillMetricSrcDstComp(allInSrcCnt int, indexedSrcCnt int, allInDstCnt int, justInSrcByKeyAndIdCnt, justInDstByKeyAndIdCnt, inSrcAndDstByKeyCnt, inSrcAndDstByIdButNotByKeyCnt int) {
@@ -376,4 +756,81 @@ func (e *Executor) fillMetricInsUpsUpdDelSetsSummary(toInsertCnt, toUpsertCnt, t
 	sb.WriteString("********************************\n")
 
 	e.metric.Total.Report = append(e.metric.Total.Report, sb.String())
+}
+
+func (e *Executor) compareWithKeyAndHash(begin int, end int, allRows []interface{}, wg *sync.WaitGroup, allSrcRowIdxByKey map[uint64]int,
+	srcExistsInBoth []bool, dstExistsOnlyInDst []bool, inBothCount *int, onlyInDstCount *int, errors *shared.Errors,
+) {
+	fName := "comparewithkeyandhash"
+	defer wg.Done()
+	hash, err := highwayhash.New64(e.hashKey)
+	if err != nil {
+		errors.Add(fmt.Errorf("%s %w", fName, err))
+		return
+	}
+
+	for dstIdx := begin; dstIdx < end; dstIdx++ {
+		row := allRows[dstIdx]
+		key, _, err := e.config.MatchKeyFn(row)
+		if err != nil {
+			errors.Add(fmt.Errorf("%s: %w", fName, err))
+			return
+		}
+
+		if dstIdx == begin {
+			if test, ok := key.(string); !ok {
+				errors.Add(fmt.Errorf("%s: invalid type - excepted %T, got %T", fName, test, key))
+				return
+			}
+		}
+
+		sKey, err := e.sum64(&hash, key.(string))
+		if srcIdx, ok := allSrcRowIdxByKey[sKey]; ok { // row with match key is present in target table and source data
+			if srcExistsInBoth[srcIdx] {
+				errors.Add(fmt.Errorf("%s: matchkey duplicate detected in dst data key (from matchfn) %v hashkey %v", fName, key, sKey))
+				return
+			}
+			srcExistsInBoth[srcIdx] = true
+			*inBothCount++
+		} else { // row with match key is present in target table but is not present in source data
+			if dstExistsOnlyInDst[dstIdx] {
+				errors.Add(fmt.Errorf("%s: matchkey duplicate detected in dst data key (from matchfn) %v hashkey %v dst index %v", fName, key, sKey, dstIdx))
+				return
+			}
+			dstExistsOnlyInDst[dstIdx] = true
+			*onlyInDstCount++
+		}
+	}
+}
+
+func (e *Executor) compareWithKey(begin int, end int, allDstRows []interface{}, wg *sync.WaitGroup, allSrcHashToIdxMap map[interface{}]int,
+	srcExistsInBoth []bool, dstExistsOnlyInDst []bool, inBothCount *int, onlyInDstCount *int, errors *shared.Errors,
+) {
+	fName := "comparewithkey"
+	defer wg.Done()
+
+	for dstIdx := begin; dstIdx < end; dstIdx++ {
+		row := allDstRows[dstIdx]
+		key, _, err := e.config.MatchKeyFn(row)
+		if err != nil {
+			errors.Add(fmt.Errorf("%s: %w", fName, err))
+			return
+		}
+
+		if srcIdx, ok := allSrcHashToIdxMap[key]; ok { // row with match key is present in target table and source data
+			if srcExistsInBoth[srcIdx] {
+				errors.Add(fmt.Errorf("%s: indexing src data: matchkey duplicate detected in dst data key (from matchfn) %v", fName, key))
+				return
+			}
+			srcExistsInBoth[srcIdx] = true
+			*inBothCount++
+		} else { // row with match key is present in target table but is not present in source data
+			if dstExistsOnlyInDst[dstIdx] {
+				errors.Add(fmt.Errorf("%s: indexing dst data: matchkey duplicate detected in dst data key (from matchfn) %v hashkey", fName, key, dstIdx))
+				return
+			}
+			dstExistsOnlyInDst[dstIdx] = true
+			*onlyInDstCount++
+		}
+	}
 }

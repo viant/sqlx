@@ -15,10 +15,13 @@ type Config struct {
 	NewRowFn   func() interface{}
 	FetchSQL   string
 
-	Update         *Update
-	Insert         *Insert
-	Delete         *Delete
-	OperationOrder []uint8
+	Update             *Update
+	Insert             *Insert
+	Delete             *Delete
+	OperationOrder     []uint8
+	HighwayHash        bool
+	FetchConcurrency   int
+	CompareConcurrency int
 }
 
 // Insert represents config for insert/upsert used by merge

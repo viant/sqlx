@@ -10,6 +10,7 @@ require (
 	github.com/google/uuid v1.3.0
 	github.com/lib/pq v1.10.6
 	github.com/mattn/go-sqlite3 v1.14.13
+	github.com/minio/highwayhash v1.0.2
 	github.com/pkg/errors v0.9.1
 	github.com/segmentio/parquet-go v0.0.0-20220902005228-5bd5f6114638
 	github.com/stretchr/testify v1.8.4

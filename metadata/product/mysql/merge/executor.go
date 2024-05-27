@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"github.com/minio/highwayhash"
 	"github.com/viant/sqlx/io"
 	"github.com/viant/sqlx/io/load"
 	"github.com/viant/sqlx/loption"
@@ -13,6 +14,7 @@ import (
 	"github.com/viant/sqlx/metadata/product/mysql/merge/metric"
 	"github.com/viant/sqlx/moption"
 	"github.com/viant/sqlx/option"
+	"hash"
 	"sync"
 	"time"
 )
@@ -29,6 +31,7 @@ type (
 		loaders map[string]*load.Service
 		mux     sync.Mutex
 		metric  *metric.Metric
+		hashKey []byte
 	}
 
 	fnPreIns func(ctx context.Context, db *sql.DB, data []interface{}, table string, initSQL []string, operation *metric.Operation, options ...moption.Option) (int, error)
@@ -48,11 +51,20 @@ func NewMergeExecutor(dialect *info.Dialect, cfg info.MergeConfig) (io.MergeExec
 		return nil, fmt.Errorf("newmergeexecutor: unexpected config type, expected %T got %T", mConfig, cfg)
 	}
 
+	hashKey := []byte{}
+	if mConfig.HighwayHash {
+		hashKey = []byte("my32bytekeyforhashingmystringsab")
+		if len(hashKey) != highwayhash.Size {
+			return nil, fmt.Errorf("newmergeexecutor: key must be exactly %d bytes long", highwayhash.Size)
+		}
+	}
+
 	return &Executor{
 		dialect: dialect,
 		loaders: make(map[string]*load.Service),
 		config:  mConfig,
 		metric:  &metric.Metric{},
+		hashKey: hashKey,
 	}, nil
 }
 
@@ -72,7 +84,7 @@ func (e *Executor) Exec(ctx context.Context, srcData interface{}, db *sql.DB, ta
 
 	switch e.config.Strategy {
 	case info.InsertFlag | info.DeleteFlag:
-		dataToInsert, dataToUpdate, dataToDelete, err = e.prepareDMLDataSetsInsDel(ctx, db, valueAt, allInSrcCnt)
+		dataToInsert, dataToUpdate, dataToDelete, err = e.prepareDMLDataSetsInsDel(ctx, db, valueAt, allInSrcCnt, tableName)
 	case info.InsertFlag | info.UpdateFlag | info.DeleteFlag:
 		dataToInsert, dataToUpdate, dataToDelete, err = e.prepareDMLDataSetsInsUpdDel(ctx, db, valueAt, allInSrcCnt)
 	case info.UpsertFlag | info.DeleteFlag:
@@ -379,4 +391,14 @@ func (e *Executor) ensureConfig() error {
 		return err
 	}
 	return e.validateConfig()
+}
+
+func (e *Executor) sum64(hash *hash.Hash64, s string) (uint64, error) {
+	(*hash).Reset()
+	_, err := (*hash).Write([]byte(s))
+	if err != nil {
+		return 0, err
+	}
+
+	return (*hash).Sum64(), nil
 }
