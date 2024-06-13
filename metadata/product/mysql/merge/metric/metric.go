@@ -18,11 +18,12 @@ type Metric struct {
 	ToUpsertCnt int
 	ToDeleteCnt int
 
-	Strategy                uint8
-	IndexTime               time.Duration
-	CategorizeTime          time.Duration
-	FetchAndPrepareSetsTime time.Duration
-	TotalTime               time.Duration
+	Strategy        uint8
+	IndexTime       time.Duration
+	CategorizeTime  time.Duration
+	FetchTime       time.Duration
+	CompareDataTime time.Duration
+	TotalTime       time.Duration
 
 	Insert Summary
 	Upsert Summary

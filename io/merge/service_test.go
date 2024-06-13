@@ -1631,10 +1631,13 @@ func getTestData(name string, path string) []*Rule {
 
 func getInfoConfig(mergeStrategy uint8, omitInsTransient bool, omitUpdTransient bool, omitDelTransient bool, omitIns bool, omitUpd bool, omitDel bool, insTransientLoadOptions []loption.Option, updTransientLoadOptions []loption.Option, delTransientLoadOptions []loption.Option, insStartegy uint8, updStartegy uint8, delStartegy uint8, insLoadOptions []loption.Option, insOptions []option.Option, operationOrder []uint8) info.MergeConfig {
 	config := &mconfig.Config{
-		Strategy:   mergeStrategy,
-		MatchKeyFn: MatchKeyFn,
-		NewRowFn:   NewRowFn,
-		FetchSQL:   "SELECT ID, TAG, ENTITY, ENTITY_ID, FEATURE_TYPE, FEATURE_GROUP, OPERATOR, FEATURE_VALUE FROM CI_TARGETING_RULE_TEST",
+		HighwayHash:        true,
+		CompareConcurrency: 7,
+		FetchConcurrency:   7,
+		Strategy:           mergeStrategy,
+		MatchKeyFn:         MatchKeyFn,
+		NewRowFn:           NewRowFn,
+		FetchSQL:           "SELECT ID, TAG, ENTITY, ENTITY_ID, FEATURE_TYPE, FEATURE_GROUP, OPERATOR, FEATURE_VALUE FROM CI_TARGETING_RULE_TEST",
 		Update: &mconfig.Update{
 			Transient: &mconfig.Transient{
 				TableName: "CI_TARGETING_RULE_UPD_TMP",
@@ -1812,7 +1815,7 @@ func multiplyRules(dbRules []*Rule, multiplier int, percent int) []*Rule {
 	if multiplier == 1 {
 		copy(newDbRules, dbRules)
 	} else {
-		for i, _ := range dbRules {
+		for i := range dbRules {
 			for k := 0; k < multiplier; k++ {
 				newRule := *dbRules[i]
 				newRule.EntityID = newRule.EntityID*10000 + k
@@ -1999,11 +2002,11 @@ func getInfoConfigWithMatchKeyFn(mergeStrategy uint8, omitInsTransient bool, omi
 		insLoadOptions,
 		insOptions,
 		operationOrder)
-	mconfig, ok := config.(*mconfig.Config)
+	aMconfig, ok := config.(*mconfig.Config)
 	if ok {
-		mconfig.MatchKeyFn = matchKeyFn
+		aMconfig.MatchKeyFn = matchKeyFn
 	}
-	return mconfig
+	return aMconfig
 }
 
 // /

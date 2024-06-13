@@ -43,7 +43,7 @@ func LookupMergeExecutor(dialect *info.Dialect, config info.MergeConfig) (io.Mer
 	var resolver io.MergeExecutorResolver
 	var ok bool
 	if resolver, ok = _registry.merges[dialect.Product.Name]; !ok {
-		return nil, fmt.Errorf("requested merge executor doesn't exist in registry")
+		return nil, fmt.Errorf("requested merge executor doesn't exist in registry (forgotten import?)")
 	}
 	return resolver(dialect, config)
 }
