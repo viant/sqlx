@@ -330,6 +330,14 @@ func (e *Executor) adjustConfig() error {
 		e.config.Delete.DeleteStrategy = info.DeleteBatchFlag
 	}
 
+	if e.config.FetchConcurrency == 0 {
+		e.config.FetchConcurrency = 1
+	}
+
+	if e.config.CompareConcurrency == 0 {
+		e.config.CompareConcurrency = 1
+	}
+
 	return nil
 }
 
