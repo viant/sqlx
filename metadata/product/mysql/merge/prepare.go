@@ -337,7 +337,7 @@ func (e *Executor) fetchDataConcurrent(ctx context.Context, db *sql.DB, tableNam
 		go func(begin, end, bucketIdx int) {
 			defer wg.Done()
 			//TODO consider config in future
-			query := fmt.Sprintf("SELECT * FROM %s WHERE ID BETWEEN %d AND %d", tableName, ids[begin], ids[end])
+			query := fmt.Sprintf("%s WHERE ID BETWEEN %d AND %d", e.config.FetchSQL, ids[begin], ids[end])
 
 			partDataReader, err := read.New(ctx, db, query, e.config.NewRowFn)
 			if err != nil {
