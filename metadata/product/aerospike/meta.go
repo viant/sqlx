@@ -31,68 +31,69 @@ func init() {
 
 		//info.NewQuery(info.KindVersion, "SELECT CONCAT('MySQL - ', VERSION())", aerospike),
 
-		info.NewQuery(info.KindSchemas, `SELECT
-'' CATALOG_NAME,
-SCHEMA_NAME,
-'' SQL_PATH, 
-'utf8' DEFAULT_CHARACTER_SET_NAME,
-'' AS DEFAULT_COLLATION_NAME
-FROM information_schema.schemata
+		info.NewQuery(info.KindSchemas, `select
+'' catalog_name,
+schema_name,
+'' sql_path,
+'utf8' default_character_set_name,
+'' as default_collation_name
+from information_schema.schemata
 `, aerospike,
 			info.NewCriterion(info.Catalog, "CATALOG_NAME"),
 		),
 
-		info.NewQuery(info.KindSchema, `SELECT
-'' CATALOG_NAME,
-SCHEMA_NAME,
-'' SQL_PATH,
-'utf8' DEFAULT_CHARACTER_SET_NAME,
-'' DEFAULT_COLLATION_NAME
-FROM information_schema.schemata
+		info.NewQuery(info.KindSchema, `select
+'' catalog_name,
+schema_name,
+'' sql_path,
+'utf8' default_character_set_name,
+'' as default_collation_name
+from information_schema.schemata
 		`, aerospike,
 			info.NewCriterion(info.Catalog, "CATALOG_NAME"),
-			info.NewCriterion(info.Schema, "SCHEMA_NAME"),
+			info.NewCriterion(info.Schema, "pk"),
 		),
 
-		info.NewQuery(info.KindTables, `SELECT 
-'' TABLE_CATALOG,
-TABLE_SCHEMA,
-TABLE_NAME,
-'' TABLE_TYPE,
-'' AS AUTO_INCREMENT,
-'' CREATE_TIME,
-'' UPDATE_TIME,
-'' TABLE_ROWS,
-'' VERSION,
-'' ENGINE,
-0 TABLE_ROWS
-FROM INFORMATION_SCHEMA.TABLES`,
+		info.NewQuery(info.KindTables, `select
+'' table_catalog,
+table_schema,
+table_name,
+'' table_comment,
+'' table_type,
+'' as auto_increment,
+'' create_time,
+'' update_time,
+0 table_rows,
+'' version,
+'' engine,
+'' ddl
+from information_schema.tables`,
+			aerospike,
+			info.NewCriterion(info.Catalog, "TABLE_CATALOG"),
+			info.NewCriterion(info.Schema, "pk"),
+		),
+
+		info.NewQuery(info.KindTable, `select
+'' table_catalog,
+table_schema,
+table_name,
+column_name,
+ordinal_position,
+column_comment,
+data_type,
+character_maximum_length,
+numeric_precision,
+numeric_scale,
+is_nullable,
+column_default,
+column_key,
+is_autoincrement
+from information_schema.columns`,
 			aerospike,
 			info.NewCriterion(info.Catalog, "TABLE_CATALOG"),
 			info.NewCriterion(info.Schema, "TABLE_SCHEMA"),
+			info.NewCriterion(info.Table, "pk"),
 		),
-		//
-		//		info.NewQuery(info.KindTable, `SELECT
-		//'' TABLE_CATALOG,
-		//TABLE_SCHEMA,
-		//TABLE_NAME,
-		//COLUMN_NAME,
-		//ORDINAL_POSITION,
-		//COLUMN_COMMENT,
-		//DATA_TYPE,
-		//CHARACTER_MAXIMUM_LENGTH,
-		//NUMERIC_PRECISION,
-		//NUMERIC_SCALE,
-		//IS_NULLABLE,
-		//COLUMN_DEFAULT,
-		//COLUMN_KEY,
-		//CASE WHEN COALESCE(EXTRA, "") LIKE '%auto_increment%' THEN 1 ELSE NULL END IS_AUTOINCREMENT
-		//FROM INFORMATION_SCHEMA.COLUMNS`,
-		//			mySQL5,
-		//			info.NewCriterion(info.Catalog, "TABLE_CATALOG"),
-		//			info.NewCriterion(info.Schema, "TABLE_SCHEMA"),
-		//			info.NewCriterion(info.Table, "TABLE_NAME"),
-		//		),
 		//		// please leave 0 values inside coalesce statements
 		//		info.NewQuery(info.KindSequences, `SELECT
 		//  '' SEQUENCE_CATALOG,
