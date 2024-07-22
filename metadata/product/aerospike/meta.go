@@ -190,6 +190,17 @@ from information_schema.columns`,
 		//			info.NewCriterion(info.Table, "c.TABLE_NAME"),
 		//		),
 		//
+
+		info.NewQuery(info.KindSession, `select
+pid,
+user_name,
+region,
+catalog_name,
+schema_name,
+app_name
+from information_schema.processlist
+		`, aerospike),
+
 		//		info.NewQuery(info.KindSession, `SELECT
 		//CAST(ID AS CHAR) AS PID,
 		//CAST(USER AS CHAR) AS USER_NAME,
@@ -199,12 +210,13 @@ from information_schema.columns`,
 		//from information_schema.processlist
 		//where ID=CONNECTION_ID() LIMIT 1;
 		//`, mySQL5),
-		//		info.NewQuery(info.KindForeignKeysCheckOn, `SET FOREIGN_KEY_CHECKS=1`,
-		//			mySQL5,
-		//			info.NewCriterion(info.Catalog, ""),
-		//			info.NewCriterion(info.Schema, ""),
-		//			info.NewCriterion(info.Table, ""),
-		//		),
+
+		//info.NewQuery(info.KindForeignKeysCheckOn, `SET FOREIGN_KEY_CHECKS=1`,
+		//	mySQL5,
+		//	info.NewCriterion(info.Catalog, ""),
+		//	info.NewCriterion(info.Schema, ""),
+		//	info.NewCriterion(info.Table, ""),
+		//),
 		//
 		//		info.NewQuery(info.KindForeignKeysCheckOff, `SET FOREIGN_KEY_CHECKS=0`,
 		//			mySQL5,

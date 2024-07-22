@@ -184,5 +184,15 @@ func GetMetadataAerospike(db *sql.DB) (err error) {
 		toolbox.DumpIndent(result, true)
 	}
 
+	fmt.Println("\n### 18 info.KindSession:  ([]sink.Session) list of session ###")
+	{
+		result := []sink.Session{}
+		err := meta.Info(context.TODO(), db, info.KindSession, &result)
+		if err != nil {
+			log.Fatalln(err)
+		}
+		//log.Println(columnes)
+		toolbox.DumpIndent(result, true)
+	}
 	return err
 }
