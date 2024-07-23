@@ -209,6 +209,9 @@ func (s *Service) checkRef(ctx context.Context, path *Path, db *sql.DB, at io.Va
 	}
 	for k, ctxElem := range queryCtx.index { //all struct index values should have value in reference table
 		if !index[k] {
+			if k == 0 && check.Omitempty {
+				continue
+			}
 			violations.AppendRef(ctxElem.path, ctxElem.field, k, check.ErrorMsg)
 		}
 	}
@@ -274,7 +277,7 @@ func mapKey(value interface{}) interface{} {
 	}
 }
 
-//New creates a new validation service
+// New creates a new validation service
 func New() *Service {
 	return &Service{checks: map[reflect.Type]*Checks{}}
 }

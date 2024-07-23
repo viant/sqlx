@@ -23,6 +23,7 @@ type (
 		CheckType      reflect.Type
 		CheckField     *xunsafe.Field
 		Required       bool
+		Omitempty      bool
 		IdentityColumn *io.Column
 	}
 
@@ -102,6 +103,7 @@ func NewChecks(p reflect.Type, presence *option.SetMarker) (*Checks, error) {
 				CheckField: checkField,
 				Field:      xField,
 				Required:   tag.Required,
+				Omitempty:  tag.OmitEmpty,
 				ErrorMsg:   tag.ErrorMgs,
 			})
 		}

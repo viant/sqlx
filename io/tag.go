@@ -31,6 +31,7 @@ type Tag struct {
 	RefTable         string
 	RefColumn        string
 	Required         bool
+	OmitEmpty        bool
 	NullifyEmpty     bool
 	ErrorMgs         string
 	PresenceProvider bool
@@ -120,6 +121,8 @@ func (t *Tag) updateTagKey(key string, value string) error {
 		t.Bit = strings.TrimSpace(value) == "true" || strings.TrimSpace(value) == ""
 	case "type":
 		t.DataType = strings.TrimSpace(value)
+	case "omitempty":
+		t.OmitEmpty = strings.TrimSpace(value) == "true" || strings.TrimSpace(value) == ""
 	case "required":
 		t.Required = strings.TrimSpace(value) == "true" || strings.TrimSpace(value) == ""
 	case "errormsg":
