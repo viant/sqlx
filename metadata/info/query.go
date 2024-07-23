@@ -7,7 +7,7 @@ import (
 	"github.com/viant/sqlx/metadata/database"
 )
 
-//Query represents dialect metadata queries
+// Query represents dialect metadata queries
 type (
 	//Query represents dictionary query
 	Query struct {
@@ -74,7 +74,7 @@ func (h *nopHandler) CanUse(options ...interface{}) bool {
 
 var nop = &nopHandler{}
 
-//NopHandler returns nop handler
+// NopHandler returns nop handler
 func NopHandler() Handler {
 	return nop
 }
@@ -91,7 +91,7 @@ func (q *Query) OnPre(auxiliaries ...Handler) *Query {
 	return q
 }
 
-//NewQuery creates a new query
+// NewQuery creates a new query
 func NewQuery(kind Kind, SQL string, info database.Product, criteria ...*Criterion) *Query {
 	return &Query{
 		Kind:     kind,
@@ -101,7 +101,7 @@ func NewQuery(kind Kind, SQL string, info database.Product, criteria ...*Criteri
 	}
 }
 
-//Supported returns true if supported
+// Supported returns true if supported
 func (c Criteria) Supported() int {
 	supported := 0
 	for _, item := range c {
@@ -112,7 +112,7 @@ func (c Criteria) Supported() int {
 	return supported
 }
 
-//Validate validates criteria kind
+// Validate validates criteria kind
 func (c Criteria) Validate(kind Kind) error {
 	criteria := kind.Criteria()
 	if len(c) != len(criteria) {
@@ -120,7 +120,7 @@ func (c Criteria) Validate(kind Kind) error {
 	}
 	for i, item := range c {
 		if item.Name != criteria[i] {
-			return fmt.Errorf("invalid query criterion '%v': expected %v, but had %v", kind, item.Name, criteria[i])
+			return fmt.Errorf("invalid query criterion for kind '%v': expected %v, but had %v", kind, criteria[i], item.Name)
 		}
 	}
 	return nil
@@ -140,7 +140,7 @@ func (q Queries) Less(i, j int) bool {
 	return q[i].Product.Major < q[j].Product.Major && q[i].Product.Minor < q[j].Product.Minor
 }
 
-//Match matches queries for version, or latest version
+// Match matches queries for version, or latest version
 func (q Queries) Match(info *database.Product) *Query {
 	switch len(q) {
 	case 0:
@@ -159,7 +159,7 @@ func (q Queries) Match(info *database.Product) *Query {
 	return q[len(q)-1]
 }
 
-//NewCriterion creates a new criteria, name refers to kind.Crtiera, column to local vendor column, use '?' for already defined placeholder, %v for substitution
+// NewCriterion creates a new criteria, name refers to kind.Crtiera, column to local vendor column, use '?' for already defined placeholder, %v for substitution
 func NewCriterion(name, column string) *Criterion {
 	return &Criterion{
 		Name:   name,
