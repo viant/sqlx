@@ -31,6 +31,8 @@ type Metric struct {
 	Delete Summary
 	Total  Total
 	Err    error
+
+	Table string
 }
 
 type Summary struct {
@@ -160,4 +162,11 @@ func (m *Metric) MergingTime() time.Duration {
 		return 0
 	}
 	return m.TotalTime
+}
+
+func (m *Metric) MergedTable() string {
+	if m.Err != nil {
+		return ""
+	}
+	return m.Table
 }

@@ -57,6 +57,9 @@ type MergeResult interface {
 
 	// MergingTime returns total merging duration.
 	MergingTime() time.Duration
+
+	// MergedTable returns merged table name.
+	MergedTable() string
 }
 
 // MergeStrategyDesc describes merge strategy
