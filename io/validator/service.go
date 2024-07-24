@@ -157,7 +157,7 @@ func (s *Service) buildUniqueMatchContext(check *Check, count int, path *Path, a
 			continue
 		}
 		value := check.Field.Value(recordPtr)
-		if isNil(value) && !check.Required {
+		if isNil(value) {
 			continue //unique is null and not required skipping validation
 		}
 		queryCtx.Append(value, check.Field.Name, fieldPath)
@@ -207,12 +207,13 @@ func (s *Service) checkRef(ctx context.Context, path *Path, db *sql.DB, at io.Va
 	if err != nil {
 		return err
 	}
-	for k, ctxElem := range queryCtx.index { //all struct index values should have value in reference table
-		if !index[k] {
-			if k == 0 && check.Omitempty {
+	//we do not check 0 references
+	for refValue, ctxElem := range queryCtx.index { //all struct index values should have value in reference table
+		if !index[refValue] {
+			if refValue == 0 {
 				continue
 			}
-			violations.AppendRef(ctxElem.path, ctxElem.field, k, check.ErrorMsg)
+			violations.AppendRef(ctxElem.path, ctxElem.field, refValue, check.ErrorMsg)
 		}
 	}
 	return nil
@@ -230,7 +231,7 @@ func (s *Service) buildCheckRefQueryContext(check *Check, count int, path *Path,
 			continue
 		}
 		value := check.Field.Value(recordPtr)
-		if isNil(value) && !check.Required {
+		if isNil(value) {
 			continue //ref key is null and not required skipping validation
 		}
 		queryCtx.Append(value, check.Field.Name, fieldPath)

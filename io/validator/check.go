@@ -22,8 +22,6 @@ type (
 		ErrorMsg       string
 		CheckType      reflect.Type
 		CheckField     *xunsafe.Field
-		Required       bool
-		Omitempty      bool
 		IdentityColumn *io.Column
 	}
 
@@ -86,7 +84,6 @@ func NewChecks(p reflect.Type, presence *option.SetMarker) (*Checks, error) {
 				SQL:            "SELECT " + column.Name() + " AS Val FROM " + schema(tag.Db) + tag.Table + " WHERE " + column.Name(),
 				CheckType:      checkType,
 				CheckField:     checkField,
-				Required:       tag.Required,
 				Field:          xField,
 				ErrorMsg:       tag.ErrorMgs,
 				IdentityColumn: &identityColumn,
@@ -102,8 +99,6 @@ func NewChecks(p reflect.Type, presence *option.SetMarker) (*Checks, error) {
 				CheckType:  checkType,
 				CheckField: checkField,
 				Field:      xField,
-				Required:   tag.Required,
-				Omitempty:  tag.OmitEmpty,
 				ErrorMsg:   tag.ErrorMgs,
 			})
 		}
