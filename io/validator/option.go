@@ -6,10 +6,10 @@ import (
 
 type (
 	Options struct {
-		Required    bool
 		CheckUnique bool
 		CheckRef    bool
 		Location    string
+		Shallow     bool
 		SetMarker   *option.SetMarker
 	}
 	Option func(c *Options)
@@ -21,37 +21,36 @@ func WithSetMarker() Option {
 	}
 }
 
-//WithUnique with unique option
+// WithUnique with unique option
 func WithUnique(flag bool) Option {
 	return func(c *Options) {
 		c.CheckUnique = flag
 	}
 }
 
-//WithRef with ref key option
+// WithRef with ref key option
 func WithRef(flag bool) Option {
 	return func(c *Options) {
 		c.CheckRef = flag
 	}
 }
 
-//WithLocation creates with location option
+// WithLocation creates with location option
 func WithLocation(location string) Option {
 	return func(c *Options) {
 		c.Location = location
 	}
 }
 
-//WithRequired with required optio
-func WithRequired(flag bool) Option {
+// WithShallow with shallow option
+func WithShallow(flag bool) Option {
 	return func(c *Options) {
-		c.Required = flag
+		c.Shallow = flag
 	}
 }
 
 func NewOptions() *Options {
 	return &Options{
-		Required:    true,
 		CheckUnique: true,
 		CheckRef:    true,
 	}

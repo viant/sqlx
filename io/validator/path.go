@@ -28,5 +28,12 @@ func (p *Path) AppendIndex(index int) *Path {
 }
 
 func (p *Path) String() string {
-	return strings.Join(p.Elements, ".")
+	ret := strings.Builder{}
+	for i, element := range p.Elements {
+		if !strings.Contains(element, "[") && i > 0 {
+			ret.WriteString(".")
+		}
+		ret.WriteString(element)
+	}
+	return ret.String()
 }

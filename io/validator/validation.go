@@ -3,6 +3,7 @@ package validator
 import (
 	"fmt"
 	"reflect"
+	"sort"
 	"strings"
 )
 
@@ -20,6 +21,16 @@ type (
 		Failed     bool
 	}
 )
+
+func (e *Validation) sort() {
+	if len(e.Violations) == 0 {
+		return
+	}
+	sort.Slice(e.Violations, func(i, j int) bool {
+		return e.Violations[i].Location < e.Violations[j].Location
+	})
+
+}
 
 func (e *Validation) AppendNotNull(path *Path, field, msg string) {
 	if msg == "" {
