@@ -16,9 +16,7 @@ var aerospike = database.Product{
 	Name:      product,
 	DriverPkg: driverPkg,
 	Driver:    driver,
-	//Major:     int,
-	//Minor:     int,
-	//Release:   int
+	Major:     6,
 }
 
 // Aerospike return Aerospike product
@@ -29,7 +27,7 @@ func Aerospike() *database.Product {
 func init() {
 	err := registry.Register(
 
-		//info.NewQuery(info.KindVersion, "SELECT CONCAT('MySQL - ', VERSION())", aerospike),
+		info.NewQuery(info.KindVersion, "select version from information_schema.serverinfo", aerospike),
 
 		info.NewQuery(info.KindSchemas, `select
 '' catalog_name,
@@ -266,14 +264,15 @@ from information_schema.processlist
 		Transactional:             true,
 		Insert:                    dialect.InsertWithMultiValues,
 		Upsert:                    dialect.UpsertTypeInsertOrUpdate,
-		Load:                      dialect.LoadTypeLocalData,
+		Load:                      dialect.LoadTypeUnsupported,
 		SpecialKeywordEscapeQuote: '`',
 		QuoteCharacter:            '\'',
-		CanAutoincrement:          true,
-		CanLastInsertID:           true, // in reality true but multi-insert gives us the id from the first row, not the last one
+		CanAutoincrement:          false,
+		CanLastInsertID:           false, //true, // TODO check if it is true
 		// TODO: provide real autoincrement function
-		AutoincrementFunc:       "autoincrement",
-		DefaultPresetIDStrategy: dialect.PresetIDWithTransientTransaction,
+		AutoincrementFunc: "autoincrement",
+		//DefaultPresetIDStrategy: dialect.PresetIDWithTransientTransaction,
+		DefaultPresetIDStrategy: dialect.PresetIDStrategyUndefined,
 	})
 
 }
