@@ -133,7 +133,7 @@ func (s *Service) validateFields(ctx context.Context, db *sql.DB, recordType ref
 			if values == nil {
 				continue
 			}
-			validation, err := s.Validate(ctx, db, values, WithLocation(field.Name))
+			validation, err := s.Validate(ctx, db, values, append(options, WithLocation(field.Name))...)
 			if err != nil {
 				return err
 			}
@@ -311,9 +311,6 @@ func (s *Service) checkRef(ctx context.Context, path *Path, db *sql.DB, at io.Va
 	//we do not check 0 references
 	for refValue, ctxElem := range queryCtx.index { //all struct index values should have value in reference table
 		if !index[refValue] {
-			if refValue == 0 {
-				continue
-			}
 			violations.AppendRef(ctxElem.path, ctxElem.field, refValue, check.ErrorMsg)
 		}
 	}

@@ -71,7 +71,7 @@ func derefIfNeeded(value interface{}) interface{} {
 func (e *Validation) AppendRef(path *Path, field string, value interface{}, msg string) {
 	value = derefIfNeeded(value)
 	if msg == "" {
-		msg = fmt.Sprintf("ref key '%v' does not exists ", value)
+		msg = fmt.Sprintf("ref key '%v' does not exists", value)
 	} else {
 		msg = strings.Replace(msg, "$value", fmt.Sprintf("%v", value), 1)
 	}
