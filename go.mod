@@ -17,7 +17,7 @@ require (
 	github.com/segmentio/parquet-go v0.0.0-20220902005228-5bd5f6114638
 	github.com/stretchr/testify v1.9.0
 	github.com/vertica/vertica-sql-go v1.2.2
-	github.com/viant/aerospike v0.0.0-20240722184215-8c6c0f33e39c
+	github.com/viant/aerospike v0.1.2-0.20240801163052-3acf3c984ec5
 	github.com/viant/afs v1.16.1-0.20220601210902-dc23d64dda15
 	github.com/viant/assertly v0.9.1-0.20220620174148-bab013f93a60
 	github.com/viant/bigquery v0.2.1

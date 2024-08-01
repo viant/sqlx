@@ -19,11 +19,6 @@ var aerospike = database.Product{
 	Major:     6,
 }
 
-// Aerospike return Aerospike product
-func Aerospike() *database.Product {
-	return &aerospike
-}
-
 func init() {
 	err := registry.Register(
 
@@ -268,7 +263,7 @@ from information_schema.processlist
 		SpecialKeywordEscapeQuote: '`',
 		QuoteCharacter:            '\'',
 		CanAutoincrement:          false,
-		CanLastInsertID:           false, //true, // TODO check if it is true
+		CanLastInsertID:           true, // TODO in some cases it's true in some it's not and we return -1 as last id
 		// TODO: provide real autoincrement function
 		AutoincrementFunc: "autoincrement",
 		//DefaultPresetIDStrategy: dialect.PresetIDWithTransientTransaction,

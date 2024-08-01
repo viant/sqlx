@@ -32,6 +32,9 @@ type LoadFormat string
 // LoadHint represents the bigquery.JobConfigurationLoad in json format
 type LoadHint string
 
+// SqlUpsertSuffix represents SQL suffix
+type SqlUpsertSuffix string
+
 // Dialect returns dialect
 func (o Options) Dialect() *info.Dialect {
 	if len(o) == 0 {
@@ -305,4 +308,14 @@ func (o Options) RecordCount() int64 {
 		}
 	}
 	return 0
+}
+
+// SqlUpsertSuffix returns SqlUpsertSuffix option
+func (o Options) SqlUpsertSuffix() string {
+	for _, candidate := range o {
+		if val, ok := candidate.(SqlUpsertSuffix); ok {
+			return string(val)
+		}
+	}
+	return ""
 }

@@ -12,7 +12,7 @@ const (
 	insertIntoFragment = "INSERT INTO "
 )
 
-//Builder represent insert DML builder
+// Builder represent insert DML builder
 type Builder struct {
 	dialect    *info.Dialect
 	id         string
@@ -22,12 +22,18 @@ type Builder struct {
 	offsets    []uint32
 }
 
-//Build builds insert statement
+// Build builds insert statement
 func (b *Builder) Build(record interface{}, options ...option.Option) string {
 	batchSize := option.Options(options).BatchSize()
+	sqlUpsertSuffix := option.Options(options).SqlUpsertSuffix()
 	suffix := ""
+
+	if sqlUpsertSuffix != "" {
+		suffix = " " + sqlUpsertSuffix
+	}
+
 	if b.dialect.CanReturning && len(b.id) > 0 {
-		suffix = " RETURNING " + b.id
+		suffix += " RETURNING " + b.id
 	}
 
 	if batchSize == b.batchSize {
@@ -38,7 +44,7 @@ func (b *Builder) Build(record interface{}, options ...option.Option) string {
 	return b.sql[:limit] + suffix
 }
 
-//NewBuilder return insert builder
+// NewBuilder return insert builder
 func NewBuilder(table string, columns []string, dialect *info.Dialect, identity string, batchSize int) (io.Builder, error) {
 	if len(columns) == 0 {
 		return nil, fmt.Errorf("columns were empty")

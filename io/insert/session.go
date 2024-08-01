@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/viant/sqlx/io"
 	"github.com/viant/sqlx/io/config"
+	"github.com/viant/sqlx/metadata/info/dialect"
 	"github.com/viant/sqlx/metadata/sink"
 	"github.com/viant/sqlx/option"
 	"reflect"
@@ -80,7 +81,10 @@ func (s *session) end(err error) error {
 }
 
 func (s *session) prepare(ctx context.Context, record interface{}, batchSize int) error {
-	SQL := s.Builder.Build(record, option.BatchSize(batchSize))
+	if len(s.SqlUpsertSuffix) > 0 && s.Dialect.Upsert != dialect.UpsertTypeInsertOrUpdate {
+		return fmt.Errorf("upsert by insert with sqlupsertsuffix option is supported for dialect with upsert feature: %v (current: %v)", dialect.UpsertTypeInsertOrUpdate, s.Dialect.Upsert)
+	}
+	SQL := s.Builder.Build(record, option.BatchSize(batchSize), option.SqlUpsertSuffix(s.SqlUpsertSuffix))
 	SQL = s.Dialect.EnsurePlaceholders(SQL)
 
 	var err error

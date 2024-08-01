@@ -10,12 +10,13 @@ import (
 
 // Config represents general config
 type Config struct {
-	TableName string
-	Identity  string
-	Columns   io.Columns
-	Dialect   *info.Dialect
-	Mapper    io.ColumnMapper
-	Builder   io.Builder
+	TableName       string
+	Identity        string
+	Columns         io.Columns
+	Dialect         *info.Dialect
+	Mapper          io.ColumnMapper
+	Builder         io.Builder
+	SqlUpsertSuffix string
 }
 
 // New creates a  config
@@ -33,6 +34,8 @@ func (c *Config) ApplyOption(ctx context.Context, db *sql.DB, options ...option.
 			c.Columns = actual
 		case option.Identity:
 			c.Identity = string(actual)
+		case option.SqlUpsertSuffix:
+			c.SqlUpsertSuffix = string(actual)
 		default:
 			if mapper, ok := opt.(io.ColumnMapper); ok {
 				c.Mapper = mapper
