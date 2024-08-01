@@ -13,6 +13,7 @@ import (
 	"github.com/viant/sqlx/shared"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -144,11 +145,11 @@ func (e *Executor) prepareDataSets(ctx context.Context, dstDataReader *read.Read
 }
 
 func (e *Executor) prepareDataSetsInsDel(ctx context.Context, allSrcHashToIdxMap interface{}, allSrcHashToIdxMapCnt int, allRawSrcCnt int, db *sql.DB, tableName string) (
-	[]interface{}, []bool, int, int, int, error) {
+	[]interface{}, []int32, int, int, int, error) {
 
 	defer func() {
-		e.metric.Total.Report = append(e.metric.Total.Report, fmt.Sprintf("# FETCHING DATA TIME: %s\n", e.metric.FetchTime))
-		e.metric.Total.Report = append(e.metric.Total.Report, fmt.Sprintf("# COMPARING DATA TIME: %s\n", e.metric.CompareDataTime))
+		e.metric.Total.Report = append(e.metric.Total.Report, fmt.Sprintf("# FETCHING DATA TIME: %s (concurrency: %d)\n", e.metric.FetchTime, e.config.FetchConcurrency))
+		e.metric.Total.Report = append(e.metric.Total.Report, fmt.Sprintf("# COMPARING DATA TIME: %s (concurrency: %d)\n", e.metric.CompareDataTime, e.config.CompareConcurrency))
 	}()
 
 	startFetch := time.Now()
@@ -168,7 +169,7 @@ func (e *Executor) prepareDataSetsInsDel(ctx context.Context, allSrcHashToIdxMap
 	return onlyInDst, srcExistsInBoth, len(allDstRows), onlyInSrcCnt, inBothCnt, nil
 }
 
-func (e *Executor) compare(allRawSrcCnt int, allSrcHashToIdxMap interface{}, allDstRows []interface{}, allSrcHashToIdxMapCnt int) ([]bool, []interface{}, int, int, error) {
+func (e *Executor) compare(allRawSrcCnt int, allSrcHashToIdxMap interface{}, allDstRows []interface{}, allSrcHashToIdxMapCnt int) ([]int32, []interface{}, int, int, error) {
 	dstExistsOnlyInDst, srcExistsInBoth, inBothPartialCounts, onlyInDstCounts, err := e.compareData(allRawSrcCnt, allSrcHashToIdxMap, allDstRows)
 	if err != nil {
 		return nil, nil, 0, 0, err
@@ -198,7 +199,7 @@ func (e *Executor) total(inSrcAndDstByKeyCounters []int, allSrcRowIdxByKeyCnt in
 	return inSrcAndDstByKeyCnt, onlyInSrcByKeyCnt, nil
 }
 
-func (e *Executor) getOnlyInDst(onlyInDstCounts []int, dstExistsOnlyInDst []bool, allDstRows []interface{}) []interface{} {
+func (e *Executor) getOnlyInDst(onlyInDstCounts []int, dstExistsOnlyInDst []int32, allDstRows []interface{}) []interface{} {
 	onlyInDstCnt := 0
 	for _, x := range onlyInDstCounts {
 		onlyInDstCnt += x
@@ -207,7 +208,7 @@ func (e *Executor) getOnlyInDst(onlyInDstCounts []int, dstExistsOnlyInDst []bool
 	onlyInDst := make([]interface{}, onlyInDstCnt)
 	k := 0
 	for i, exists := range dstExistsOnlyInDst {
-		if exists {
+		if exists == 1 {
 			onlyInDst[k] = allDstRows[i]
 			k++
 		}
@@ -215,15 +216,15 @@ func (e *Executor) getOnlyInDst(onlyInDstCounts []int, dstExistsOnlyInDst []bool
 	return onlyInDst
 }
 
-func (e *Executor) compareData(rawSrcRowCnt int, allSrcHashToIdxMap interface{}, allDstRows []interface{}) ([]bool, []bool, []int, []int, error) {
+func (e *Executor) compareData(rawSrcRowCnt int, allSrcHashToIdxMap interface{}, allDstRows []interface{}) ([]int32, []int32, []int, []int, error) {
 	fName := "comparedata"
 
 	var (
 		errors             = &shared.Errors{}
 		wg                 = &sync.WaitGroup{}
 		allInDstCnt        = len(allDstRows)
-		dstExistsOnlyInDst = make([]bool, allInDstCnt)
-		srcExistsInBoth    = make([]bool, rawSrcRowCnt)
+		dstExistsOnlyInDst = make([]int32, allInDstCnt)
+		srcExistsInBoth    = make([]int32, rawSrcRowCnt)
 		routineCnt         = e.config.CompareConcurrency
 	)
 
@@ -497,7 +498,7 @@ func (e *Executor) categorize(justInDstByKeyAndId map[interface{}]interface{}, j
 	return dataToInsert, dataToUpdate, dataToDelete
 }
 
-func (e *Executor) categorizeInsDel(onlyInDst []interface{}, onlyInSrc interface{}, onlyInSrcCnt int, valueAt io.ValueAccessor, srcExistsInBoth []bool) ([]interface{}, []interface{}, []interface{}, error) {
+func (e *Executor) categorizeInsDel(onlyInDst []interface{}, allSrcHashToIdxMap interface{}, onlyInSrcCnt int, valueAt io.ValueAccessor, srcExistsInBoth []int32) ([]interface{}, []interface{}, []interface{}, error) {
 	start := time.Now()
 	defer func() {
 		e.metric.CategorizeTime = time.Now().Sub(start)
@@ -509,25 +510,25 @@ func (e *Executor) categorizeInsDel(onlyInDst []interface{}, onlyInSrc interface
 	dataToDelete := onlyInDst
 
 	i := 0
-	switch onlyInSrc.(type) {
+	switch allSrcHashToIdxMap.(type) {
 	case map[uint64]int:
-		for _, index := range onlyInSrc.(map[uint64]int) {
-			if srcExistsInBoth[index] {
+		for _, index := range allSrcHashToIdxMap.(map[uint64]int) {
+			if srcExistsInBoth[index] == 1 {
 				continue
 			}
 			dataToInsert[i] = valueAt(index)
 			i++
 		}
 	case map[interface{}]int:
-		for _, index := range onlyInSrc.(map[interface{}]int) {
-			if srcExistsInBoth[index] {
+		for _, index := range allSrcHashToIdxMap.(map[interface{}]int) {
+			if srcExistsInBoth[index] == 1 {
 				continue
 			}
 			dataToInsert[i] = valueAt(index)
 			i++
 		}
 	default:
-		return nil, nil, nil, fmt.Errorf("categorizeinsdel - unsupported type %T", onlyInSrc)
+		return nil, nil, nil, fmt.Errorf("categorizeinsdel - unsupported type %T", allSrcHashToIdxMap)
 	}
 
 	return dataToInsert, dataToUpdate, dataToDelete, nil
@@ -595,7 +596,7 @@ func (e *Executor) index(srcCnt int, valueAt io.ValueAccessor, withIds bool) (ma
 	start := time.Now()
 	defer func() {
 		e.metric.IndexTime = time.Now().Sub(start)
-		e.metric.Total.Report = append(e.metric.Total.Report, fmt.Sprintf("# INDEXING TIME: %s\n", e.metric.IndexTime))
+		e.metric.Total.Report = append(e.metric.Total.Report, fmt.Sprintf("# INDEXING TIME: %s (highwayhash: %v)\n", e.metric.IndexTime, e.config.HighwayHash))
 	}()
 
 	var srcRowsByKey = make(map[interface{}]interface{})
@@ -619,7 +620,7 @@ func (e *Executor) indexFast(srcCnt int, valueAt io.ValueAccessor, withIds bool)
 	start := time.Now()
 	defer func() {
 		e.metric.IndexTime = time.Now().Sub(start)
-		e.metric.Total.Report = append(e.metric.Total.Report, fmt.Sprintf("# INDEXING TIME: %s\n", e.metric.IndexTime))
+		e.metric.Total.Report = append(e.metric.Total.Report, fmt.Sprintf("# INDEXING TIME: %s (highwayhash: %v)\n", e.metric.IndexTime, e.config.HighwayHash))
 	}()
 
 	switch len(e.hashKey) {
@@ -726,7 +727,7 @@ func (e *Executor) fillMetricSrcDstComp(allInSrcCnt int, indexedSrcCnt int, allI
 	sb.WriteString(fmt.Sprintf("            in src and dst by key: %d (%d => src + dst)\n", inSrcAndDstByKeyCnt, 2*inSrcAndDstByKeyCnt))
 	sb.WriteString(fmt.Sprintf("  in src and dst by id not by key: %d (%d => src + dst)\n", inSrcAndDstByIdButNotByKeyCnt, 2*inSrcAndDstByIdButNotByKeyCnt))
 	sb.WriteString(fmt.Sprintf("        just in src by key and id: %d\n", justInSrcByKeyAndIdCnt))
-	sb.WriteString(fmt.Sprintf("        just in dst by key and id: %d\n", justInDstByKeyAndIdCnt))
+	sb.WriteString(fmt.Sprintf("        just in dst by key and id: %d (%s)\n", justInDstByKeyAndIdCnt, "plus all duplicates by key in dst"))
 	sb.WriteString("+++++++++++++++++++++++++++\n")
 
 	e.metric.Total.Report = append(e.metric.Total.Report, sb.String())
@@ -759,9 +760,12 @@ func (e *Executor) fillMetricInsUpsUpdDelSetsSummary(toInsertCnt, toUpsertCnt, t
 }
 
 func (e *Executor) compareWithKeyAndHash(begin int, end int, allRows []interface{}, wg *sync.WaitGroup, allSrcRowIdxByKey map[uint64]int,
-	srcExistsInBoth []bool, dstExistsOnlyInDst []bool, inBothCount *int, onlyInDstCount *int, errors *shared.Errors,
+	srcExistsInBoth []int32, dstExistsOnlyInDst []int32, inBothCount *int, onlyInDstCount *int, errors *shared.Errors,
 ) {
 	fName := "comparewithkeyandhash"
+	maxWarningCnt := 10
+	duplicateCnt := 0
+
 	defer wg.Done()
 	hash, err := highwayhash.New64(e.hashKey)
 	if err != nil {
@@ -786,28 +790,30 @@ func (e *Executor) compareWithKeyAndHash(begin int, end int, allRows []interface
 
 		sKey, err := e.sum64(&hash, key.(string))
 		if srcIdx, ok := allSrcRowIdxByKey[sKey]; ok { // row with match key is present in target table and source data
-			if srcExistsInBoth[srcIdx] {
-				errors.Add(fmt.Errorf("%s: matchkey duplicate detected in dst data key (from matchfn) %v hashkey %v", fName, key, sKey))
-				return
+			if atomic.CompareAndSwapInt32(&srcExistsInBoth[srcIdx], 0, 1) {
+				*inBothCount++
+			} else {
+				dstExistsOnlyInDst[dstIdx] = 1
+				*onlyInDstCount++
+				if duplicateCnt < maxWarningCnt {
+					duplicateCnt++
+					fmt.Printf("warning - matchkey duplicate detected in dst data: key (from matchfn) %v hashkey %v (fn: %s - printed only first %d warnings)\n", key, sKey, fName, maxWarningCnt)
+				}
 			}
-			srcExistsInBoth[srcIdx] = true
-			*inBothCount++
 		} else { // row with match key is present in target table but is not present in source data
-			if dstExistsOnlyInDst[dstIdx] {
-				errors.Add(fmt.Errorf("%s: matchkey duplicate detected in dst data key (from matchfn) %v hashkey %v dst index %v", fName, key, sKey, dstIdx))
-				return
-			}
-			dstExistsOnlyInDst[dstIdx] = true
+			dstExistsOnlyInDst[dstIdx] = 1 // doesn't need a sync
 			*onlyInDstCount++
 		}
 	}
 }
 
 func (e *Executor) compareWithKey(begin int, end int, allDstRows []interface{}, wg *sync.WaitGroup, allSrcHashToIdxMap map[interface{}]int,
-	srcExistsInBoth []bool, dstExistsOnlyInDst []bool, inBothCount *int, onlyInDstCount *int, errors *shared.Errors,
+	srcExistsInBoth []int32, dstExistsOnlyInDst []int32, inBothCount *int, onlyInDstCount *int, errors *shared.Errors,
 ) {
 	fName := "comparewithkey"
 	defer wg.Done()
+	maxWarningCnt := 10
+	duplicateCnt := 0
 
 	for dstIdx := begin; dstIdx < end; dstIdx++ {
 		row := allDstRows[dstIdx]
@@ -818,18 +824,18 @@ func (e *Executor) compareWithKey(begin int, end int, allDstRows []interface{}, 
 		}
 
 		if srcIdx, ok := allSrcHashToIdxMap[key]; ok { // row with match key is present in target table and source data
-			if srcExistsInBoth[srcIdx] {
-				errors.Add(fmt.Errorf("%s: indexing src data: matchkey duplicate detected in dst data key (from matchfn) %v", fName, key))
-				return
+			if atomic.CompareAndSwapInt32(&srcExistsInBoth[srcIdx], 0, 1) {
+				*inBothCount++
+			} else {
+				dstExistsOnlyInDst[dstIdx] = 1
+				*onlyInDstCount++
+				if duplicateCnt < maxWarningCnt {
+					duplicateCnt++
+					fmt.Printf("warning - matchkey duplicate detected in dst data: key (from matchfn) %v (fn: %s - printed only first %d warnings)\n", key, fName, maxWarningCnt)
+				}
 			}
-			srcExistsInBoth[srcIdx] = true
-			*inBothCount++
 		} else { // row with match key is present in target table but is not present in source data
-			if dstExistsOnlyInDst[dstIdx] {
-				errors.Add(fmt.Errorf("%s: indexing dst data: matchkey duplicate detected in dst data key (from matchfn) %v hashkey", fName, key, dstIdx))
-				return
-			}
-			dstExistsOnlyInDst[dstIdx] = true
+			dstExistsOnlyInDst[dstIdx] = 1 // doesn't need a sync
 			*onlyInDstCount++
 		}
 	}

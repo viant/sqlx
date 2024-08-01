@@ -77,6 +77,18 @@ func GetMetadataAerospike(db *sql.DB) (err error) {
 		toolbox.DumpIndent(product, true)
 	}
 
+	fmt.Println("\n### 01 info.KindVersion: database version ###")
+	{
+
+		result := []string{}
+		err = meta.Info(context.TODO(), db, info.KindVersion, &result)
+		if err != nil {
+			log.Fatalln(err)
+		}
+		//log.Println(result)
+		toolbox.DumpIndent(result, true)
+	}
+
 	fmt.Println("\n### 01 info.KindSchemas ([]sink.Schema): list of all schemas ###")
 	{
 		result := []sink.Schema{}
