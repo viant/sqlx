@@ -81,10 +81,10 @@ func (s *session) end(err error) error {
 }
 
 func (s *session) prepare(ctx context.Context, record interface{}, batchSize int) error {
-	if len(s.SqlUpsertSuffix) > 0 && s.Dialect.Upsert != dialect.UpsertTypeInsertOrUpdate {
-		return fmt.Errorf("upsert by insert with sqlupsertsuffix option is supported for dialect with upsert feature: %v (current: %v)", dialect.UpsertTypeInsertOrUpdate, s.Dialect.Upsert)
+	if len(s.OnDuplicateKeySql) > 0 && s.Dialect.Upsert != dialect.UpsertTypeInsertOrUpdate {
+		return fmt.Errorf("upsert by insert with onduplicatekeysql option is supported for dialect with upsert feature: %v (current: %v)", dialect.UpsertTypeInsertOrUpdate, s.Dialect.Upsert)
 	}
-	SQL := s.Builder.Build(record, option.BatchSize(batchSize), option.SqlUpsertSuffix(s.SqlUpsertSuffix))
+	SQL := s.Builder.Build(record, option.BatchSize(batchSize), option.OnDuplicateKeySql(s.OnDuplicateKeySql))
 	SQL = s.Dialect.EnsurePlaceholders(SQL)
 
 	var err error

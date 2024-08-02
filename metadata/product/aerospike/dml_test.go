@@ -19,7 +19,7 @@ func TestService_Exec_Mysql(t *testing.T) {
 	driver := "aerospike"
 	dsn := os.Getenv("TEST_AEROSPIKE_DSN")
 
-	//dsn = "aerospike://127.0.0.1:3000/test"
+	dsn = "aerospike://127.0.0.1:3000/test"
 
 	if dsn == "" {
 		t.Skip("set TEST_AEROSPIKE_DSN before running test")
@@ -123,7 +123,7 @@ func TestService_Exec_Mysql(t *testing.T) {
 			options: []option.Option{
 				option.BatchSize(3),
 				dialect.PresetIDStrategyIgnore,
-				option.SqlUpsertSuffix("AS new ON DUPLICATE KEY UPDATE amount = amount + new.amount"),
+				option.OnDuplicateKeySql("AS new ON DUPLICATE KEY UPDATE amount = amount + new.amount"),
 			},
 			query:       "SELECT id,amount FROM SimpleAgg WHERE PK IN(?,?,?)",
 			queryParams: []interface{}{1, 2, 3},
@@ -162,7 +162,7 @@ func TestService_Exec_Mysql(t *testing.T) {
 			options: []option.Option{
 				option.BatchSize(3),
 				dialect.PresetIDStrategyIgnore,
-				option.SqlUpsertSuffix("AS new ON DUPLICATE KEY UPDATE val = val + new.val, amount = amount + new.amount"),
+				option.OnDuplicateKeySql("AS new ON DUPLICATE KEY UPDATE val = val + new.val, amount = amount + new.amount"),
 			},
 			query:       "SELECT id,seq,amount,val FROM Agg$Values WHERE PK = ? AND KEY IN(?, ?)",
 			queryParams: []interface{}{1, 1, 2},

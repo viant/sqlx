@@ -25,11 +25,11 @@ type Builder struct {
 // Build builds insert statement
 func (b *Builder) Build(record interface{}, options ...option.Option) string {
 	batchSize := option.Options(options).BatchSize()
-	sqlUpsertSuffix := option.Options(options).SqlUpsertSuffix()
+	onDuplicateKeySql := option.Options(options).OnDuplicateKeySql()
 	suffix := ""
 
-	if sqlUpsertSuffix != "" {
-		suffix = " " + sqlUpsertSuffix
+	if onDuplicateKeySql != "" {
+		suffix = " " + onDuplicateKeySql
 	}
 
 	if b.dialect.CanReturning && len(b.id) > 0 {

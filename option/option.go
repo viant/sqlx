@@ -32,8 +32,8 @@ type LoadFormat string
 // LoadHint represents the bigquery.JobConfigurationLoad in json format
 type LoadHint string
 
-// SqlUpsertSuffix represents SQL suffix
-type SqlUpsertSuffix string
+// OnDuplicateKeySql represents SQL suffix
+type OnDuplicateKeySql string
 
 // Dialect returns dialect
 func (o Options) Dialect() *info.Dialect {
@@ -310,10 +310,10 @@ func (o Options) RecordCount() int64 {
 	return 0
 }
 
-// SqlUpsertSuffix returns SqlUpsertSuffix option
-func (o Options) SqlUpsertSuffix() string {
+// OnDuplicateKeySql returns OnDuplicateKeySql option
+func (o Options) OnDuplicateKeySql() string {
 	for _, candidate := range o {
-		if val, ok := candidate.(SqlUpsertSuffix); ok {
+		if val, ok := candidate.(OnDuplicateKeySql); ok {
 			return string(val)
 		}
 	}
