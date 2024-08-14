@@ -14,7 +14,6 @@ import (
 	"testing"
 )
 
-// TODO add Time example
 func TestService_Exec_Mysql(t *testing.T) {
 	driver := "aerospike"
 	dsn := os.Getenv("TEST_AEROSPIKE_DSN")
@@ -179,28 +178,40 @@ func TestService_Exec_Mysql(t *testing.T) {
 			affected: 3,
 			lastID:   -1, // TODO
 		},
-		// TODO insert doesn't work
-		//{
-		//	description: "92. batch insert",
-		//	table:       "SimpleAgg",
-		//	initSQL:     []string{},
-		//	sets: []*parameterizedQuery{
-		//		{SQL: "REGISTER SET SimpleAgg AS ?", params: []interface{}{SimpleAgg{}}},
-		//	},
-		//	records: []*SimpleAgg{
-		//		&SimpleAgg{Id: 1, Amount: 10},
-		//		&SimpleAgg{Id: 1, Amount: 20},
-		//	},
-		//	affected: 2,
-		//	lastID:   1,
-		//	options: []option.Option{
-		//		option.BatchSize(2),
-		//		dialect.PresetIDStrategyIgnore,
-		//		//dialect.PresetIDWithTransientTransaction,
-		//	},
-		//},
-
-		// aerospike.RegisterSet(x.NewType(reflect.TypeOf(Acl{}), x.WithName("acls")))
+		{
+			description: "04. batch insert",
+			initSQL: []string{
+				"DELETE FROM SimpleAgg",
+			},
+			initParams: []interface{}{},
+			sets: []*parameterizedQuery{
+				{SQL: "REGISTER SET SimpleAgg AS ?", params: []interface{}{SimpleAgg{}}},
+			},
+			table: "SimpleAgg",
+			records: []*SimpleAgg{
+				{Id: 1, Amount: 10},
+				{Id: 2, Amount: 20},
+			},
+			options: []option.Option{
+				option.BatchSize(2),
+				dialect.PresetIDStrategyIgnore,
+				//dialect.PresetIDWithTransientTransaction,
+			},
+			query:       "SELECT id,amount FROM SimpleAgg WHERE PK IN(?, ?)",
+			queryParams: []interface{}{1, 2},
+			newItemFn:   func() interface{} { return &SimpleAgg{} },
+			emitFn: func(row interface{}) error {
+				agg := row.(*SimpleAgg)
+				actual = append(actual, agg)
+				return nil
+			},
+			expect: []interface{}{
+				&SimpleAgg{Id: 1, Amount: 10},
+				&SimpleAgg{Id: 2, Amount: 20},
+			},
+			affected: 2,
+			lastID:   -1, //TODO
+		},
 	}
 
 outer:
