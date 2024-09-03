@@ -3,6 +3,7 @@ package load
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"github.com/viant/sqlx/io/config"
 	"github.com/viant/sqlx/loption"
 	"github.com/viant/sqlx/metadata/info"
@@ -39,6 +40,10 @@ func (s *Service) Exec(ctx context.Context, any interface{}, options ...loption.
 		return 0, err
 	}
 	session := config.LoadSession(dialect)
+	if session == nil {
+		return 0, fmt.Errorf("failed to lookup load session for dialect %v", dialect.Name)
+	}
+
 	exec, err := session.Exec(ctx, any, s.db, s.tableName, options...)
 	if err != nil {
 		return 0, err
