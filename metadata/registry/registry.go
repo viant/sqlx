@@ -30,7 +30,11 @@ func RegisterLoad(load io.LoadExecutorResolver, productName string) {
 
 // MatchLoadSession returns LoadExecutor for Dialect
 func MatchLoadSession(dialect *info.Dialect) io.LoadExecutor {
-	return _registry.loads[dialect.Product.Name](dialect)
+	loader, ok := _registry.loads[dialect.Product.Name]
+	if !ok {
+		return nil
+	}
+	return loader(dialect)
 }
 
 // RegisterMergeExecutorResolver registers merge executor resolver
