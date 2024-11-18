@@ -30,20 +30,17 @@ func (s *session) init(record interface{}) (err error) {
 	if s.columns, s.binder, err = s.Mapper(record); err != nil {
 		return err
 	}
-
 	for i, column := range s.columns {
 		if io.IsIdentityColumn(column) {
 			updater, ok := newRecordUpdater(s, column, i)
 			if ok {
 				s.recordUpdaters = append(s.recordUpdaters, updater)
 			}
-
 			if s.Identity == "" {
 				s.Identity = column.Name()
 			}
 		}
 	}
-
 	s.Builder, err = NewBuilder(s.TableName, s.columns.Names(), s.Dialect, s.Identity, s.batchSize)
 	return err
 }

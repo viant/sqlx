@@ -5,7 +5,7 @@ import (
 	"unicode"
 )
 
-//Column represents column metadata
+// Column represents column metadata
 type Column struct {
 	Catalog         string  `sqlx:"TABLE_CATALOG"`
 	Schema          string  `sqlx:"TABLE_SCHEMA"`
@@ -25,6 +25,7 @@ type Column struct {
 	IndexPosition   int     `sqlx:"INDEX_POSITION"`
 	Collation       *string `sqlx:"COLLATION"`
 	IsAutoincrement *bool   `sqlx:"IS_AUTOINCREMENT"`
+	TypeDefinition  string  `sqlx:"-"`
 }
 
 func (c *Column) IsNullable() bool {
@@ -51,7 +52,7 @@ func (c *Column) IsUnique() bool {
 	return true
 }
 
-//Autoincrement returns true if column autoincrement
+// Autoincrement returns true if column autoincrement
 func (s *Column) Autoincrement() bool {
 	if s.IsAutoincrement != nil && *s.IsAutoincrement {
 		return true
