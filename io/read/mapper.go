@@ -1,24 +1,23 @@
 package read
 
 import (
-	"fmt"
 	"github.com/viant/sqlx/io"
-	"github.com/viant/sqlx/option"
+	"github.com/viant/sqlx/types"
 	"github.com/viant/xunsafe"
 	"reflect"
-	"strings"
 )
 
 // RowMapper represents a target values mapped to pointer of slice
 type RowMapper func(target interface{}) ([]interface{}, error)
 
 // NewRowMapper  new a row mapper function
-type NewRowMapper func(columns []io.Column, targetType reflect.Type, resolver io.Resolve, options []option.Option) (RowMapper, error)
+type NewRowMapper func(columns []io.Column, targetType reflect.Type, resolver io.Resolve, options ...Option) (RowMapper, error)
 
 type Mapper struct {
 	fields         []io.Field
 	record         []interface{}
 	willWrapFields bool
+	inlineType     bool
 }
 
 func NewMapper(fields []io.Field) *Mapper {
@@ -26,9 +25,7 @@ func NewMapper(fields []io.Field) *Mapper {
 		fields: fields,
 		record: make([]interface{}, len(fields)),
 	}
-
 	m.init()
-
 	return m
 }
 
@@ -49,7 +46,6 @@ func (m *Mapper) MapToSQLRow(target interface{}) ([]interface{}, error) {
 			m.record[i] = &io.JSONEncodedValue{Val: m.record[i]}
 		}
 	}
-
 	return m.record, nil
 }
 
@@ -60,10 +56,7 @@ func (m *Mapper) init() {
 }
 
 // newRowMapper creates a new record mapped
-func newRowMapper(columns []io.Column, targetType reflect.Type, resolver io.Resolve, options []option.Option) (RowMapper, error) {
-	if strings.Contains(targetType.String(), "Products") {
-		fmt.Println("")
-	}
+func newRowMapper(columns []io.Column, targetType reflect.Type, resolver io.Resolve, options ...Option) (RowMapper, error) {
 	switch targetType.Kind() {
 	case reflect.Struct:
 		return NewSQLStructMapper(columns, targetType, resolver, options...)
@@ -76,7 +69,7 @@ func newRowMapper(columns []io.Column, targetType reflect.Type, resolver io.Reso
 }
 
 // NewStructMapper creates a new record mapper for supplied struct type
-func NewStructMapper(columns []io.Column, recordType reflect.Type, resolver io.Resolve, options ...option.Option) (RowMapper, error) {
+func NewStructMapper(columns []io.Column, recordType reflect.Type, resolver io.Resolve, options ...Option) (RowMapper, error) {
 	mapper, err := getMapper(columns, recordType, resolver, options)
 	if err != nil {
 		return nil, err
@@ -86,7 +79,7 @@ func NewStructMapper(columns []io.Column, recordType reflect.Type, resolver io.R
 }
 
 // NewSQLStructMapper creates a new record mapper for supplied struct and prepares them to scan / send values with sql.DB
-func NewSQLStructMapper(columns []io.Column, recordType reflect.Type, resolver io.Resolve, options ...option.Option) (RowMapper, error) {
+func NewSQLStructMapper(columns []io.Column, recordType reflect.Type, resolver io.Resolve, options ...Option) (RowMapper, error) {
 	mapper, err := getMapper(columns, recordType, resolver, options)
 	if err != nil {
 		return nil, err
@@ -99,7 +92,13 @@ func NewSQLStructMapper(columns []io.Column, recordType reflect.Type, resolver i
 	return mapper.MapToRow, nil
 }
 
-func getMapper(columns []io.Column, recordType reflect.Type, resolver io.Resolve, options []option.Option) (*Mapper, error) {
+func getMapper(columns []io.Column, recordType reflect.Type, resolver io.Resolve, opts []Option) (*Mapper, error) {
+
+	options := newOptions(opts)
+	if options.inlineType {
+		recordType = types.InlineStruct(recordType)
+	}
+
 	cache, entry, err := mapperCacheEntry(columns, recordType, options, resolver)
 	if err != nil {
 		return nil, err
@@ -115,25 +114,16 @@ func getMapper(columns []io.Column, recordType reflect.Type, resolver io.Resolve
 	}
 
 	mapper := NewMapper(matched)
+	mapper.inlineType = options.inlineType
 	return mapper, nil
 }
 
-func mapperCacheEntry(columns []io.Column, recordType reflect.Type, options []option.Option, resolver io.Resolve) (*MapperCache, *MapperCacheEntry, error) {
-	var mapperCache *MapperCache
-	var disableMapperCache DisableMapperCache
-	for _, anOption := range options {
-		switch actual := anOption.(type) {
-		case *MapperCache:
-			mapperCache = actual
-		case DisableMapperCache:
-			disableMapperCache = actual
-		}
-	}
-
+func mapperCacheEntry(columns []io.Column, recordType reflect.Type, options *options, resolver io.Resolve) (*MapperCache, *MapperCacheEntry, error) {
+	mapperCache := options.mapperCache
+	disableMapperCache := options.disableMapperCache
 	if mapperCache == nil && !disableMapperCache {
 		mapperCache = DefaultMapperCache
 	}
-
 	if mapperCache == nil {
 		return nil, nil, nil
 	}

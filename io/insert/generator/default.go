@@ -155,7 +155,7 @@ func (d *Default) flush(ctx context.Context, values []interface{}, offset int, l
 		result := at(offset)
 		offset++
 		return result
-	}, io.Resolve(resolveSqlxPosition))
+	}, read.WithUnmappedFn(io.Resolve(resolveSqlxPosition)))
 
 	if err != nil {
 		return err

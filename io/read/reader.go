@@ -5,10 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"github.com/viant/sqlx/io"
 	"github.com/viant/sqlx/io/read/cache"
-	"github.com/viant/sqlx/metadata/info"
-	"github.com/viant/sqlx/metadata/registry"
 	"github.com/viant/sqlx/option"
 	goIo "io"
 	"reflect"
@@ -17,23 +14,15 @@ import (
 // Reader represents generic query reader
 type (
 	Reader struct {
-		query              string
-		newRow             func() interface{}
-		targetType         reflect.Type
-		stmt               *sql.Stmt
-		rows               *sql.Rows
-		getRowMapper       NewRowMapper
-		unmappedFn         io.Resolve
-		shallDeref         bool
-		cache              cache.Cache
-		mapperCache        *MapperCache
-		targetDatatype     string
-		disableMapperCache DisableMapperCache
-		matcher            *cache.ParmetrizedQuery
-		db                 *sql.DB
-		row                *bufferEntry
-		cacheStats         *cache.Stats
-		cacheRefresh       cache.Refresh
+		options
+		query          string
+		newRow         func() interface{}
+		targetType     reflect.Type
+		stmt           *sql.Stmt
+		rows           *sql.Rows
+		shallDeref     bool
+		targetDatatype string
+		row            *bufferEntry
 	}
 
 	bufferEntry struct {
@@ -75,7 +64,7 @@ func (r *Reader) QueryAll(ctx context.Context, emit func(row interface{}) error,
 		return err
 	}
 
-	rows, source, err := r.createSource(ctx, entry, args, r.matcher)
+	rows, source, err := r.createSource(ctx, entry, args, r.inMatcher)
 	if err != nil {
 		return err
 	}
@@ -125,7 +114,7 @@ func (r *Reader) createSource(ctx context.Context, entry *cache.Entry, args []in
 // ReadAll read all
 func (r *Reader) ReadAll(ctx context.Context, rows *sql.Rows, emit func(row interface{}) error, options ...option.Option) error {
 	cacheEntry := r.getCacheEntry(options)
-	readerRows, err := NewRows(rows, r.cache, cacheEntry, r.matcher)
+	readerRows, err := NewRows(rows, r.cache, cacheEntry, r.inMatcher)
 	if err != nil {
 		return err
 	}
@@ -144,8 +133,8 @@ func (r *Reader) readAll(ctx context.Context, emit func(row interface{}) error, 
 	for source.Next() && err == nil {
 		err = r.read(ctx, source, &mapper, emit, cacheEntry)
 	}
-	if r.row != nil && r.matcher != nil && r.matcher.OnSkip != nil {
-		_ = r.matcher.OnSkip(*r.row.values)
+	if r.row != nil && r.inMatcher != nil && r.inMatcher.OnSkip != nil {
+		_ = r.inMatcher.OnSkip(*r.row.values)
 	}
 	if err == nil || errors.Is(err, goIo.EOF) {
 		return source.Close(ctx)
@@ -311,16 +300,18 @@ func (r *Reader) ensureRowMapper(source cache.Source, mapperPtr *RowMapper) (Row
 
 	var mapper RowMapper
 
-	options := make(option.Options, 0)
+	opts := make([]Option, 0)
 	if r.mapperCache != nil {
-		options = append(options, r.mapperCache)
+		opts = append(opts, WithMapperCache(r.mapperCache))
 	}
-
 	if r.disableMapperCache {
-		options = append(options, r.disableMapperCache)
+		opts = append(opts, WithDisableMapperCache(r.disableMapperCache))
+	}
+	if r.inlineType {
+		opts = append(opts, WithInlineType(r.inlineType))
 	}
 
-	if mapper, err = r.getRowMapper(columns, r.targetType, r.unmappedFn, options); err != nil {
+	if mapper, err = r.getRowMapper(columns, r.targetType, r.unmappedFn, opts...); err != nil {
 		return nil, fmt.Errorf("failed to get row mapper, due to %w", err)
 	}
 	*mapperPtr = mapper
@@ -334,7 +325,7 @@ func (r *Reader) Stmt() *sql.Stmt {
 
 func (r *Reader) cacheEntry(ctx context.Context, sql string, args []interface{}) (*cache.Entry, error) {
 	if r.cache != nil {
-		entry, err := r.cache.Get(ctx, sql, args, r.matcher, r.cacheStats, r.cacheRefresh)
+		entry, err := r.cache.Get(ctx, sql, args, r.inMatcher, r.cacheStats, r.cacheRefresh)
 		return entry, err
 	}
 
@@ -377,94 +368,35 @@ func (r *Reader) ensureTargetType(row interface{}) {
 }
 
 // New creates a records to a structs reader
-func New(ctx context.Context, db *sql.DB, query string, newRow func() interface{}, options ...option.Option) (*Reader, error) {
-	dialect := ensureDialect(options, db)
-	if dialect != nil {
-		query = dialect.EnsurePlaceholders(query)
-	}
-
-	options = append(options, db)
-
+func New(ctx context.Context, db *sql.DB, query string, newRow func() interface{}, options ...Option) (*Reader, error) {
+	options = append(options, WithDB(db))
 	newStmt := NewStmt(nil, newRow, options...)
+	if newStmt.dialect != nil {
+		query = newStmt.dialect.EnsurePlaceholders(query)
+	}
 	newStmt.query = query
 	return newStmt, nil
 }
 
-func ensureDialect(options []option.Option, db *sql.DB) *info.Dialect {
-	dialect := option.Options(options).Dialect()
-	if dialect == nil {
-		product := registry.MatchProduct(db)
-		if product == nil {
-			return nil
-		}
-		dialect = registry.LookupDialect(product)
-	}
-
-	return dialect
-}
-
 // NewStmt creates a statement reader
-func NewStmt(stmt *sql.Stmt, newRow func() interface{}, options ...option.Option) *Reader {
-	var getRowMapper NewRowMapper
-	var unmappedFn io.Resolve
-	if !option.Assign(options, &getRowMapper) {
-		getRowMapper = newRowMapper
-	}
-	option.Assign(options, &unmappedFn)
-
-	var readerCache cache.Cache
-	var mapperCache *MapperCache
-	var disableMapperCache DisableMapperCache
-	var db *sql.DB
-	var columnsInMatcher *cache.ParmetrizedQuery
-	var stats *cache.Stats
-	var cacheRefresh cache.Refresh
-	for _, anOption := range options {
-		switch actual := anOption.(type) {
-		case cache.Cache:
-			readerCache = actual
-		case *MapperCache:
-			mapperCache = actual
-		case DisableMapperCache:
-			disableMapperCache = actual
-		case *cache.ParmetrizedQuery:
-			columnsInMatcher = actual
-		case **cache.ParmetrizedQuery:
-			columnsInMatcher = *actual
-		case *sql.DB:
-			db = actual
-		case cache.Refresh:
-			cacheRefresh = actual
-		case *cache.Stats:
-			stats = actual
-		}
-	}
-
+func NewStmt(stmt *sql.Stmt, newRow func() interface{}, opts ...Option) *Reader {
 	result := &Reader{
-		newRow:             newRow,
-		stmt:               stmt,
-		getRowMapper:       newRowMapper,
-		unmappedFn:         unmappedFn,
-		cache:              readerCache,
-		mapperCache:        mapperCache,
-		disableMapperCache: disableMapperCache,
-		matcher:            columnsInMatcher,
-		cacheRefresh:       cacheRefresh,
-		db:                 db,
-		cacheStats:         stats,
+		newRow: newRow,
+		stmt:   stmt,
 	}
+	result.apply(opts)
 	return result
 }
 
 // NewMap creates records to map reader
-func NewMap(ctx context.Context, db *sql.DB, query string, options ...option.Option) (*Reader, error) {
+func NewMap(ctx context.Context, db *sql.DB, query string, options ...Option) (*Reader, error) {
 	return New(ctx, db, query, func() interface{} {
 		return make(map[string]interface{})
 	}, options...)
 }
 
 // NewSlice create records to a slice reader
-func NewSlice(ctx context.Context, db *sql.DB, query string, columns int, options ...option.Option) (*Reader, error) {
+func NewSlice(ctx context.Context, db *sql.DB, query string, columns int, options ...Option) (*Reader, error) {
 	return New(ctx, db, query, func() interface{} {
 		return make([]interface{}, columns)
 	}, options...)

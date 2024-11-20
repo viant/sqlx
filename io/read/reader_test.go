@@ -14,7 +14,6 @@ import (
 	"github.com/viant/sqlx/io/read/cache"
 	"github.com/viant/sqlx/io/read/cache/aerospike"
 	"github.com/viant/sqlx/io/read/cache/afs"
-	"github.com/viant/sqlx/option"
 	"github.com/viant/toolbox"
 	"log"
 	"os"
@@ -687,25 +686,25 @@ outer:
 			continue
 		}
 
-		var options = make([]option.Option, 0)
+		var options = make([]read.Option, 0)
 		if testCase.resolver != nil {
-			options = append(options, testCase.resolver.Resolve)
+			options = append(options, read.WithUnmappedFn(testCase.resolver.Resolve))
 		}
 
 		if aCache != nil {
-			options = append(options, aCache)
+			options = append(options, read.WithCache(aCache))
 		}
 
 		if testCase.rowMapperCache != nil {
-			options = append(options, testCase.rowMapperCache)
+			options = append(options, read.WithMapperCache(testCase.rowMapperCache))
 		}
 
 		if testCase.disableCache != nil {
-			options = append(options, read.DisableMapperCache(*testCase.disableCache))
+			options = append(options, read.WithDisableMapperCache(read.DisableMapperCache(*testCase.disableCache)))
 		}
 
 		if testCase.matcher != nil {
-			options = append(options, testCase.matcher)
+			options = append(options, read.WithInMatcher(testCase.matcher))
 		}
 
 		reader, err := read.New(ctx, db, testCase.query, testCase.newRow, options...)
@@ -948,7 +947,7 @@ func BenchmarkStructMapper(b *testing.B) {
 			var err error
 			b.ReportAllocs()
 			for i := 0; i < b.N; i++ {
-				_, err = read.NewStructMapper(columns, fooPtrType, io.NewResolver().Resolve, read.DisableMapperCache(true))
+				_, err = read.NewStructMapper(columns, fooPtrType, io.NewResolver().Resolve, read.WithDisableMapperCache(read.DisableMapperCache(true)))
 			}
 			assert.Nil(b, err)
 		})
@@ -958,7 +957,7 @@ func BenchmarkStructMapper(b *testing.B) {
 			mapperCache := read.NewMapperCache(1024)
 			b.ReportAllocs()
 			for i := 0; i < b.N; i++ {
-				_, err = read.NewStructMapper(columns, fooPtrType, io.NewResolver().Resolve, mapperCache)
+				_, err = read.NewStructMapper(columns, fooPtrType, io.NewResolver().Resolve, read.WithMapperCache(mapperCache))
 			}
 			assert.Nil(b, err)
 		})
@@ -988,7 +987,7 @@ func BenchmarkStructMapper(b *testing.B) {
 		mapperCache := read.NewMapperCache(1024)
 		reader, err := read.New(context.TODO(), db, "SELECT * FROM foos", func() interface{} {
 			return &Foo{}
-		}, mapperCache)
+		}, read.WithMapperCache(mapperCache))
 
 		if !assert.Nil(b, err) {
 			return
@@ -1015,7 +1014,7 @@ func BenchmarkStructMapper(b *testing.B) {
 
 		cacheReader, err := read.New(context.TODO(), db, "SELECT * FROM foos", func() interface{} {
 			return &Foo{}
-		}, mapperCache, dataCache)
+		}, read.WithMapperCache(mapperCache), read.WithCache(dataCache))
 
 		if !assert.Nil(b, err) {
 			return
@@ -1043,7 +1042,7 @@ func BenchmarkStructMapper(b *testing.B) {
 
 		cacheReader, err := read.New(context.TODO(), db, "SELECT * FROM foos", func() interface{} {
 			return &Foo{}
-		}, mapperCache, dataCache)
+		}, read.WithMapperCache(mapperCache), read.WithCache(dataCache))
 
 		if !assert.Nil(b, err) {
 			return
@@ -1076,7 +1075,7 @@ func BenchmarkStructMapper(b *testing.B) {
 
 		cacheReader, err := read.New(context.TODO(), db, "SELECT * FROM foos", func() interface{} {
 			return &Foo{}
-		}, mapperCache, dataCache)
+		}, read.WithMapperCache(mapperCache), read.WithCache(dataCache))
 
 		if !assert.Nil(b, err) {
 			return
