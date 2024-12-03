@@ -56,13 +56,14 @@ func NewBuilder(table string, columns []string, dialect *info.Dialect, identity 
 	sqlBuilder.WriteString(insertIntoFragment)
 
 	escapeRune := dialect.SpecialKeywordEscapeQuote
-	if escapeRune == 0 {
-		escapeRune = '"'
-	}
 
-	sqlBuilder.WriteByte(escapeRune)
+	if escapeRune != 0 {
+		sqlBuilder.WriteByte(escapeRune)
+	}
 	sqlBuilder.WriteString(table)
-	sqlBuilder.WriteByte(escapeRune)
+	if escapeRune != 0 {
+		sqlBuilder.WriteByte(escapeRune)
+	}
 	sqlBuilder.WriteString("(")
 	for i, column := range columns {
 		if i > 0 {
