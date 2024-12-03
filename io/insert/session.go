@@ -171,22 +171,25 @@ func (s *session) flush(ctx context.Context, values []interface{}, identities []
 		return 0, 0, err
 	}
 
-	id, err := result.LastInsertId()
-	if err != nil {
-		return 0, 0, err
-	}
-
-	for _, updater := range s.recordUpdaters {
-		lastInsertedID, err := updater.afterFlush(ctx, values, identities, rowsAffected, id)
+	var id int64
+	if s.Dialect.CanLastInsertID {
+		id, err = result.LastInsertId()
 		if err != nil {
 			return 0, 0, err
 		}
+	}
+	if id > 0 {
+		for _, updater := range s.recordUpdaters {
+			lastInsertedID, err := updater.afterFlush(ctx, values, identities, rowsAffected, id)
+			if err != nil {
+				return 0, 0, err
+			}
 
-		if lastInsertedID > 0 {
-			id = lastInsertedID
+			if lastInsertedID > 0 {
+				id = lastInsertedID
+			}
 		}
 	}
-
 	return rowsAffected, id, nil
 }
 
