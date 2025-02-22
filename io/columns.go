@@ -104,7 +104,7 @@ func ParseType(columnType string) (reflect.Type, bool) {
 		return reflect.TypeOf(""), true
 	case "date", "time", "timestamp", "datetime":
 		return xreflect.TimeType, true
-	case "sql.rawbytes", "rawbytes", "json":
+	case "sql.rawbytes", "rawbytes", "json", "bytes":
 		return reflect.TypeOf([]byte("")), true
 	case "interface":
 		t := xreflect.InterfaceType
