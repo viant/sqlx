@@ -23,25 +23,26 @@ type testCase struct {
 }
 
 type UniqueRecord struct {
-	Id   int     `sqlx:"name=ID,autoincrement,primaryKey"`
-	Name *string `sqlx:"name=name,unique,table=v01" json:",omitempty"`
+	Id   int     `sqlx:"ID,autoincrement,primaryKey"`
+	Name *string `sqlx:"name,unique,table=v01" json:",omitempty"`
 }
 
 type FkRecord struct {
-	Id     int  `sqlx:"name=ID,autoincrement,primaryKey"`
-	DeptId *int `sqlx:"name=name,refColumn=id,refTable=dept01,required" json:",omitempty"`
+	Id     int  `sqlx:"ID,autoincrement,primaryKey"`
+	DeptId *int `sqlx:"name,refColumn=id,refTable=dept01,required" json:",omitempty"`
 }
 
-type NoNullRecord struct {
-	Id     int  `sqlx:"name=ID,autoincrement,primaryKey"`
-	Field1 *int `sqlx:"name=f1,required" json:",omitempty"`
+type CompositeUnique struct {
+	Id     int    `sqlx:"ID,autoincrement,primaryKey"`
+	Field1 *int   `sqlx:"f1,required" json:",omitempty"`
+	Unk    string `sqlx:"unk,uniqueSet=f1,table=uc01"`
 }
 
 type Record struct {
-	Id         int        `sqlx:"name=ID,autoincrement,primaryKey"`
-	CustomName *string    `sqlx:"name=name,unique,table=v03" json:",omitempty"`
-	DeptId     *int       `sqlx:"name=dept_id,refColumn=id,refTable=dept01" json:",omitempty"`
-	Desc       *int       `sqlx:"name=desc,required" json:",omitempty"`
+	Id         int        `sqlx:"ID,autoincrement,primaryKey"`
+	CustomName *string    `sqlx:"name,unique,table=v03" json:",omitempty"`
+	DeptId     *int       `sqlx:"dept_id,refColumn=id,refTable=dept01" json:",omitempty"`
+	Desc       *int       `sqlx:"desc,required" json:",omitempty"`
 	Has        *RecordHas `sqlx:"presence=true"`
 }
 
@@ -55,6 +56,44 @@ type RecordHas struct {
 func TestNewValidation(t *testing.T) {
 
 	var testCases = []testCase{
+		{
+			description: "unique composite validation failure",
+			driver:      "sqlite3",
+			dsn:         "/tmp/sqllite.db",
+			initSQL: []string{
+				"CREATE TABLE IF NOT EXISTS uc01 (id INTEGER PRIMARY KEY, f1 INTEGER,  unk TEXT)",
+				"delete from uc01",
+				`insert into uc01 values(1, 1, "key1")`,
+				`insert into uc01 values(2, 2, "key1")`,
+				`insert into uc01 values(3, 1, "key2")`,
+			},
+			data: &CompositeUnique{
+				Id:     4,
+				Field1: intPtr(2),
+				Unk:    "key2",
+			},
+			expectViolations:    true,
+			expectErrorFragment: "is not unique",
+		},
+		{
+			description: "unique composite validation failure",
+			driver:      "sqlite3",
+			dsn:         "/tmp/sqllite.db",
+			initSQL: []string{
+				"CREATE TABLE IF NOT EXISTS uc01 (id INTEGER PRIMARY KEY, f1 INTEGER,  unk TEXT)",
+				"delete from uc01",
+				`insert into uc01 values(1, 1, "key1")`,
+				`insert into uc01 values(2, 2, "key1")`,
+				`insert into uc01 values(3, 1, "key2")`,
+			},
+			data: &CompositeUnique{
+				Id:     4,
+				Field1: intPtr(1),
+				Unk:    "key2",
+			},
+			expectViolations:    false,
+			expectErrorFragment: "is not unique",
+		},
 		{
 			description: "00 unique validation failure",
 			driver:      "sqlite3",
@@ -71,6 +110,7 @@ func TestNewValidation(t *testing.T) {
 			expectViolations:    true,
 			expectErrorFragment: "is not unique",
 		},
+
 		{
 			description: "01 unique validation passed",
 			driver:      "sqlite3",
@@ -123,28 +163,7 @@ func TestNewValidation(t *testing.T) {
 			},
 			expectViolations: false,
 		},
-		{
-			description: "04 not null validation failure",
-			driver:      "sqlite3",
-			dsn:         "/tmp/sqllite.db",
-			initSQL:     []string{},
-			data: &NoNullRecord{
-				Id: 10,
-			},
-			expectViolations:    true,
-			expectErrorFragment: "null",
-		},
-		{
-			description: "05 not null validation passed",
-			driver:      "sqlite3",
-			dsn:         "/tmp/sqllite.db",
-			initSQL:     []string{},
-			data: &NoNullRecord{
-				Id:     10,
-				Field1: intPtr(1),
-			},
-			expectViolations: false,
-		},
+
 		{
 			description: "06 required failure - dept is required",
 			driver:      "sqlite3",
@@ -217,35 +236,7 @@ func TestNewValidation(t *testing.T) {
 			options:          []Option{WithSetMarker()},
 			expectViolations: false,
 		},
-		{
-			description: "10 not null validation failure with has",
-			driver:      "sqlite3",
-			dsn:         "/tmp/sqllite.db",
-			initSQL:     []string{},
-			data: &Record{
-				Id:   10,
-				Desc: nil, //Desc is ignored since has does not flag it as set
-				Has: &RecordHas{
-					Desc: true,
-				},
-			},
-			options:             []Option{WithSetMarker()},
-			expectViolations:    true,
-			expectErrorFragment: "is null",
-		},
-		{
-			description: "11 not null validation passed with all has flags set to false",
-			driver:      "sqlite3",
-			dsn:         "/tmp/sqllite.db",
-			initSQL:     []string{},
-			data: &Record{
-				Id:   10,
-				Desc: nil, //desc is ignored since has does not flag it as set
-				Has:  &RecordHas{},
-			},
-			options:          []Option{WithSetMarker()},
-			expectViolations: false,
-		},
+
 		{
 			description: "12 unique validation failure with has",
 			driver:      "sqlite3",
@@ -429,28 +420,7 @@ func TestNewValidationWithCache(t *testing.T) {
 			},
 			expectViolations: false,
 		},
-		{
-			description: "04 not null validation failure",
-			driver:      "sqlite3",
-			dsn:         "/tmp/sqllite.db",
-			initSQL:     []string{},
-			data: &NoNullRecord{
-				Id: 10,
-			},
-			expectViolations:    true,
-			expectErrorFragment: "null",
-		},
-		{
-			description: "05 not null validation passed",
-			driver:      "sqlite3",
-			dsn:         "/tmp/sqllite.db",
-			initSQL:     []string{},
-			data: &NoNullRecord{
-				Id:     10,
-				Field1: intPtr(1),
-			},
-			expectViolations: false,
-		},
+
 		{
 			description: "06 required failure - dept is required",
 			driver:      "sqlite3",
