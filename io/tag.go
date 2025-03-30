@@ -25,7 +25,7 @@ type Tag struct {
 	Ns               string
 	Generator        string
 	IsUnique         bool
-	UniqueSet        string
+	UniqueDep        string
 	Db               string
 	Table            string
 	RefDb            string
@@ -102,8 +102,8 @@ func (t *Tag) updateTagKey(key string, value string) error {
 		t.PrimaryKey = strings.TrimSpace(value) == "true" || strings.TrimSpace(value) == ""
 	case "autoincrement":
 		t.Autoincrement = true
-	case "uniqueset":
-		t.UniqueSet = strings.TrimSpace(value)
+	case "uniquedep":
+		t.UniqueDep = strings.TrimSpace(value)
 		t.IsUnique = true
 	case "unique":
 		t.IsUnique = strings.TrimSpace(value) == "true" || strings.TrimSpace(value) == ""

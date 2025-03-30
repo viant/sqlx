@@ -35,7 +35,7 @@ type FkRecord struct {
 type CompositeUnique struct {
 	Id     int    `sqlx:"ID,autoincrement,primaryKey"`
 	Field1 *int   `sqlx:"f1,required" json:",omitempty"`
-	Unk    string `sqlx:"unk,uniqueSet=f1,table=uc01"`
+	Unk    string `sqlx:"unk,uniqueDep=f1,table=uc01"`
 }
 
 type Record struct {
@@ -76,7 +76,7 @@ func TestNewValidation(t *testing.T) {
 			expectErrorFragment: "is not unique",
 		},
 		{
-			description: "unique composite validation failure",
+			description: "unique composite validation valid",
 			driver:      "sqlite3",
 			dsn:         "/tmp/sqllite.db",
 			initSQL: []string{
@@ -87,7 +87,7 @@ func TestNewValidation(t *testing.T) {
 				`insert into uc01 values(3, 1, "key2")`,
 			},
 			data: &CompositeUnique{
-				Id:     4,
+				Id:     5,
 				Field1: intPtr(1),
 				Unk:    "key2",
 			},

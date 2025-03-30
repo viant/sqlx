@@ -263,11 +263,8 @@ func (s *Service) buildUniqueMatchContext(check *Check, count int, path *Path, a
 		}
 		queryCtx.Append(value, check.Field.Name, fieldPath)
 
-		if len(check.UniqueSetColumns) > 0 {
-			for i := range check.UniqueSetColumns {
-				column := check.UniqueSetColumns[i]
-				queryCtx.AddExclusion([]*io.Column{column}, recordPtr, itemPath)
-			}
+		if check.UniqueDep != nil {
+			queryCtx.AddExclusion([]*io.Column{check.UniqueDep}, recordPtr, itemPath)
 			continue
 		}
 		if check.IdentityColumn != nil {

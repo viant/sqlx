@@ -6,7 +6,6 @@ import (
 	"github.com/viant/sqlx/option"
 	"github.com/viant/xunsafe"
 	"reflect"
-	"strings"
 )
 
 const (
@@ -19,13 +18,13 @@ type (
 	CheckKid string
 
 	Check struct {
-		SQL              string
-		Field            *xunsafe.Field
-		ErrorMsg         string
-		CheckType        reflect.Type
-		CheckField       *xunsafe.Field
-		UniqueSetColumns []*io.Column
-		IdentityColumn   *io.Column
+		SQL            string
+		Field          *xunsafe.Field
+		ErrorMsg       string
+		CheckType      reflect.Type
+		CheckField     *xunsafe.Field
+		UniqueDep      *io.Column
+		IdentityColumn *io.Column
 	}
 
 	Checks struct {
@@ -86,30 +85,27 @@ func NewChecks(p reflect.Type, presence *option.SetMarker) (*Checks, error) {
 			})
 		}
 
-		var setColumns []*io.Column
+		var uniqueDep *io.Column
 
 		if tag.IsUnique && tag.Table != "" {
 			checkType := reflect.StructOf([]reflect.StructField{{Name: xField.Name, Type: xField.Type, Tag: `sqlx:"Val"`}})
 			checkField := xunsafe.NewField(checkType.Field(0))
-			if tag.UniqueSet != "" {
-				for _, uniqueColumn := range strings.Split(tag.UniqueSet, ",") {
-					uniqueSetColumnName := strings.TrimSpace(uniqueColumn)
-					setColumn, ok := columnByName[uniqueSetColumnName]
-					if !ok {
-						return nil, fmt.Errorf("column %s form unique set not preset in type: %s", uniqueSetColumnName, p.String())
-					}
-					setColumns = append(setColumns, &setColumn)
+			if tag.UniqueDep != "" {
+				setColumn, ok := columnByName[tag.UniqueDep]
+				if !ok {
+					return nil, fmt.Errorf("column %s form unique set not preset in type: %s", tag.UniqueDep, p.String())
 				}
+				uniqueDep = &setColumn
 			}
 
 			result.Unique = append(result.Unique, &Check{
-				SQL:              "SELECT " + column.Name() + " AS Val FROM " + schema(tag.Db) + tag.Table + " WHERE " + column.Name(),
-				CheckType:        checkType,
-				CheckField:       checkField,
-				Field:            xField,
-				ErrorMsg:         tag.ErrorMgs,
-				IdentityColumn:   &identityColumn,
-				UniqueSetColumns: setColumns,
+				SQL:            "SELECT " + column.Name() + " AS Val FROM " + schema(tag.Db) + tag.Table + " WHERE " + column.Name(),
+				CheckType:      checkType,
+				CheckField:     checkField,
+				Field:          xField,
+				ErrorMsg:       tag.ErrorMgs,
+				IdentityColumn: &identityColumn,
+				UniqueDep:      uniqueDep,
 			})
 			continue
 		}
