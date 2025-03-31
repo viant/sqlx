@@ -33,9 +33,9 @@ type FkRecord struct {
 }
 
 type CompositeUnique struct {
-	Id     int    `sqlx:"ID,autoincrement,primaryKey"`
-	Field1 *int   `sqlx:"f1,required" json:",omitempty"`
-	Unk    string `sqlx:"unk,uniqueDep=f1,table=uc01"`
+	Id  int    `sqlx:"ID,autoincrement,primaryKey"`
+	Dep *int   `sqlx:"dep,required" json:",omitempty"`
+	Unk string `sqlx:"unk,uniqueDep=dep,table=uc01"`
 }
 
 type Record struct {
@@ -61,35 +61,54 @@ func TestNewValidation(t *testing.T) {
 			driver:      "sqlite3",
 			dsn:         "/tmp/sqllite.db",
 			initSQL: []string{
-				"CREATE TABLE IF NOT EXISTS uc01 (id INTEGER PRIMARY KEY, f1 INTEGER,  unk TEXT)",
+				"CREATE TABLE IF NOT EXISTS uc01 (id INTEGER PRIMARY KEY, dep INTEGER,  unk TEXT)",
 				"delete from uc01",
 				`insert into uc01 values(1, 1, "key1")`,
 				`insert into uc01 values(2, 2, "key1")`,
 				`insert into uc01 values(3, 1, "key2")`,
 			},
 			data: &CompositeUnique{
-				Id:     4,
-				Field1: intPtr(2),
-				Unk:    "key2",
+				Id:  4,
+				Dep: intPtr(1),
+				Unk: "key2",
 			},
 			expectViolations:    true,
 			expectErrorFragment: "is not unique",
+		},
+		{
+			description: "unique composite validation failure",
+			driver:      "sqlite3",
+			dsn:         "/tmp/sqllite.db",
+			initSQL: []string{
+				"CREATE TABLE IF NOT EXISTS uc01 (id INTEGER PRIMARY KEY, dep INTEGER,  unk TEXT)",
+				"delete from uc01",
+				`insert into uc01 values(1, 1, "key1")`,
+				`insert into uc01 values(2, 2, "key1")`,
+				`insert into uc01 values(3, 1, "key2")`,
+			},
+			data: &CompositeUnique{
+				Id:  3,
+				Dep: intPtr(1),
+				Unk: "key2",
+			},
+			expectViolations:    false,
+			expectErrorFragment: "is unique - excluding itself",
 		},
 		{
 			description: "unique composite validation valid",
 			driver:      "sqlite3",
 			dsn:         "/tmp/sqllite.db",
 			initSQL: []string{
-				"CREATE TABLE IF NOT EXISTS uc01 (id INTEGER PRIMARY KEY, f1 INTEGER,  unk TEXT)",
+				"CREATE TABLE IF NOT EXISTS uc01 (id INTEGER PRIMARY KEY, dep INTEGER,  unk TEXT)",
 				"delete from uc01",
 				`insert into uc01 values(1, 1, "key1")`,
 				`insert into uc01 values(2, 2, "key1")`,
 				`insert into uc01 values(3, 1, "key2")`,
 			},
 			data: &CompositeUnique{
-				Id:     5,
-				Field1: intPtr(1),
-				Unk:    "key2",
+				Id:  5,
+				Dep: intPtr(2),
+				Unk: "key2",
 			},
 			expectViolations:    false,
 			expectErrorFragment: "is not unique",

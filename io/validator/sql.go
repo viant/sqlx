@@ -12,14 +12,15 @@ type (
 		placeholders    []string
 		values          []interface{}
 		index           map[interface{}]*queryValue
-		queryExclusions []*queryExclusion
+		queryExclusions []*additionalCriteria
+		queryInclusion  []*additionalCriteria
 	}
 	queryValue struct {
 		value interface{}
 		field string
 		path  *Path
 	}
-	queryExclusion struct {
+	additionalCriteria struct {
 		columnNames  []string
 		placeholders []string
 	}
@@ -38,16 +39,32 @@ func (p *queryContext) Append(value interface{}, field string, path *Path) {
 	}
 }
 
-func (p *queryContext) AddExclusion(columns []*io.Column, recUPtr unsafe.Pointer, itemPath *Path) {
-	if len(columns) == 0 {
+func (p *queryContext) AddInclusion(columns []*io.Column, recUPtr unsafe.Pointer, itemPath *Path) {
+	criteria, done := p.addCriteria(columns, recUPtr, itemPath)
+	if done {
 		return
+	}
+	p.queryInclusion = append(p.queryInclusion, criteria)
+}
+
+func (p *queryContext) AddExclusion(columns []*io.Column, recUPtr unsafe.Pointer, itemPath *Path) {
+	queryExclusion, done := p.addCriteria(columns, recUPtr, itemPath)
+	if done {
+		return
+	}
+	p.queryExclusions = append(p.queryExclusions, queryExclusion)
+}
+
+func (p *queryContext) addCriteria(columns []*io.Column, recUPtr unsafe.Pointer, itemPath *Path) (*additionalCriteria, bool) {
+	if len(columns) == 0 {
+		return nil, true
 	}
 
 	if len(p.queryExclusions) == 0 {
-		p.queryExclusions = []*queryExclusion{}
+		p.queryExclusions = []*additionalCriteria{}
 	}
 
-	queryExclusion := &queryExclusion{
+	queryExclusion := &additionalCriteria{
 		columnNames:  make([]string, len(columns)),
 		placeholders: make([]string, len(columns)),
 	}
@@ -55,7 +72,7 @@ func (p *queryContext) AddExclusion(columns []*io.Column, recUPtr unsafe.Pointer
 	for i, column := range columns {
 		columnFielder, ok := (*column).(io.ColumnWithFields)
 		if !ok {
-			return
+			return nil, true
 		}
 
 		fields := columnFielder.Fields()
@@ -74,33 +91,50 @@ func (p *queryContext) AddExclusion(columns []*io.Column, recUPtr unsafe.Pointer
 		queryExclusion.placeholders[i] = "?"
 		queryExclusion.columnNames[i] = columnFielder.Name()
 	}
-
-	p.queryExclusions = append(p.queryExclusions, queryExclusion)
+	return queryExclusion, false
 }
 
+/*
+id, dep, unk
+1, 2, 3
+->
+*/
 func (p *queryContext) Query() string {
 	return p.SQL + " IN (" + strings.Join(p.placeholders, ",") + ")"
 }
 
-func (p *queryContext) QueryWithExclusions() string {
+func (p *queryContext) QueryWithCriteria() string {
 
 	var sb strings.Builder
 	sb.WriteString(p.Query())
 
-	for _, exclusion := range p.queryExclusions {
+	for _, criteria := range p.queryExclusions {
 		sb.WriteString(" AND ")
-		if len(exclusion.columnNames) > 1 {
+		if len(criteria.columnNames) > 1 {
 			sb.WriteString("(")
 		}
-		sb.WriteString(strings.Join(exclusion.columnNames, ","))
-		if len(exclusion.columnNames) > 1 {
+		sb.WriteString(strings.Join(criteria.columnNames, ","))
+		if len(criteria.columnNames) > 1 {
 			sb.WriteString(")")
 		}
 		sb.WriteString(" NOT IN (")
-		sb.WriteString(strings.Join(exclusion.placeholders, ","))
+		sb.WriteString(strings.Join(criteria.placeholders, ","))
 		sb.WriteString(")")
 	}
 
+	for _, criteria := range p.queryInclusion {
+		sb.WriteString(" AND ")
+		if len(criteria.columnNames) > 1 {
+			sb.WriteString("(")
+		}
+		sb.WriteString(strings.Join(criteria.columnNames, ","))
+		if len(criteria.columnNames) > 1 {
+			sb.WriteString(")")
+		}
+		sb.WriteString(" IN (")
+		sb.WriteString(strings.Join(criteria.placeholders, ","))
+		sb.WriteString(")")
+	}
 	return sb.String()
 }
 
