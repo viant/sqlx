@@ -34,7 +34,6 @@ func DetectColumns(ctx context.Context, db *sql.DB, query string, args ...interf
 					Type: item.DatabaseTypeName(),
 				}
 				sinkColumn.SetScanType(item.ScanType())
-				tableColumns = append(tableColumns, sinkColumn)
 				if rType := item.ScanType(); rType != nil {
 					sinkColumn.TypeDefinition = rType.String()
 				}
