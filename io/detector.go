@@ -15,7 +15,7 @@ func DetectColumns(ctx context.Context, db *sql.DB, query string, args ...interf
 		return nil, err
 	}
 	defer stmt.Close()
-	rows, err := stmt.QueryContext(ctx, args)
+	rows, err := stmt.QueryContext(ctx, args...)
 	if err != nil {
 		return nil, err
 	}
