@@ -3,12 +3,13 @@ package io
 import (
 	"database/sql"
 	"encoding/json"
-	"github.com/viant/sqlx/option"
-	"github.com/viant/sqlx/types"
-	"github.com/viant/xreflect"
 	"reflect"
 	"strings"
 	"time"
+
+	"github.com/viant/sqlx/option"
+	"github.com/viant/sqlx/types"
+	"github.com/viant/xreflect"
 )
 
 // Columns represents columns
@@ -95,7 +96,7 @@ func ParseType(columnType string) (reflect.Type, bool) {
 	switch strings.ToLower(columnType) {
 	case "int", "integer", "bigint", "smallint", "unsiged tinyint", "tinyint", "int64", "int32", "int16", "int8", "uint", "uint8", "uint16", "uint32", "uint64", "binary":
 		return xreflect.IntType, true
-	case "float", "float64", "numeric", "decimal", "double":
+	case "float", "float64", "numeric", "decimal", "double", "real":
 		return xreflect.Float64Type, true
 	case "bool", "boolean":
 		return xreflect.BoolType, true
