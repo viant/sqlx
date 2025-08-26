@@ -187,7 +187,11 @@ func TypesToColumns(columns []*sql.ColumnType) []Column {
 		dbType := columns[i].DatabaseTypeName()
 		dbType = strings.Replace(dbType, "UNSIGNED", "", 1)
 		dbType = strings.TrimSpace(dbType)
-		result[i] = &columnType{databaseTypeName: dbType, ColumnType: columns[i], scanType: NormalizeColumnType(columns[i].ScanType(), columns[i].DatabaseTypeName())}
+		scanType := columns[i].ScanType()
+		if scanType == nil {
+			scanType = reflect.TypeOf(sql.RawBytes{})
+		}
+		result[i] = &columnType{databaseTypeName: dbType, ColumnType: columns[i], scanType: NormalizeColumnType(scanType, columns[i].DatabaseTypeName())}
 	}
 	return result
 }
