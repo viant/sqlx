@@ -4,13 +4,14 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strconv"
+
 	"github.com/viant/sqlx/io"
 	"github.com/viant/sqlx/metadata"
 	"github.com/viant/sqlx/metadata/info"
 	"github.com/viant/sqlx/metadata/info/dialect"
 	"github.com/viant/sqlx/metadata/sink"
 	"github.com/viant/sqlx/option"
-	"strconv"
 )
 
 // Transient represents struct used to setting new autoincrement value
@@ -60,32 +61,47 @@ func (n *Transient) Handle(ctx context.Context, db *sql.DB, target interface{}, 
 	sequence.Catalog = arguments[0].(string)
 	sequence.Schema = arguments[1].(string)
 	sequence.Name = arguments[2].(string)
-	err = updateSequence(ctx, db, &sequence, tx)
-
-	if err != nil {
-		return false, err
-	}
 
 	sequenceSQLBuilder := options.SequenceSQLBuilder()
 	if sequenceSQLBuilder == nil {
 		return false, fmt.Errorf("SequenceSQLBuilder was empty")
 	}
 
-	transientDML, err := sequenceSQLBuilder(&sequence)
+	retryMaxCnt := 3
+
+	for i := 1; i <= retryMaxCnt; i++ {
+		err = updateSequence(ctx, db, &sequence, tx)
+		if err != nil {
+			return false, err
+		}
+
+		transientDML, err := sequenceSQLBuilder(&sequence)
+		if err != nil {
+			return false, err
+		}
+		if transientDML == nil {
+			return false, fmt.Errorf("transientDML was empty")
+		}
+
+		_ = n.turnFkKeyCheck(tx, 0)
+		_, err = tx.ExecContext(ctx, transientDML.Query, transientDML.Args...)
+		_ = n.turnFkKeyCheck(tx, 1)
+
+		if err != nil && i < retryMaxCnt {
+			continue
+		}
+
+		if err != nil { //temp workaround of cascading sequencer
+			err = fmt.Errorf("unable to get sequence values (attempt %d) using transient dml %v due to: %w", i, transientDML, err)
+		}
+
+		break
+	}
+
 	if err != nil {
 		return false, err
 	}
-	if transientDML == nil {
-		return false, fmt.Errorf("transientDML was empty")
-	}
 
-	_ = n.turnFkKeyCheck(tx, 0)
-	_, err = tx.ExecContext(ctx, transientDML.Query, transientDML.Args...)
-	_ = n.turnFkKeyCheck(tx, 1)
-	if err != nil { //temp workaround of cascading sequencer
-		err = fmt.Errorf("unable to get sequence values using transient dml %v due to: %w", transientDML, err)
-		return false, err
-	}
 	*targetSequence = sequence
 	return false, nil
 }
