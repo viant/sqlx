@@ -1,11 +1,12 @@
 package bigquery
 
 import (
+	"log"
+
 	"github.com/viant/sqlx/metadata/database"
 	"github.com/viant/sqlx/metadata/info"
 	"github.com/viant/sqlx/metadata/info/dialect"
 	"github.com/viant/sqlx/metadata/registry"
-	"log"
 )
 
 const product = "BigQuery"
@@ -36,7 +37,7 @@ COALESCE(LOCATION,'') AS SQL_PATH,
 'utf8' DEFAULT_CHARACTER_SET_NAME,
 '' AS  DEFAULT_COLLATION_NAME,
 LOCATION AS REGION
-FROM INFORMATION_SCHEMA.SCHEMATA
+FROM $Args[1].INFORMATION_SCHEMA.SCHEMATA
 `, bigQuery,
 			info.NewCriterion(info.Catalog, "CATALOG_NAME"),
 		),
@@ -47,7 +48,7 @@ COALESCE(LOCATION,'') AS SQL_PATH,
 'utf8' DEFAULT_CHARACTER_SET_NAME,
 '' AS  DEFAULT_COLLATION_NAME,
 LOCATION AS REGION
-FROM INFORMATION_SCHEMA.SCHEMATA
+FROM $Args[1].INFORMATION_SCHEMA.SCHEMATA
 `, bigQuery,
 			info.NewCriterion(info.Catalog, "CATALOG_NAME"),
 			info.NewCriterion(info.Schema, "SCHEMA_NAME"),
@@ -59,7 +60,7 @@ COALESCE(LOCATION,'') AS SQL_PATH,
 'utf8' DEFAULT_CHARACTER_SET_NAME,
 '' AS  DEFAULT_COLLATION_NAME,
 LOCATION AS REGION
-FROM INFORMATION_SCHEMA.SCHEMATA
+FROM $Args[1].INFORMATION_SCHEMA.SCHEMATA
 `, bigQuery,
 			info.NewCriterion(info.Catalog, "CATALOG_NAME"),
 			info.NewCriterion(info.Schema, "SCHEMA_NAME"),
@@ -76,7 +77,7 @@ CREATION_TIME AS UPDATE_TIME,
 '' VERSION,
 TABLE_TYPE AS ENGINE,
 DDL
-FROM INFORMATION_SCHEMA.TABLES
+FROM $Args[1].INFORMATION_SCHEMA.TABLES
 `,
 			bigQuery,
 			info.NewCriterion(info.Catalog, "CATALOG_NAME"),
@@ -95,7 +96,7 @@ CREATION_TIME AS UPDATE_TIME,
 '' VERSION,
 TABLE_TYPE AS ENGINE,
 DDL
-FROM INFORMATION_SCHEMA.TABLES`,
+FROM $Args[1].INFORMATION_SCHEMA.TABLES`,
 			bigQuery,
 			info.NewCriterion(info.Catalog, "TABLE_CATALOG"),
 			info.NewCriterion(info.Schema, "TABLE_SCHEMA"),
@@ -115,7 +116,7 @@ CAST(NULL AS INT64) NUMERIC_SCALE,
 IS_NULLABLE,
 '' COLUMN_DEFAULT,
 '' COLUMN_KEY
-FROM INFORMATION_SCHEMA.COLUMNS
+FROM $Args[1].INFORMATION_SCHEMA.COLUMNS
 `,
 			bigQuery,
 			info.NewCriterion(info.Catalog, "TABLE_CATALOG"),
