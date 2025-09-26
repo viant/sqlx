@@ -39,7 +39,7 @@ COALESCE(LOCATION,'') AS SQL_PATH,
 LOCATION AS REGION
 FROM $Args[1].INFORMATION_SCHEMA.SCHEMATA
 `, bigQuery,
-			info.NewCriterion(info.Catalog, "CATALOG_NAME"),
+			info.NewCriterion(info.Catalog, ""),
 		),
 		info.NewQuery(info.KindSchema, `SELECT
 CATALOG_NAME, 
@@ -50,7 +50,7 @@ COALESCE(LOCATION,'') AS SQL_PATH,
 LOCATION AS REGION
 FROM $Args[1].INFORMATION_SCHEMA.SCHEMATA
 `, bigQuery,
-			info.NewCriterion(info.Catalog, "CATALOG_NAME"),
+			info.NewCriterion(info.Catalog, ""),
 			info.NewCriterion(info.Schema, "SCHEMA_NAME"),
 		),
 		info.NewQuery(info.KindSchema, `SELECT
@@ -62,28 +62,9 @@ COALESCE(LOCATION,'') AS SQL_PATH,
 LOCATION AS REGION
 FROM $Args[1].INFORMATION_SCHEMA.SCHEMATA
 `, bigQuery,
-			info.NewCriterion(info.Catalog, "CATALOG_NAME"),
+			info.NewCriterion(info.Catalog, ""),
 			info.NewCriterion(info.Schema, "SCHEMA_NAME"),
 		),
-		info.NewQuery(info.KindTables, `SELECT
-TABLE_CATALOG,
-TABLE_SCHEMA,
-TABLE_TYPE,
-TABLE_NAME,
-'' AS AUTO_INCREMENT,
-CREATION_TIME AS CREATE_TIME,
-CREATION_TIME AS UPDATE_TIME,
-0 AS TABLE_ROWS,
-'' VERSION,
-TABLE_TYPE AS ENGINE,
-DDL
-FROM $Args[1].INFORMATION_SCHEMA.TABLES
-`,
-			bigQuery,
-			info.NewCriterion(info.Catalog, "CATALOG_NAME"),
-			info.NewCriterion(info.Schema, "SCHEMA_NAME"),
-		),
-
 		info.NewQuery(info.KindTables, `SELECT
 TABLE_CATALOG,
 TABLE_SCHEMA,
@@ -98,7 +79,7 @@ TABLE_TYPE AS ENGINE,
 DDL
 FROM $Args[1].INFORMATION_SCHEMA.TABLES`,
 			bigQuery,
-			info.NewCriterion(info.Catalog, "TABLE_CATALOG"),
+			info.NewCriterion(info.Catalog, ""),
 			info.NewCriterion(info.Schema, "TABLE_SCHEMA"),
 		),
 
@@ -108,6 +89,8 @@ TABLE_SCHEMA,
 TABLE_NAME,
 COLUMN_NAME,
 ORDINAL_POSITION,
+
+
 '' COLUMN_COMMENT,
 DATA_TYPE,
 CAST(NULL AS INT64) CHARACTER_MAXIMUM_LENGTH,
@@ -119,7 +102,7 @@ IS_NULLABLE,
 FROM $Args[1].INFORMATION_SCHEMA.COLUMNS
 `,
 			bigQuery,
-			info.NewCriterion(info.Catalog, "TABLE_CATALOG"),
+			info.NewCriterion(info.Catalog, ""),
 			info.NewCriterion(info.Schema, "TABLE_SCHEMA"),
 			info.NewCriterion(info.Table, "TABLE_NAME"),
 		),
