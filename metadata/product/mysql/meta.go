@@ -1,13 +1,14 @@
 package mysql
 
 import (
+	"log"
+	"strconv"
+
 	"github.com/viant/sqlx/metadata/database"
 	"github.com/viant/sqlx/metadata/info"
 	"github.com/viant/sqlx/metadata/info/dialect"
 	"github.com/viant/sqlx/metadata/product/mysql/sequence"
 	"github.com/viant/sqlx/metadata/registry"
-	"log"
-	"strconv"
 )
 
 const product = "MySQL"
@@ -40,7 +41,7 @@ DEFAULT_CHARACTER_SET_NAME,
 DEFAULT_COLLATION_NAME AS DEFAULT_COLLATION_NAME
 FROM information_schema.schemata
 `, mySQL5,
-			info.NewCriterion(info.Catalog, "CATALOG_NAME"),
+			info.NewCriterion(info.Catalog, ""),
 		),
 		info.NewQuery(info.KindSchema, `SELECT 
 '' CATALOG_NAME, 
@@ -50,7 +51,7 @@ DEFAULT_CHARACTER_SET_NAME,
 DEFAULT_COLLATION_NAME AS DEFAULT_COLLATION_NAME
 FROM information_schema.schemata
 `, mySQL5,
-			info.NewCriterion(info.Catalog, "CATALOG_NAME"),
+			info.NewCriterion(info.Catalog, ""),
 			info.NewCriterion(info.Schema, "SCHEMA_NAME"),
 		),
 		info.NewQuery(info.KindTables, `SELECT 
@@ -66,7 +67,7 @@ VERSION,
 ENGINE
 FROM INFORMATION_SCHEMA.TABLES`,
 			mySQL5,
-			info.NewCriterion(info.Catalog, "TABLE_CATALOG"),
+			info.NewCriterion(info.Catalog, ""),
 			info.NewCriterion(info.Schema, "TABLE_SCHEMA"),
 		),
 
@@ -87,7 +88,7 @@ COLUMN_KEY,
 CASE WHEN COALESCE(EXTRA, "") LIKE '%auto_increment%' THEN 1 ELSE NULL END IS_AUTOINCREMENT
 FROM INFORMATION_SCHEMA.COLUMNS`,
 			mySQL5,
-			info.NewCriterion(info.Catalog, "TABLE_CATALOG"),
+			info.NewCriterion(info.Catalog, ""),
 			info.NewCriterion(info.Schema, "TABLE_SCHEMA"),
 			info.NewCriterion(info.Table, "TABLE_NAME"),
 		),
@@ -121,7 +122,7 @@ FROM INFORMATION_SCHEMA.STATISTICS
 $WHERE
 GROUP BY 1, 2, 3, 4, 5, 6, 7
 `, mySQL5,
-			info.NewCriterion(info.Catalog, "TABLE_CATALOG"),
+			info.NewCriterion(info.Catalog, ""),
 			info.NewCriterion(info.Schema, "TABLE_SCHEMA"),
 			info.NewCriterion(info.Table, "TABLE_NAME"),
 		),
@@ -136,7 +137,7 @@ GROUP BY 1, 2, 3, 4, 5, 6, 7
 		SEQ_IN_INDEX INDEX_POSITION
 FROM INFORMATION_SCHEMA.STATISTICS
 `, mySQL5,
-			info.NewCriterion(info.Catalog, "TABLE_CATALOG"),
+			info.NewCriterion(info.Catalog, ""),
 			info.NewCriterion(info.Schema, "TABLE_SCHEMA"),
 			info.NewCriterion(info.Table, "TABLE_NAME"),
 			info.NewCriterion(info.Index, "INDEX_NAME"),
