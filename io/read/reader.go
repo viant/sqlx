@@ -5,10 +5,11 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"github.com/viant/sqlx/io/read/cache"
-	"github.com/viant/sqlx/option"
 	goIo "io"
 	"reflect"
+
+	"github.com/viant/sqlx/io/read/cache"
+	"github.com/viant/sqlx/option"
 )
 
 // Reader represents generic query reader
@@ -61,24 +62,24 @@ func (r *Reader) QuerySingle(ctx context.Context, emit func(row interface{}) err
 func (r *Reader) QueryAll(ctx context.Context, emit func(row interface{}) error, args ...interface{}) error {
 	entry, err := r.cacheEntry(ctx, r.query, args)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to cache entry: %w", err)
 	}
 
 	rows, source, err := r.createSource(ctx, entry, args, r.inMatcher)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to create stmt source:%w", err)
 	}
 
 	if err = r.applyRowsIfNeeded(entry, rows); err != nil {
-		return err
+		return fmt.Errorf("failed assign rows: %w", err)
 	}
 
 	if err = r.readAll(ctx, emit, entry, source); err != nil {
-		return err
+		return fmt.Errorf("failed to read all %w", err)
 	}
 
 	if rows != nil {
-		return rows.Err()
+		return fmt.Errorf("encounter error: %w", rows.Err())
 	}
 
 	return nil
@@ -132,6 +133,9 @@ func (r *Reader) readAll(ctx context.Context, emit func(row interface{}) error, 
 
 	for source.Next() && err == nil {
 		err = r.read(ctx, source, &mapper, emit, cacheEntry)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) && !errors.Is(err, goIo.EOF) {
+			err = fmt.Errorf("failed to read row: %w", err)
+		}
 	}
 	if r.row != nil && r.inMatcher != nil && r.inMatcher.OnSkip != nil {
 		_ = r.inMatcher.OnSkip(*r.row.values)
@@ -141,7 +145,9 @@ func (r *Reader) readAll(ctx context.Context, emit func(row interface{}) error, 
 	}
 	_ = source.Rollback(ctx)
 	if err == nil {
-		err = source.Err()
+		if source.Err() != nil {
+			err = fmt.Errorf("source err: %w", source.Err())
+		}
 	}
 	return err
 }
@@ -182,12 +188,12 @@ func (r *Reader) QueryAllWithMap(ctx context.Context, emit func(row map[string]i
 func (r *Reader) read(ctx context.Context, source cache.Source, mapperPtr *RowMapper, emit func(row interface{}) error, cacheEntry *cache.Entry) error {
 	row, values, err := r.prepareRow(source, mapperPtr)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to prepare row: %w", err)
 	}
 
 	typeMatches, err := source.CheckType(ctx, values)
-	if !typeMatches {
-		return fmt.Errorf("invalid cache type")
+	if !typeMatches || err != nil {
+		return fmt.Errorf("invalid cache type %w", err)
 	}
 
 	scanner := source.Scanner(ctx)
@@ -203,9 +209,8 @@ func (r *Reader) read(ctx context.Context, source cache.Source, mapperPtr *RowMa
 		err = nil
 		skipped = true
 	}
-
 	if err = r.addToEntry(ctx, cacheEntry, values); err != nil {
-		return err
+		return fmt.Errorf("failed to add entry: %w", err)
 	}
 
 	if skipped {
@@ -213,15 +218,12 @@ func (r *Reader) read(ctx context.Context, source cache.Source, mapperPtr *RowMa
 	}
 
 	if err = r.ensureDereferences(row, source, values); err != nil {
-		return err
+		return fmt.Errorf("ensureDereferences: %w", err)
 	}
-
 	if err = emit(row); err != nil {
-		return err
+		return fmt.Errorf("failed to emit row: %w", err)
 	}
-
 	r.row = nil
-
 	return source.Err()
 }
 
