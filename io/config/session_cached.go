@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"fmt"
 	"sync"
-	"unsafe"
 
 	"github.com/viant/sqlx/metadata/info"
 	"github.com/viant/sqlx/metadata/sink"
@@ -14,11 +13,11 @@ import (
 var metaSessCache sync.Map
 
 type metaKey struct {
-	dbPtr   uintptr
-	dialect string
+	dbIdentity string
+	dialect    string
 }
 
-func SessionCached(ctx context.Context, db *sql.DB, aDialect *info.Dialect) (*sink.Session, error) {
+func SessionCached(ctx context.Context, db *sql.DB, aDialect *info.Dialect, dbIdentity string) (*sink.Session, error) {
 
 	//todo delete
 	metaSessCache.Range(func(key, value any) bool {
@@ -29,11 +28,10 @@ func SessionCached(ctx context.Context, db *sql.DB, aDialect *info.Dialect) (*si
 	if aDialect == nil {
 		return nil, fmt.Errorf("dialect was not provided")
 	}
-	//todo this need to be fixed, uintptr(unsafe.Pointer(db)) always different due to db, err := s.config.Connection.OpenDB(ctx)  for each insertService
-	// Build cache key (db pointer + dialect name)
+
 	key := metaKey{
-		dbPtr:   uintptr(unsafe.Pointer(db)),
-		dialect: aDialect.Name,
+		dbIdentity: dbIdentity,
+		dialect:    aDialect.Name,
 	}
 	fmt.Printf("key=%v\n", key)
 

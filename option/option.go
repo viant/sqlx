@@ -38,6 +38,8 @@ type OnDuplicateKeySql string
 
 type UseMetaSessionCache bool
 
+type DBIdentity string
+
 // Dialect returns dialect
 func (o Options) Dialect() *info.Dialect {
 	if len(o) == 0 {

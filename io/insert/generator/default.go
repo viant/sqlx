@@ -29,12 +29,12 @@ type Default struct {
 }
 
 // NewDefault creates a default generator
-func NewDefault(ctx context.Context, dialect *info.Dialect, db *sql.DB, session *sink.Session, useMetaSessionCache bool) (*Default, error) {
+func NewDefault(ctx context.Context, dialect *info.Dialect, db *sql.DB, session *sink.Session, useMetaSessionCache bool, dbIdentity string) (*Default, error) {
 	if session == nil {
 		var err error
 		fmt.Printf("NewDefault useMetaSessionCache: %v\n", useMetaSessionCache)
 		if useMetaSessionCache {
-			if session, err = config.SessionCached(ctx, db, dialect); err != nil {
+			if session, err = config.SessionCached(ctx, db, dialect, dbIdentity); err != nil {
 				return nil, err
 			}
 		} else {
