@@ -3,15 +3,17 @@ package generator
 import (
 	"context"
 	"database/sql"
+	"fmt"
+	"reflect"
+	"strings"
+	"unsafe"
+
 	"github.com/viant/sqlx/io"
 	"github.com/viant/sqlx/io/config"
 	"github.com/viant/sqlx/io/read"
 	"github.com/viant/sqlx/metadata/info"
 	"github.com/viant/sqlx/metadata/sink"
 	"github.com/viant/sqlx/option"
-	"reflect"
-	"strings"
-	"unsafe"
 )
 
 // Default represents generator for default strategy
@@ -27,11 +29,18 @@ type Default struct {
 }
 
 // NewDefault creates a default generator
-func NewDefault(ctx context.Context, dialect *info.Dialect, db *sql.DB, session *sink.Session) (*Default, error) {
+func NewDefault(ctx context.Context, dialect *info.Dialect, db *sql.DB, session *sink.Session, useMetaSessionCache bool) (*Default, error) {
 	if session == nil {
 		var err error
-		if session, err = config.Session(ctx, db, dialect); err != nil {
-			return nil, err
+		fmt.Printf("NewDefault useMetaSessionCache: %v\n", useMetaSessionCache)
+		if useMetaSessionCache {
+			if session, err = config.SessionCached(ctx, db, dialect); err != nil {
+				return nil, err
+			}
+		} else {
+			if session, err = config.Session(ctx, db, dialect); err != nil {
+				return nil, err
+			}
 		}
 	}
 	return &Default{

@@ -4,22 +4,25 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"reflect"
+	"sync"
+	"unsafe"
+
 	"github.com/viant/sqlx/io"
 	"github.com/viant/sqlx/io/config"
 	"github.com/viant/sqlx/io/insert/generator"
 	"github.com/viant/sqlx/metadata/sink"
 	"github.com/viant/sqlx/option"
-	"reflect"
-	"sync"
 )
 
 // Service represents generic db writer
 type Service struct {
-	tableName     string
-	options       []option.Option
-	cachedSession *session // The session is for caching only, never use it directly
-	mux           sync.Mutex
-	db            *sql.DB
+	tableName           string
+	options             []option.Option
+	cachedSession       *session // The session is for caching only, never use it directly
+	mux                 sync.Mutex
+	db                  *sql.DB
+	useMetaSessionCache bool
 }
 
 // New creates an inserter service
@@ -28,10 +31,14 @@ func New(ctx context.Context, db *sql.DB, tableName string, options ...option.Op
 	if !option.Assign(options, &columnMapper) {
 		columnMapper = io.StructColumnMapper
 	}
+
+	var useMeta option.UseMetaSessionCache
+	_ = option.Assign(options, &useMeta) // ok if missing; stays false
 	inserter := &Service{
-		tableName: tableName,
-		options:   options,
-		db:        db,
+		tableName:           tableName,
+		options:             options,
+		db:                  db,
+		useMetaSessionCache: bool(useMeta),
 	}
 	return inserter, nil
 }
@@ -112,7 +119,7 @@ func (s *Service) Exec(ctx context.Context, any interface{}, options ...option.O
 
 	var batchRecordBuffer = make([]interface{}, batchSize*len(sess.columns))
 	var identities = make([]interface{}, batchSize)
-	defGenerator, err := generator.NewDefault(ctx, sess.Dialect, sess.db, sess.info)
+	defGenerator, err := generator.NewDefault(ctx, sess.Dialect, sess.db, sess.info, s.useMetaSessionCache)
 	if err != nil {
 		return 0, 0, err
 	}
@@ -160,8 +167,14 @@ func (s *Service) NewSession(ctx context.Context, record interface{}, db *sql.DB
 	if err != nil {
 		return nil, err
 	}
+	var metaSession *sink.Session
+	fmt.Printf("NewInsert Session useMetaSessionCache: %v,s.db=%v,aDialect=%v\n", s.useMetaSessionCache, uintptr(unsafe.Pointer(s.db)), aDialect)
+	if s.useMetaSessionCache {
+		metaSession, err = config.SessionCached(ctx, s.db, aDialect)
+	} else {
+		metaSession, err = config.Session(ctx, s.db, aDialect)
+	}
 
-	metaSession, err := config.Session(ctx, s.db, aDialect)
 	if err != nil {
 		return nil, err
 	}

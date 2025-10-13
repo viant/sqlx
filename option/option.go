@@ -2,13 +2,14 @@ package option
 
 import (
 	"database/sql"
+	"strings"
+	"unsafe"
+
 	"github.com/viant/sqlx"
 	"github.com/viant/sqlx/metadata/database"
 	"github.com/viant/sqlx/metadata/info"
 	"github.com/viant/sqlx/metadata/info/dialect"
 	"github.com/viant/sqlx/metadata/sink"
-	"strings"
-	"unsafe"
 )
 
 // Identity represents identity option
@@ -34,6 +35,8 @@ type LoadHint string
 
 // OnDuplicateKeySql represents SQL suffix
 type OnDuplicateKeySql string
+
+type UseMetaSessionCache bool
 
 // Dialect returns dialect
 func (o Options) Dialect() *info.Dialect {
