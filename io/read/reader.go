@@ -78,7 +78,7 @@ func (r *Reader) QueryAll(ctx context.Context, emit func(row interface{}) error,
 		return fmt.Errorf("failed to read all %w", err)
 	}
 
-	if rows != nil {
+	if rows != nil && rows.Err() != nil {
 		return fmt.Errorf("encounter error: %w", rows.Err())
 	}
 
