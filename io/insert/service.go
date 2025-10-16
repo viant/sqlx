@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"reflect"
 	"sync"
-	"unsafe"
 
 	"github.com/viant/sqlx/io"
 	"github.com/viant/sqlx/io/config"
@@ -22,8 +21,8 @@ type Service struct {
 	cachedSession       *session // The session is for caching only, never use it directly
 	mux                 sync.Mutex
 	db                  *sql.DB
-	useMetaSessionCache bool
-	dbIdentity          string
+	metaSessionCacheKey string
+	metaSessionCache    *sync.Map
 }
 
 // New creates an inserter service
@@ -33,18 +32,18 @@ func New(ctx context.Context, db *sql.DB, tableName string, options ...option.Op
 		columnMapper = io.StructColumnMapper
 	}
 
-	var useMeta option.UseMetaSessionCache
-	_ = option.Assign(options, &useMeta) // ok if missing; stays false
+	var cacheKey option.MetaSessionCacheKey
+	_ = option.Assign(options, &cacheKey)
 
-	var dbID option.DBIdentity
-	_ = option.Assign(options, &dbID)
+	// optional external meta session cache passed via options
+	cache := option.Options(options).MetaSessionCache()
 
 	inserter := &Service{
 		tableName:           tableName,
 		options:             options,
 		db:                  db,
-		useMetaSessionCache: bool(useMeta),
-		dbIdentity:          string(dbID),
+		metaSessionCacheKey: string(cacheKey),
+		metaSessionCache:    cache,
 	}
 	return inserter, nil
 }
@@ -125,7 +124,7 @@ func (s *Service) Exec(ctx context.Context, any interface{}, options ...option.O
 
 	var batchRecordBuffer = make([]interface{}, batchSize*len(sess.columns))
 	var identities = make([]interface{}, batchSize)
-	defGenerator, err := generator.NewDefault(ctx, sess.Dialect, sess.db, sess.info, s.useMetaSessionCache, s.dbIdentity)
+	defGenerator, err := generator.NewDefault(ctx, sess.Dialect, sess.db, sess.info, s.metaSessionCacheKey, s.metaSessionCache)
 	if err != nil {
 		return 0, 0, err
 	}
@@ -174,9 +173,8 @@ func (s *Service) NewSession(ctx context.Context, record interface{}, db *sql.DB
 		return nil, err
 	}
 	var metaSession *sink.Session
-	fmt.Printf("NewInsert Session useMetaSessionCache: %v,s.db=%v,aDialect=%v\n", s.useMetaSessionCache, uintptr(unsafe.Pointer(s.db)), aDialect)
-	if s.useMetaSessionCache {
-		metaSession, err = config.SessionCached(ctx, s.db, aDialect, s.dbIdentity)
+	if s.metaSessionCacheKey != "" {
+		metaSession, err = config.SessionCached(ctx, s.db, aDialect, s.metaSessionCacheKey, s.metaSessionCache)
 	} else {
 		metaSession, err = config.Session(ctx, s.db, aDialect)
 	}
