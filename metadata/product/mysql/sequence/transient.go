@@ -67,7 +67,7 @@ func (n *Transient) Handle(ctx context.Context, db *sql.DB, target interface{}, 
 		return false, fmt.Errorf("SequenceSQLBuilder was empty")
 	}
 
-	retryMaxCnt := 3
+	retryMaxCnt := 5
 
 	for i := 1; i <= retryMaxCnt; i++ {
 		err = updateSequence(ctx, db, &sequence, tx)
