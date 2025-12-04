@@ -18,7 +18,7 @@ import (
 )
 
 // Race condition tests for Handle. These tests require a real MySQL
-// and will be skipped unless MYSQL_TEST_DSN and MYSQL_TEST_SCHEMA are set.
+// and will be skipped unless TEST_MYSQL_DSN and TEST_MYSQL_SCHEMA are set.
 // A temporary table with AUTO_INCREMENT PK is created and dropped automatically.
 
 //Run with race detector:
@@ -33,14 +33,14 @@ import (
 func newTestDB(t *testing.T) (*sql.DB, string, string, string, string, int64) {
 	t.Helper()
 
-	dsn := os.Getenv("MYSQL_TEST_DSN")
+	dsn := os.Getenv("TEST_MYSQL_DSN")
 	if dsn == "" {
-		t.Skip("set MYSQL_TEST_DSN and MYSQL_TEST_SCHEMA to run race tests")
+		t.Skip("set TEST_MYSQL_DSN and TEST_MYSQL_SCHEMA to run race tests")
 	}
-	schema := os.Getenv("MYSQL_TEST_SCHEMA")
+	schema := os.Getenv("TEST_MYSQL_SCHEMA")
 	catalog := ""
 	if schema == "" {
-		t.Skip("set MYSQL_TEST_SCHEMA to run race tests")
+		t.Skip("set TEST_MYSQL_SCHEMA to run race tests")
 	}
 	records := int64(1)
 	if v := os.Getenv("MYSQL_TEST_RECORDS"); v != "" {

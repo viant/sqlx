@@ -28,13 +28,9 @@ type insertRaceEntity struct {
 // sessions (and different batch sizes) do not reserve/assign overlapping IDs when
 // inserting concurrently into the same table.
 func TestInsertRace_CachedSessions_MySQL(t *testing.T) {
-	dsn := os.Getenv("MYSQL_TEST_DSN")
+	dsn := os.Getenv("TEST_MYSQL_DSN")
 	if dsn == "" {
-		// Also allow alternative env used in other tests in this repo
-		dsn = os.Getenv("TEST_MYSQL_DSN")
-	}
-	if dsn == "" {
-		t.Skip("set MYSQL_TEST_DSN or TEST_MYSQL_DSN to run this test")
+		t.Skip("set TEST_MYSQL_DSN to run this test")
 	}
 
 	//os.Setenv("DEBUG_SEQUENCER", "true")
