@@ -17,13 +17,12 @@ import (
 	"github.com/viant/sqlx/option"
 )
 
-// Race condition tests for Handle and HandleLegacy. These tests require a real MySQL
+// Race condition tests for Handle. These tests require a real MySQL
 // and will be skipped unless MYSQL_TEST_DSN and MYSQL_TEST_SCHEMA are set.
 // A temporary table with AUTO_INCREMENT PK is created and dropped automatically.
 
 //Run with race detector:
 //- go test -race ./metadata/product/mysql/sequence -run TestHandleRace
-//- go test -count=1 -race ./metadata/product/mysql/sequence -run TestHandleLegacyRace
 
 //- Or run the whole package with -race to see all.
 
@@ -92,7 +91,7 @@ func builderFor(schema, table, idCol string, records int64) func(*sink.Sequence)
 	}
 }
 
-func runRace(t *testing.T, legacy bool, workers, iterations int, records int64) {
+func runRace(t *testing.T, workers, iterations int, records int64) {
 	db, catalog, schema, table, idCol, _ := newTestDB(t)
 	defer db.Close()
 
@@ -117,11 +116,7 @@ func runRace(t *testing.T, legacy bool, workers, iterations int, records int64) 
 			for i := 0; i < iterations; i++ {
 				var seq sink.Sequence
 				var err error
-				if legacy {
-					_, err = h.HandleLegacy(ctx, db, &seq, option.Options(opts).Interfaces()...)
-				} else {
-					_, err = h.Handle(ctx, db, &seq, option.Options(opts).Interfaces()...)
-				}
+				_, err = h.Handle(ctx, db, &seq, option.Options(opts).Interfaces()...)
 				if err != nil {
 					t.Errorf("handler failed: %v", err)
 					return
@@ -134,15 +129,10 @@ func runRace(t *testing.T, legacy bool, workers, iterations int, records int64) 
 
 func TestHandleRace_SingleRecord(t *testing.T) {
 	t.Parallel()
-	runRace(t, false, 20, 20, 1)
-}
-
-func TestHandleLegacyRace_SingleRecord(t *testing.T) {
-	t.Parallel()
-	runRace(t, true, 20, 20, 1)
+	runRace(t, 20, 20, 1)
 }
 
 func TestHandleRace_MultiRecord(t *testing.T) {
 	t.Parallel()
-	runRace(t, false, 20, 20, 2)
+	runRace(t, 20, 20, 2)
 }

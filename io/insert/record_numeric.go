@@ -99,12 +99,7 @@ func (n *numericSequencer) transientDMLBuilder(sess *session, record interface{}
 		values := make([]interface{}, len(sess.columns))
 		copy(values, batchRecordBuffer[0:len(sess.columns)-1]) // don't copy ID pointer (last position in slice)
 
-		maxIdValue, err := sequence.ComputeNextForTransient(recordCount)
-		if err != nil {
-			return nil, 0, err
-		}
-
-		values[len(sess.columns)-1] = &maxIdValue
+		values[len(sess.columns)-1] = nil // set ID to nil for autoincrement
 		resetAutoincrementSQL := &sqlx.SQL{
 			Query: resetAutoincrementQuery,
 			Args:  values,

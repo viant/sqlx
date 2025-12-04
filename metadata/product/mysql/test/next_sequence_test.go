@@ -179,14 +179,7 @@ func TestService_NextSequenceValue(t *testing.T) {
 
 func dmlBuilder(recordCount int64, sql *sqlx.SQL) func(sequence *sink.Sequence) (*sqlx.SQL, int64, error) {
 	return func(sequence *sink.Sequence) (*sqlx.SQL, int64, error) {
-
-		maxIdValue, err := sequence.ComputeNextForTransient(recordCount)
-		if err != nil {
-			return nil, 0, err
-		}
-
-		// DEPRECATED we can set nil as well, maxIdValue is override in transient -> (new) Handle
-		sql.Args[len(sql.Args)-1] = maxIdValue // to reserve sequence value on db we do transient insert with id less by 1
+		sql.Args[len(sql.Args)-1] = nil //reset id arg to nil for auto-increment
 		return sql, recordCount, nil
 	}
 }
