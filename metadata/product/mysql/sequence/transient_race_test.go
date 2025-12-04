@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"sync"
 	"testing"
+	"time"
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/viant/sqlx"
@@ -57,7 +58,7 @@ func newTestDB(t *testing.T) (*sql.DB, string, string, string, string, int64) {
 	}
 
 	// Create a temporary table for this test and ensure cleanup.
-	table := "t_seq_race"
+	table := "t_seq_race_" + strconv.FormatInt(time.Now().UnixNano(), 10)
 	idCol := "id"
 	if _, err := db.Exec("DROP TABLE IF EXISTS `" + schema + "`.`" + table + "`"); err != nil {
 		t.Fatalf("drop table: %v", err)

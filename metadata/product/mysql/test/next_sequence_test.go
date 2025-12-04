@@ -29,9 +29,9 @@ func TestService_NextSequenceValue(t *testing.T) {
 		t.Skip("set TEST_MYSQL_DSN before running test")
 	}
 
-	dsnSchema := os.Getenv("TEST_MYSQL_DSN_SCHEMA")
+	dsnSchema := os.Getenv("TEST_MYSQL_SCHEMA")
 	if dsnSchema == "" {
-		t.Skip("set TEST_MYSQL_DSN_SCHEMA before running test")
+		t.Skip("set TEST_MYSQL_SCHEMA before running test")
 	}
 
 	var useCases = []struct {
