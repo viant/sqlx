@@ -4,6 +4,9 @@ import (
 	"context"
 	"database/sql"
 	_ "embed"
+	"os"
+	"testing"
+
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/stretchr/testify/assert"
 	"github.com/viant/sqlx"
@@ -13,8 +16,6 @@ import (
 	_ "github.com/viant/sqlx/metadata/product/mysql"
 	"github.com/viant/sqlx/metadata/sink"
 	"github.com/viant/sqlx/option"
-	"os"
-	"testing"
 )
 
 // Warning!
@@ -42,10 +43,10 @@ func TestService_NextSequenceValue(t *testing.T) {
 		{
 			description: "01. info.KindSequenceNextValue with PresetIDWithTransientTransaction strategy",
 			initSQL: []string{
-				"DROP TABLE IF EXISTS t1",
-				"CREATE TABLE t1(foo_id INTEGER AUTO_INCREMENT PRIMARY KEY, foo_name TEXT, bar INTEGER)",
 				"SET SESSION auto_increment_offset=1",
 				"SET  SESSION auto_increment_increment=1",
+				"DROP TABLE IF EXISTS t1",
+				"CREATE TABLE t1(foo_id INTEGER AUTO_INCREMENT PRIMARY KEY, foo_name TEXT, bar INTEGER)",
 			},
 			options: option.Options{
 				option.NewArgs("", dsnSchema, "t1"),
@@ -70,10 +71,11 @@ func TestService_NextSequenceValue(t *testing.T) {
 		{
 			description: "02. info.KindSequenceNextValue with PresetIDWithTransientTransaction strategy",
 			initSQL: []string{
-				"DROP TABLE IF EXISTS t1",
-				"CREATE TABLE t1(foo_id INTEGER AUTO_INCREMENT PRIMARY KEY, foo_name TEXT, bar INTEGER)",
 				"SET SESSION auto_increment_offset=5",
 				"SET SESSION auto_increment_increment=10",
+				"DROP TABLE IF EXISTS t1",
+				"CREATE TABLE t1(foo_id INTEGER AUTO_INCREMENT PRIMARY KEY, foo_name TEXT, bar INTEGER)",
+				//`INSERT INTO t1 (foo_name, bar, foo_id) VALUES ('John 01', 1, 0)`,
 			},
 			options: option.Options{
 				option.NewArgs("", dsnSchema, "t1"),
@@ -137,7 +139,7 @@ func TestService_NextSequenceValue(t *testing.T) {
 	db, err := sql.Open("mysql", dsn)
 	ctx := context.Background()
 
-	for _, testCase := range useCases[len(useCases)-1:] {
+	for _, testCase := range useCases {
 
 		//fmt.Printf("=====> TEST %d: %s\n", i, testCase.description)
 
@@ -175,11 +177,17 @@ func TestService_NextSequenceValue(t *testing.T) {
 	}
 }
 
-func dmlBuilder(recordCount int64, sql *sqlx.SQL) func(sequence *sink.Sequence) (*sqlx.SQL, error) {
-	return func(sequence *sink.Sequence) (*sqlx.SQL, error) {
-		sequence.Value = sequence.NextValue(recordCount)
-		sql.Args[len(sql.Args)-1] = sequence.Value - 1 // to reserve sequence value on db we do transient insert with id less by 1
-		return sql, nil
+func dmlBuilder(recordCount int64, sql *sqlx.SQL) func(sequence *sink.Sequence) (*sqlx.SQL, int64, error) {
+	return func(sequence *sink.Sequence) (*sqlx.SQL, int64, error) {
+
+		maxIdValue, err := sequence.ComputeNextForTransient(recordCount)
+		if err != nil {
+			return nil, 0, err
+		}
+
+		// DEPRECATED we can set nil as well, maxIdValue is override in transient -> (new) Handle
+		sql.Args[len(sql.Args)-1] = maxIdValue // to reserve sequence value on db we do transient insert with id less by 1
+		return sql, recordCount, nil
 	}
 }
 

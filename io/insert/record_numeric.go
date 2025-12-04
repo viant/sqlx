@@ -3,6 +3,9 @@ package insert
 import (
 	"context"
 	"fmt"
+	"reflect"
+	"sync"
+
 	"github.com/viant/sqlx"
 	"github.com/viant/sqlx/io"
 	"github.com/viant/sqlx/metadata"
@@ -10,8 +13,6 @@ import (
 	"github.com/viant/sqlx/metadata/info/dialect"
 	"github.com/viant/sqlx/metadata/sink"
 	"github.com/viant/sqlx/option"
-	"reflect"
-	"sync"
 )
 
 type numericSequencer struct {
@@ -68,7 +69,7 @@ func (n *numericSequencer) nextSequence(ctx context.Context, sess *session, reco
 		return nil, nil
 	case dialect.PresetIDStrategyUndefined:
 		n.shallPresetIdentities = false
-		n.updateSequence(ctx, n.getSequenceName(sess), recordCount)
+		n.updateSequencer(ctx, n.getSequenceName(sess), recordCount)
 		return nil, nil
 	case dialect.PresetIDWithMax:
 		options = append(options, n.maxIDSQLBuilder(sess))
@@ -89,8 +90,8 @@ func (n *numericSequencer) nextSequence(ctx context.Context, sess *session, reco
 	return n.sequence, nil
 }
 
-func (n *numericSequencer) transientDMLBuilder(sess *session, record interface{}, batchRecordBuffer []interface{}, recordCount int64) func(*sink.Sequence) (*sqlx.SQL, error) {
-	return func(sequence *sink.Sequence) (*sqlx.SQL, error) {
+func (n *numericSequencer) transientDMLBuilder(sess *session, record interface{}, batchRecordBuffer []interface{}, recordCount int64) func(*sink.Sequence) (*sqlx.SQL, int64, error) {
+	return func(sequence *sink.Sequence) (*sqlx.SQL, int64, error) {
 		resetAutoincrementQuery := sess.Builder.Build(record, option.BatchSize(1))
 		resetAutoincrementQuery = sess.Dialect.EnsurePlaceholders(resetAutoincrementQuery)
 		sess.binder(record, batchRecordBuffer, 0, len(sess.columns))
@@ -98,23 +99,17 @@ func (n *numericSequencer) transientDMLBuilder(sess *session, record interface{}
 		values := make([]interface{}, len(sess.columns))
 		copy(values, batchRecordBuffer[0:len(sess.columns)-1]) // don't copy ID pointer (last position in slice)
 
-		oldValue := sequence.Value
-		var passedValue int64
-
-		switch recordCount {
-		default:
-			sequence.Value = sequence.NextValue(recordCount)
-			if diff := sequence.Value - oldValue; diff < recordCount {
-				return nil, fmt.Errorf("new next value for sequenceName %d is too small, expected >= %d but had ", sequence.Value, oldValue+recordCount)
-			}
-			passedValue = sequence.Value - sequence.IncrementBy // decreasing is required for transient insert approach
+		maxIdValue, err := sequence.ComputeNextForTransient(recordCount)
+		if err != nil {
+			return nil, 0, err
 		}
-		values[len(sess.columns)-1] = &passedValue
+
+		values[len(sess.columns)-1] = &maxIdValue
 		resetAutoincrementSQL := &sqlx.SQL{
 			Query: resetAutoincrementQuery,
 			Args:  values,
 		}
-		return resetAutoincrementSQL, nil
+		return resetAutoincrementSQL, recordCount, nil
 	}
 }
 
@@ -149,50 +144,41 @@ func (n *numericSequencer) getColumn() io.Column {
 }
 
 func (n *numericSequencer) prepareSequenceIfNeeded(ctx context.Context, sess *session, record interface{}, columnValue *interface{}, recordCount int, identitiesBatched []interface{}, options []option.Option) error {
-	// presetting sequence only once reserves (if implemented) sequence values on db only one time
-	if n.detectedPreset {
-		return nil
-	}
-
-	if recordCount == 0 {
+	// presetting sequence only once reserves (if implemented) sequence values on db only one time per batch operation
+	if recordCount <= 0 {
 		return nil
 	}
 
 	n.muxPreset.Lock()
+	defer n.muxPreset.Unlock()
+
 	if n.detectedPreset {
-		n.muxPreset.Unlock()
 		return nil
+	}
+
+	if columnValue == nil {
+		return fmt.Errorf("columnValue is nil")
 	}
 
 	isColumnZeroValue := isZero(*columnValue)
 	n.shallPresetIdentities = isColumnZeroValue
 
 	if isColumnZeroValue {
-		var err error
-		n.sequence, err = n.nextSequence(ctx, sess, record, identitiesBatched, recordCount, options)
+		seq, err := n.nextSequence(ctx, sess, record, identitiesBatched, recordCount, options)
 		if err != nil {
-			n.muxPreset.Unlock()
 			return err
 		}
-		//} else { // n.sequence should be nil (it's not in use), and it's important in afterFlush func
-		//	n.updateSequence(ctx, n.getSequenceName(sess), recordCount)
+		n.sequence = seq
 	}
 
 	if n.sequence != nil && n.shallPresetIdentities && n.sequenceValue == nil {
-		var seqValue int64
-
-		switch recordCount {
-		case 1: // TODO not proved that miss some edge cases, if does then only default case should be used
-			seqValue = n.sequence.Value - n.sequence.IncrementBy
-		default:
-			seqValue = n.sequence.MinValue(int64(recordCount))
-		}
-
+		seqValue := n.sequence.MinValue(int64(recordCount))
 		n.sequenceValue = &seqValue
 	}
 
-	n.detectedPreset = true // detectPreset must be here to avoid sending 0 in preset mode to db
-	n.muxPreset.Unlock()
+	// detectPreset must be set at the end to avoid sending 0 in preset mode to db
+	n.detectedPreset = true
+
 	return nil
 }
 
@@ -237,7 +223,7 @@ func (n *numericSequencer) afterFlush(ctx context.Context, values []interface{},
 		}
 		//in case there is a batch insert, we need to check if last inserted ID is the same as the sequence value
 		//if so we can safely update the identities with the new sequence value within the batch
-		n.updateSequence(ctx, n.sequence.Name, int(rowsAffected))
+		n.updateSequencer(ctx, n.sequence.Name, int(rowsAffected))
 		sequenceValue = n.sequence.Value
 		expectedNextInsertID := (1 + rowsAffected) * inceremntBy
 		if expectedNextInsertID != sequenceValue { //race condition during batch insert, skip updating IDs
@@ -272,7 +258,7 @@ func isZero(value interface{}) bool {
 	}
 }
 
-func (n *numericSequencer) updateSequence(ctx context.Context, sequenceName string, recordCount int) {
+func (n *numericSequencer) updateSequencer(ctx context.Context, sequenceName string, recordCount int) {
 	meta := metadata.New()
 	options := []option.Option{option.NewArgs(n.session.info.Catalog, n.session.info.Schema, sequenceName), n.session.Dialect}
 

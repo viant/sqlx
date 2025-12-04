@@ -3,13 +3,14 @@ package mysql_test
 import (
 	"context"
 	"database/sql"
+	"os"
+	"strconv"
+	"testing"
+
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/stretchr/testify/assert"
 	"github.com/viant/sqlx/io"
 	"github.com/viant/sqlx/metadata/sink"
-	"os"
-	"strconv"
-	"testing"
 )
 
 // Don't set (@SESSION|@GLOBAL).auto_increment_offset > (@SESSION|@GLOBAL).auto_increment_increment

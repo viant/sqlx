@@ -3,6 +3,9 @@ package mysql_test
 import (
 	"context"
 	"database/sql"
+	"os"
+	"testing"
+
 	_ "github.com/go-sql-driver/mysql"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/assert"
@@ -13,18 +16,17 @@ import (
 	_ "github.com/viant/sqlx/metadata/product/mysql"
 	_ "github.com/viant/sqlx/metadata/product/sqlite"
 	"github.com/viant/sqlx/option"
-	"os"
-	"testing"
 )
 
 /* Warning!
-   MySQL - 5.7.41 has a bug that causes wrong autoincrement value set
+   MySQL - 5.7.41, 8.0.43 has a bug that causes wrong autoincrement value set
    Added buggedVersions to testcase struct to avoid failing some tests.
    Script below allows to reproduce this bug.
 
 drop table if exists t12;
 create table t12 ( foo_id integer auto_increment primary key, bar integer);
 
+-- batch insert - wrong autoincrement value
 insert into t12(foo_id,bar)
 select x.* from(
 select 7 a,7 b union
@@ -38,14 +40,35 @@ select 0 a,10 b;
 
 select * from t12;
 -- foo_id == 11 <> 10
+
+-- when we insert one by one then is ok:
+
+drop table if exists t12;
+create table t12 ( foo_id integer auto_increment primary key, bar integer);
+
+insert into t12(foo_id,bar) values (7,7);
+insert into t12(foo_id,bar) values (0, 8);
+insert into t12(foo_id,bar) values (0, 9);
+
+
+show create table t12;
+
+insert into t12(foo_id,bar)
+select 0 a,10 b;
+
+select * from t12;
+
 */
 
 func TestService_Exec_Mysql(t *testing.T) {
 	driver := "mysql"
 	dsn := os.Getenv("TEST_MYSQL_DSN")
+
 	if dsn == "" {
 		t.Skip("set TEST_MYSQL_DSN before running test")
 	}
+
+	//os.Setenv("DEBUG_SEQUENCER", "true")
 
 	type entityWithAutoIncrement struct {
 		Id   int    `sqlx:"name=foo_id,generator=autoincrement"`
@@ -66,7 +89,7 @@ func TestService_Exec_Mysql(t *testing.T) {
 		buggedVersions []string
 	}{
 		{
-			description: "1. Insert 1 row into empty table with: batch size 1, resetIDWithTransientTransaction strategy",
+			description: "1. Insert 1 row into empty table with: batch size 1, PresetIDWithTransientTransaction strategy",
 			table:       "t12",
 			initSQL: []string{
 				"DROP TABLE IF EXISTS t12",
@@ -222,8 +245,30 @@ func TestService_Exec_Mysql(t *testing.T) {
 				dialect.PresetIDWithTransientTransaction,
 			},
 		},
-		{ // doesn't work properly with MySQL - 5.7.41
-			description: "9. Insert 4 rows, (first row with non-zero value) into empty table with: batch size 3, PresetIDWithTransientTransaction strategy",
+		{
+			// Warning!
+			// doesn't work properly with MySQL - 5.7.41, 8.0.43
+			//
+			// Reproduce script:
+			//drop table if exists t12;
+			//create table t12 ( foo_id integer auto_increment primary key, bar integer);
+			//
+			//-- batch insert - wrong autoincrement value
+			//insert into t12(foo_id,bar)
+			//select x.* from(
+			//select 7 a,7 b union
+			//select 0 a,8 b union
+			//select 0 a,9 b) x;
+			//
+			//show create table t12;
+			//
+			//insert into t12(foo_id,bar)
+			//select 0 a,10 b;
+			//
+			//select * from t12;
+			//-- foo_id == 11 <> 10
+
+			description: "9. MYSQL BUG - test can't be passed: Insert 4 rows, (first row with non-zero value) into empty table with: batch size 3, PresetIDWithTransientTransaction strategy",
 			table:       "t12",
 			initSQL: []string{
 				"DROP TABLE IF EXISTS t12",
@@ -241,12 +286,16 @@ func TestService_Exec_Mysql(t *testing.T) {
 				option.BatchSize(3),
 				dialect.PresetIDWithTransientTransaction,
 			},
-			buggedVersions: []string{"MySQL - 5.7.41"},
+			buggedVersions: []string{"MySQL - 5.7.41", "MySQL - 8.0.43"},
 		},
 	}
 
 outer:
 	for _, testCase := range useCases {
+		if len(testCase.buggedVersions) > 0 {
+			continue
+		}
+
 		var db *sql.DB
 
 		db, err := sql.Open(driver, dsn)
@@ -305,6 +354,11 @@ func TestService_Exec_Mysql_Global_Offset(t *testing.T) {
 		t.Skip("set TEST_MYSQL_DSN before running test")
 	}
 
+	//os.Setenv("DEBUG_SEQUENCER", "true")
+	if dsn == "" {
+		t.Skip("set TEST_MYSQL_DSN before running test")
+	}
+
 	type entityWithAutoIncrement struct {
 		Id   int    `sqlx:"name=foo_id,generator=autoincrement"`
 		Desc string `sqlx:"-"`
@@ -345,7 +399,7 @@ func TestService_Exec_Mysql_Global_Offset(t *testing.T) {
 			},
 		},
 		{
-			description: "2. Insert rows into empty table with: ession-dialect DefaultPresetIDStrategy strategy, offset = 5, incrementBy = 10 ",
+			description: "2. Insert rows into empty table with: session-dialect DefaultPresetIDStrategy strategy, offset = 5, incrementBy = 10 ",
 			table:       "t12",
 			initSQL: []string{
 				"DROP TABLE IF EXISTS t12",
@@ -362,7 +416,7 @@ func TestService_Exec_Mysql_Global_Offset(t *testing.T) {
 			lastID:   25,
 			options: []option.Option{
 				option.BatchSize(2),
-				//dialect.PresetIDWithTransientTransaction, // don't pass strategy by Options, use Dialect.DefaultPresetIDStrategy
+				// don't pass strategy by Options, test uses Dialect.DefaultPresetIDStrategy
 			},
 		},
 	}

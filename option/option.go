@@ -262,12 +262,12 @@ func (o Options) SQL() *sqlx.SQL {
 }
 
 // SequenceSQLBuilder returns sqlx.SQL
-func (o Options) SequenceSQLBuilder() func(*sink.Sequence) (*sqlx.SQL, error) {
+func (o Options) SequenceSQLBuilder() func(*sink.Sequence) (*sqlx.SQL, int64, error) {
 	if len(o) == 0 {
 		return nil
 	}
 	for _, candidate := range o {
-		if fn, ok := candidate.(func(*sink.Sequence) (*sqlx.SQL, error)); ok {
+		if fn, ok := candidate.(func(*sink.Sequence) (*sqlx.SQL, int64, error)); ok {
 			return fn
 		}
 	}

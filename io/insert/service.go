@@ -48,7 +48,7 @@ func New(ctx context.Context, db *sql.DB, tableName string, options ...option.Op
 	return inserter, nil
 }
 
-// NextSequence resets next updateSequence
+// NextSequence resets next updateSequencer
 func (s *Service) NextSequence(ctx context.Context, any interface{}, recordCount int, options ...option.Option) (*sink.Sequence, error) {
 	valueAt, count, err := io.Values(any)
 	if err != nil {
@@ -153,6 +153,22 @@ func (s *Service) NewSession(ctx context.Context, record interface{}, db *sql.DB
 	defer s.mux.Unlock()
 	rType := reflect.TypeOf(record)
 	if sess := s.cachedSession; sess != nil && sess.rType == rType && sess.batchSize == batchSize {
+		// Reset per-call state on cached numeric sequencers before returning
+		// to avoid carrying over detected preset state between sessions.
+		for _, updater := range s.cachedSession.recordUpdaters {
+			if asNumeric, ok := updater.(*numericSequencer); ok {
+				// reset preset/sequence flags under locks
+				asNumeric.muxPreset.Lock()
+				asNumeric.muxSequenceValue.Lock()
+				asNumeric.detectedPreset = false
+				asNumeric.sequence = nil
+				asNumeric.shallPresetIdentities = true
+				asNumeric.sequenceValue = nil
+				asNumeric.muxSequenceValue.Unlock()
+				asNumeric.muxPreset.Unlock()
+			}
+		}
+
 		if db == nil {
 			db = sess.db
 		}
