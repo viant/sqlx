@@ -337,3 +337,60 @@ outer:
 		assertly.AssertValues(t, actual, testCase.expect)
 	}
 }
+
+func TestService_Exec_CompositePK(t *testing.T) {
+	type SocialToken struct {
+		UserID   string `sqlx:"user_id,primaryKey" validate:"required"`
+		Provider string `sqlx:"provider,primaryKey" validate:"required"`
+		EncToken string `sqlx:"enc_token" validate:"required"`
+	}
+
+	description := "Update with composite primary key"
+	driver := "sqlite3"
+	dsn := "/tmp/sqllite.db"
+	table := "social_tokens"
+
+	initSQL := []string{
+		"DROP TABLE IF EXISTS social_tokens",
+		`CREATE TABLE social_tokens (
+user_id TEXT NOT NULL,
+provider TEXT NOT NULL,
+enc_token TEXT,
+PRIMARY KEY (user_id, provider)
+)`,
+		`INSERT INTO social_tokens (user_id, provider, enc_token) VALUES ('u1','google','old-token')`,
+		`INSERT INTO social_tokens (user_id, provider, enc_token) VALUES ('u1','github','keep-me')`,
+	}
+
+	db, err := sql.Open(driver, dsn)
+	if !assert.Nil(t, err, description) {
+		return
+	}
+	for _, SQL := range initSQL {
+		_, err := db.Exec(SQL)
+		if !assert.Nil(t, err, description) {
+			return
+		}
+	}
+
+	updater, err := update.New(context.TODO(), db, table)
+	if !assert.Nil(t, err, description) {
+		return
+	}
+
+	rec := &SocialToken{UserID: "u1", Provider: "google", EncToken: "new-token"}
+	affected, err := updater.Exec(context.TODO(), []interface{}{rec})
+	assert.Nil(t, err, description)
+	assert.EqualValues(t, 1, affected, description)
+
+	// Verify targeted row updated
+	var enc string
+	err = db.QueryRow(`SELECT enc_token FROM social_tokens WHERE user_id = ? AND provider = ?`, "u1", "google").Scan(&enc)
+	assert.Nil(t, err, description)
+	assert.Equal(t, "new-token", enc, description)
+
+	// Verify other row with same user but different provider unchanged
+	err = db.QueryRow(`SELECT enc_token FROM social_tokens WHERE user_id = ? AND provider = ?`, "u1", "github").Scan(&enc)
+	assert.Nil(t, err, description)
+	assert.Equal(t, "keep-me", enc, description)
+}

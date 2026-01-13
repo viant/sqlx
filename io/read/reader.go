@@ -352,7 +352,7 @@ func (r *Reader) ensureStmt(ctx context.Context) error {
 		fmt.Println(r.query)
 	}
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to prepare context: %w", err)
 	}
 
 	r.stmt = stmt
