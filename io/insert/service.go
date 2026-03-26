@@ -161,6 +161,8 @@ func (s *Service) NewSession(ctx context.Context, record interface{}, db *sql.DB
 				asNumeric.muxPreset.Lock()
 				asNumeric.muxSequenceValue.Lock()
 				asNumeric.detectedPreset = false
+				asNumeric.presetRecord = nil
+				asNumeric.presetRecordCount = 0
 				asNumeric.sequence = nil
 				asNumeric.shallPresetIdentities = true
 				asNumeric.sequenceValue = nil

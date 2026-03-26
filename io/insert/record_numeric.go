@@ -20,6 +20,8 @@ type numericSequencer struct {
 	column                io.Column
 	options               []option.Option
 	position              int
+	presetRecord          interface{}
+	presetRecordCount     int
 	sequence              *sink.Sequence
 	sequenceValue         *int64
 	detectedPreset        bool
@@ -40,6 +42,10 @@ func (n *numericSequencer) updateRecord(ctx context.Context, sess *session, reco
 		return nil
 	}
 
+	if !isZero(*columnValue) {
+		return nil
+	}
+
 	n.muxSequenceValue.Lock()
 	currentValue := *n.sequenceValue
 	*n.sequenceValue += n.sequence.IncrementBy
@@ -48,8 +54,27 @@ func (n *numericSequencer) updateRecord(ctx context.Context, sess *session, reco
 	return assign(*columnValue, currentValue)
 }
 
-func (n *numericSequencer) prepare(_ context.Context, options []option.Option, sess *session, _ io.ValueAccessor, _ int) ([]option.Option, error) {
+func (n *numericSequencer) prepare(_ context.Context, options []option.Option, sess *session, at io.ValueAccessor, count int) ([]option.Option, error) {
 	n.options = options
+	n.presetRecord = nil
+	n.presetRecordCount = 0
+	if at == nil || count <= 0 {
+		return nil, nil
+	}
+
+	buffer := make([]interface{}, len(sess.columns))
+	for i := 0; i < count; i++ {
+		record := at(i)
+		sess.binder(record, buffer, 0, len(sess.columns))
+		if !isZero(buffer[n.position]) {
+			continue
+		}
+
+		if n.presetRecord == nil {
+			n.presetRecord = record
+		}
+		n.presetRecordCount++
+	}
 	return nil, nil
 }
 
@@ -97,9 +122,9 @@ func (n *numericSequencer) transientDMLBuilder(sess *session, record interface{}
 		sess.binder(record, batchRecordBuffer, 0, len(sess.columns))
 
 		values := make([]interface{}, len(sess.columns))
-		copy(values, batchRecordBuffer[0:len(sess.columns)-1]) // don't copy ID pointer (last position in slice)
+		copy(values, batchRecordBuffer[0:len(sess.columns)])
 
-		values[len(sess.columns)-1] = nil // set ID to nil for autoincrement
+		values[n.position] = nil // set identity to nil for autoincrement
 		resetAutoincrementSQL := &sqlx.SQL{
 			Query: resetAutoincrementQuery,
 			Args:  values,
@@ -155,11 +180,13 @@ func (n *numericSequencer) prepareSequenceIfNeeded(ctx context.Context, sess *se
 		return fmt.Errorf("columnValue is nil")
 	}
 
-	isColumnZeroValue := isZero(*columnValue)
-	n.shallPresetIdentities = isColumnZeroValue
-
-	if isColumnZeroValue {
-		seq, err := n.nextSequence(ctx, sess, record, identitiesBatched, recordCount, options)
+	n.shallPresetIdentities = n.presetRecordCount > 0
+	if n.shallPresetIdentities {
+		presetRecord := n.presetRecord
+		if presetRecord == nil {
+			presetRecord = record
+		}
+		seq, err := n.nextSequence(ctx, sess, presetRecord, identitiesBatched, n.presetRecordCount, options)
 		if err != nil {
 			return err
 		}
@@ -167,7 +194,7 @@ func (n *numericSequencer) prepareSequenceIfNeeded(ctx context.Context, sess *se
 	}
 
 	if n.sequence != nil && n.shallPresetIdentities && n.sequenceValue == nil {
-		seqValue := n.sequence.MinValue(int64(recordCount))
+		seqValue := n.sequence.MinValue(int64(n.presetRecordCount))
 		n.sequenceValue = &seqValue
 	}
 
