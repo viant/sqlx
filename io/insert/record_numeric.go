@@ -264,17 +264,17 @@ func (n *numericSequencer) afterFlush(ctx context.Context, values []interface{},
 func isZero(value interface{}) bool {
 	switch actual := value.(type) {
 	case **int:
-		return *actual == nil
+		return *actual == nil || **actual == 0
 	case *int:
 		return *actual == 0
 	case **int64:
-		return *actual == nil
+		return *actual == nil || **actual == 0
 	case *int64:
 		return *actual == 0
 	case *uint:
 		return *actual == 0
 	case **uint:
-		return *actual == nil
+		return *actual == nil || **actual == 0
 	default:
 		return reflect.ValueOf(actual).Elem().IsZero()
 	}
