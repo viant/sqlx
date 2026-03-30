@@ -200,6 +200,7 @@ SESSION_USER() AS USER_NAME,
 	registry.RegisterDialect(&info.Dialect{
 		Product:                 bigQuery,
 		Placeholder:             "?",
+		CompositeInRenderer:     compositeIn,
 		Transactional:           false, //only script is transactional
 		Insert:                  dialect.InsertWithMultiValues,
 		Upsert:                  dialect.UpsertTypeMerge,
