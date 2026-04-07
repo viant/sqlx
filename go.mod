@@ -24,7 +24,7 @@ require (
 	github.com/viant/tagly v0.2.0
 	github.com/viant/toolbox v0.34.6-0.20221112031702-3e7cdde7f888
 	github.com/viant/xreflect v0.6.2
-	github.com/viant/xunsafe v0.9.2
+	github.com/viant/xunsafe v0.11.0
 	google.golang.org/api v0.162.0
 )
 
