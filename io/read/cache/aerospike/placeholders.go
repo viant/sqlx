@@ -30,7 +30,7 @@ func (p *Placeholders) init() {
 	for i, field := range p.fields {
 		var derefs []*xunsafe.Type
 
-		rType := field.ScanType()
+		rType := p.placeholderScanType(field)
 
 		derefs = append(derefs, xunsafe.NewType(rType))
 		for rType.Kind() == reflect.Ptr {
@@ -42,7 +42,7 @@ func (p *Placeholders) init() {
 	}
 
 	if p.columnIndex != -1 {
-		scanType := p.fields[p.columnIndex].ScanType()
+		scanType := p.placeholderScanType(p.fields[p.columnIndex])
 		p.indexedColDereferencer = append(p.indexedColDereferencer, xunsafe.NewType(scanType))
 		for scanType.Kind() == reflect.Ptr {
 			scanType = scanType.Elem()
@@ -116,19 +116,41 @@ func (p *Placeholders) ColumnValue() (interface{}, bool) {
 }
 
 func (p *Placeholders) derefValue(value interface{}, dereferencer ...*xunsafe.Type) interface{} {
+	if asIface, ok := value.(*interface{}); ok {
+		return *asIface
+	}
 	for _, deref := range dereferencer {
-		if asIface, ok := value.(*interface{}); ok {
-			value = *asIface
-		} else {
-			value = deref.Deref(value)
+		if value == nil {
+			return nil
 		}
+		rv := reflect.ValueOf(value)
+		if rv.Kind() == reflect.Ptr && rv.IsNil() {
+			return nil
+		}
+		value = deref.Deref(value)
+	}
+	if value == nil {
+		return nil
+	}
+	rv := reflect.ValueOf(value)
+	if rv.Kind() == reflect.Ptr && rv.IsNil() {
+		return nil
 	}
 
 	return value
 }
 
 func (p *Placeholders) CreatePlaceholderAt(i int) {
-	p.ptrs[i] = reflect.New(p.fields[i].ScanType()).Interface()
+	var value interface{}
+	p.ptrs[i] = &value
+}
+
+func (p *Placeholders) placeholderScanType(field *cache.Field) reflect.Type {
+	scanType := field.ScanType()
+	if field.ColumnNullable && scanType.Kind() != reflect.Ptr {
+		return reflect.PtrTo(scanType)
+	}
+	return scanType
 }
 
 func (p *Placeholders) ScanPlaceholders() []interface{} {

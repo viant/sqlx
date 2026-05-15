@@ -842,10 +842,14 @@ func (a *Cache) fetchAndIndexValues(fields []*cache.Field, column string, rows *
 		return err
 	}
 
+	started := time.Now()
+	lastProgress := started
+	processed := 0
 	columnIndex := indexSource.ColumnIndex()
 	placeholders := NewPlaceholders(columnIndex, fields)
 
 	for rows.Next() {
+		processed++
 		if err = rows.Scan(placeholders.ScanPlaceholders()...); err != nil {
 			return err
 		}
@@ -861,9 +865,18 @@ func (a *Cache) fetchAndIndexValues(fields []*cache.Field, column string, rows *
 		if err = indexed.StringifyData(placeholders.Values()); err != nil {
 			return err
 		}
+
+		if processed == 1 || processed%10000 == 0 || time.Since(lastProgress) >= 30*time.Second {
+			fmt.Printf("[INFO] aerospike cache index progress column=%s rows=%d elapsed=%s\n", column, processed, time.Since(started))
+			lastProgress = time.Now()
+		}
 	}
 
-	return indexSource.Close()
+	if err = indexSource.Close(); err != nil {
+		return err
+	}
+	fmt.Printf("[INFO] aerospike cache index read done column=%s rows=%d elapsed=%s\n", column, processed, time.Since(started))
+	return nil
 }
 
 func (a *Cache) handleResponseFailure(code types.ResultCode) {
