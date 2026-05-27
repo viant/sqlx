@@ -83,7 +83,7 @@ func (s *Service) NextSequence(ctx context.Context, any interface{}, recordCount
 }
 
 // Exec runs insertService SQL
-func (s *Service) Exec(ctx context.Context, any interface{}, options ...option.Option) (int64, int64, error) {
+func (s *Service) Exec(ctx context.Context, any interface{}, options ...option.Option) (rowsAffected int64, lastInsertedID int64, err error) {
 	if options == nil {
 		options = make(option.Options, 0)
 	}
@@ -137,13 +137,16 @@ func (s *Service) Exec(ctx context.Context, any interface{}, options ...option.O
 		return 0, 0, err
 	}
 
-	if err = sess.prepare(ctx, record, batchSize); err != nil {
+	// Ensure stmt/transaction are released even if sess.insert panics.
+	defer func() {
 		err = sess.end(err)
+	}()
+
+	if err = sess.prepare(ctx, record, batchSize); err != nil {
 		return 0, 0, err
 	}
 
-	rowsAffected, lastInsertedID, err := sess.insert(ctx, batchRecordBuffer, valueAt, recordCount, identities)
-	err = sess.end(err)
+	rowsAffected, lastInsertedID, err = sess.insert(ctx, batchRecordBuffer, valueAt, recordCount, identities)
 	return rowsAffected, lastInsertedID, err
 }
 
@@ -153,37 +156,31 @@ func (s *Service) NewSession(ctx context.Context, record interface{}, db *sql.DB
 	defer s.mux.Unlock()
 	rType := reflect.TypeOf(record)
 	if sess := s.cachedSession; sess != nil && sess.rType == rType && sess.batchSize == batchSize {
-		// Reset per-call state on cached numeric sequencers before returning
-		// to avoid carrying over detected preset state between sessions.
-		for _, updater := range s.cachedSession.recordUpdaters {
-			if asNumeric, ok := updater.(*numericSequencer); ok {
-				// reset preset/sequence flags under locks
-				asNumeric.muxPreset.Lock()
-				asNumeric.muxSequenceValue.Lock()
-				asNumeric.detectedPreset = false
-				asNumeric.presetRecord = nil
-				asNumeric.presetRecordCount = 0
-				asNumeric.sequence = nil
-				asNumeric.shallPresetIdentities = true
-				asNumeric.sequenceValue = nil
-				asNumeric.muxSequenceValue.Unlock()
-				asNumeric.muxPreset.Unlock()
-			}
-		}
-
 		if db == nil {
 			db = sess.db
 		}
-		return &session{
-			recordUpdaters: s.cachedSession.recordUpdaters,
-			rType:          rType,
-			Config:         sess.Config,
-			binder:         sess.binder,
-			columns:        sess.columns,
-			db:             db,
-			batchSize:      sess.batchSize,
-			info:           sess.info,
-		}, nil
+		newSess := &session{
+			rType:     rType,
+			Config:    sess.Config,
+			binder:    sess.binder,
+			columns:   sess.columns,
+			db:        db,
+			batchSize: sess.batchSize,
+			info:      sess.info,
+		}
+		// Build fresh recordUpdaters bound to newSess so per-call state
+		// (sequence, sequenceValue, detectedPreset, ...) is not shared
+		// across concurrent Exec calls.
+		newSess.recordUpdaters = make([]recordUpdater, 0, len(sess.recordUpdaters))
+		for _, ru := range sess.recordUpdaters {
+			if asNumeric, ok := ru.(*numericSequencer); ok {
+				newSess.recordUpdaters = append(newSess.recordUpdaters,
+					newNumericSequencer(newSess, asNumeric.getColumn(), asNumeric.columnPosition()))
+				continue
+			}
+			newSess.recordUpdaters = append(newSess.recordUpdaters, ru)
+		}
+		return newSess, nil
 	}
 
 	aDialect, err := config.Dialect(ctx, s.db)
