@@ -7,12 +7,11 @@ import (
 	"strings"
 )
 
-// Dialect represents dialect
+//Dialect represents dialect
 type Dialect struct {
 	database.Product
 	Placeholder         string // prepare statement placeholder, default '?', but oracle uses ':'
 	PlaceholderResolver placeholder.Generator
-	CompositeInRenderer func(columns []string, rowCount int) string
 	Transactional       bool
 	Insert              dialect.InsertFeatures
 	Upsert              dialect.UpsertFeatures
@@ -30,10 +29,10 @@ type Dialect struct {
 	SpecialKeywordEscapeQuote byte
 }
 
-// Dialects represents dialects
+//Dialects represents dialects
 type Dialects []*Dialect
 
-// PlaceholderGetter returns PlaceholderResolver if not nil, otherwise returns function that returns Placeholder
+//PlaceholderGetter returns PlaceholderResolver if not nil, otherwise returns function that returns Placeholder
 func (d *Dialect) PlaceholderGetter() func() string {
 	if d.PlaceholderResolver != nil {
 		return d.PlaceholderResolver.Resolver()
@@ -41,7 +40,7 @@ func (d *Dialect) PlaceholderGetter() func() string {
 	return (&placeholder.DefaultGenerator{}).Resolver()
 }
 
-// EnsurePlaceholders converts '?' to specific dialect placeholders if needed
+//EnsurePlaceholders converts '?' to specific dialect placeholders if needed
 func (d *Dialect) EnsurePlaceholders(SQL string) string {
 	if d.Placeholder == placeholder.Default {
 		return SQL

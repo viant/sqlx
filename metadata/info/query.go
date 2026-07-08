@@ -13,7 +13,6 @@ type (
 	Query struct {
 		Kind     Kind
 		SQL      string
-		OrderBy  string
 		Criteria Criteria
 		database.Product
 		PreHandlers  []Handler

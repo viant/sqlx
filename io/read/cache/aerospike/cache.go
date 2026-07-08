@@ -79,7 +79,7 @@ func (a *Cache) IndexBy(ctx context.Context, db *sql.DB, column, SQL string, arg
 	var values = make(chan *cache.Indexed, 512)
 	errors := &Errors{}
 	go func() {
-		err = a.fetchAndIndexValues(fields, column, rows, values, isOrdered)
+		err = a.fetchAndIndexValues(ctx, fields, column, rows, values, isOrdered)
 		errors.Add(err)
 		close(values)
 	}()
@@ -836,7 +836,12 @@ func (a *Cache) updateMetaFields(entry *cache.Entry, match *RecordMatched, colum
 	return nil
 }
 
-func (a *Cache) fetchAndIndexValues(fields []*cache.Field, column string, rows *sql.Rows, dest chan *cache.Indexed, ordered bool) error {
+func (a *Cache) fetchAndIndexValues(ctx context.Context, fields []*cache.Field, column string, rows *sql.Rows, dest chan *cache.Indexed, ordered bool) error {
+	const (
+		indexProgressInterval = 30 * time.Second
+		indexProgressRowStep  = 500000
+	)
+
 	indexSource, err := NewIndexSource(column, ordered, fields, dest)
 	if err != nil {
 		return err
@@ -844,6 +849,7 @@ func (a *Cache) fetchAndIndexValues(fields []*cache.Field, column string, rows *
 
 	started := time.Now()
 	lastProgress := started
+	lastProgressRows := 0
 	processed := 0
 	columnIndex := indexSource.ColumnIndex()
 	placeholders := NewPlaceholders(columnIndex, fields)
@@ -866,16 +872,26 @@ func (a *Cache) fetchAndIndexValues(fields []*cache.Field, column string, rows *
 			return err
 		}
 
-		if processed == 1 || processed%10000 == 0 || time.Since(lastProgress) >= 30*time.Second {
-			fmt.Printf("[INFO] aerospike cache index progress column=%s rows=%d elapsed=%s\n", column, processed, time.Since(started))
+		if time.Since(lastProgress) >= indexProgressInterval && processed-lastProgressRows >= indexProgressRowStep {
+			cache.EmitIndexProgress(ctx, &cache.IndexProgressEvent{
+				Column:  column,
+				Rows:    processed,
+				Elapsed: time.Since(started),
+			})
 			lastProgress = time.Now()
+			lastProgressRows = processed
 		}
 	}
 
 	if err = indexSource.Close(); err != nil {
 		return err
 	}
-	fmt.Printf("[INFO] aerospike cache index read done column=%s rows=%d elapsed=%s\n", column, processed, time.Since(started))
+	cache.EmitIndexProgress(ctx, &cache.IndexProgressEvent{
+		Column:  column,
+		Rows:    processed,
+		Elapsed: time.Since(started),
+		Done:    true,
+	})
 	return nil
 }
 

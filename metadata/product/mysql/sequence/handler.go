@@ -4,12 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"github.com/viant/sqlx/metadata/sink"
+	"github.com/viant/sqlx/option"
 	"os"
 	"strconv"
 	"strings"
-
-	"github.com/viant/sqlx/metadata/sink"
-	"github.com/viant/sqlx/option"
 )
 
 const autoincrementAssignment = "AUTO_INCREMENT="
@@ -54,7 +53,7 @@ func updateSequence(ctx context.Context, db *sql.DB, sequence *sink.Sequence, tx
 		seqValueFragment := DDL[index+len(autoincrementAssignment):]
 		debugSequencer := os.Getenv("DEBUG_SEQUENCER") == "true"
 		if debugSequencer {
-			fmt.Printf("u sequencer: %v, value: %v\n", sequence.Name, seqValueFragment)
+			fmt.Printf("sequencer: %v, value: %v\n", sequence.Name, seqValueFragment)
 		}
 		if index := strings.Index(seqValueFragment, " "); index != -1 {
 			seqValueFragment = seqValueFragment[:index]
@@ -103,14 +102,10 @@ func ensureIncrementsAndValues(ctx context.Context, db *sql.DB, sequence *sink.S
 		sequence.MaxValue = MaxSeqValue
 	}
 
-	if sequence.DataType == "" {
-		sequence.DataType = "int"
+	debugSequencer := os.Getenv("DEBUG_SEQUENCER") == "true"
+	if debugSequencer {
+		fmt.Printf("sequencer: %v, start: %v, value: %v, max: %v, increment: %v\n", sequence.Name, sequence.StartValue, sequence.Value, sequence.MaxValue, sequence.IncrementBy)
 	}
-
-	//debugSequencer := os.Getenv("DEBUG_SEQUENCER") == "true"
-	//if debugSequencer {
-	//	fmt.Printf("e sequencer_ptr: %p sequencer: %v, start: %v, value: %v, max: %v, increment: %v\n", &sequence, sequence.Name, sequence.StartValue, sequence.Value, sequence.MaxValue, sequence.IncrementBy)
-	//}
 	return nil
 }
 
