@@ -34,6 +34,20 @@ func (r *Reader) ReadLine() (line []byte, prefix bool, err error) {
 		return readLine, isPrefix, err
 	}
 
+	if isPrefix {
+		var combined []byte
+		combined = append(combined, readLine...)
+		for isPrefix {
+			var chunk []byte
+			chunk, isPrefix, err = r.reader.ReadLine()
+			if err != nil {
+				return combined, isPrefix, err
+			}
+			combined = append(combined, chunk...)
+		}
+		readLine = combined
+	}
+
 	child := r.record.Bins[childBin]
 	if len(readLine) == 0 && child != nil {
 		if err = r.fetchChild(child); err != nil {

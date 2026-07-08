@@ -79,7 +79,7 @@ func (a *Cache) IndexBy(ctx context.Context, db *sql.DB, column, SQL string, arg
 	var values = make(chan *cache.Indexed, 512)
 	errors := &Errors{}
 	go func() {
-		err = a.fetchAndIndexValues(fields, column, rows, values, isOrdered)
+		err = a.fetchAndIndexValues(ctx, fields, column, rows, values, isOrdered)
 		errors.Add(err)
 		close(values)
 	}()
@@ -836,16 +836,20 @@ func (a *Cache) updateMetaFields(entry *cache.Entry, match *RecordMatched, colum
 	return nil
 }
 
-func (a *Cache) fetchAndIndexValues(fields []*cache.Field, column string, rows *sql.Rows, dest chan *cache.Indexed, ordered bool) error {
+func (a *Cache) fetchAndIndexValues(ctx context.Context, fields []*cache.Field, column string, rows *sql.Rows, dest chan *cache.Indexed, ordered bool) error {
 	indexSource, err := NewIndexSource(column, ordered, fields, dest)
 	if err != nil {
 		return err
 	}
 
+	started := time.Now()
+	lastProgress := started
+	processed := 0
 	columnIndex := indexSource.ColumnIndex()
 	placeholders := NewPlaceholders(columnIndex, fields)
 
 	for rows.Next() {
+		processed++
 		if err = rows.Scan(placeholders.ScanPlaceholders()...); err != nil {
 			return err
 		}
@@ -861,9 +865,36 @@ func (a *Cache) fetchAndIndexValues(fields []*cache.Field, column string, rows *
 		if err = indexed.StringifyData(placeholders.Values()); err != nil {
 			return err
 		}
+
+		if processed == 1 || processed%10000 == 0 || time.Since(lastProgress) >= 30*time.Second {
+			fmt.Printf("[INFO] aerospike cache index progress%s column=%s rows=%d elapsed=%s\n", formatIndexProgress(ctx), column, processed, time.Since(started))
+			lastProgress = time.Now()
+		}
 	}
 
-	return indexSource.Close()
+	if err = indexSource.Close(); err != nil {
+		return err
+	}
+	fmt.Printf("[INFO] aerospike cache index read done%s column=%s rows=%d elapsed=%s\n", formatIndexProgress(ctx), column, processed, time.Since(started))
+	return nil
+}
+
+func formatIndexProgress(ctx context.Context) string {
+	progress, ok := cache.IndexProgressFromContext(ctx)
+	if !ok {
+		return ""
+	}
+	parts := make([]string, 0, 3)
+	if progress.View != "" {
+		parts = append(parts, " view="+progress.View)
+	}
+	if progress.Dataset != "" {
+		parts = append(parts, " dataset="+progress.Dataset)
+	}
+	if progress.Case != "" {
+		parts = append(parts, " case="+progress.Case)
+	}
+	return strings.Join(parts, "")
 }
 
 func (a *Cache) handleResponseFailure(code types.ResultCode) {
