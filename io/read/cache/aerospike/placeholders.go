@@ -5,6 +5,7 @@ import (
 	"github.com/viant/sqlx/io/read/cache"
 	"github.com/viant/xunsafe"
 	"reflect"
+	"time"
 )
 
 type Placeholders struct {
@@ -30,7 +31,7 @@ func (p *Placeholders) init() {
 	for i, field := range p.fields {
 		var derefs []*xunsafe.Type
 
-		rType := field.ScanType()
+		rType := scanPlaceholderType(field)
 
 		derefs = append(derefs, xunsafe.NewType(rType))
 		for rType.Kind() == reflect.Ptr {
@@ -42,7 +43,7 @@ func (p *Placeholders) init() {
 	}
 
 	if p.columnIndex != -1 {
-		scanType := p.fields[p.columnIndex].ScanType()
+		scanType := scanPlaceholderType(p.fields[p.columnIndex])
 		p.indexedColDereferencer = append(p.indexedColDereferencer, xunsafe.NewType(scanType))
 		for scanType.Kind() == reflect.Ptr {
 			scanType = scanType.Elem()
@@ -60,6 +61,7 @@ func (p *Placeholders) ColumnValue() (interface{}, bool) {
 	for _, dereferencer := range p.indexedColDereferencer {
 		value = p.derefValue(value, dereferencer)
 	}
+	value = normalizeNilValue(value)
 
 	if value != nil && xunsafe.AsPointer(value) != nil {
 		switch actual := value.(type) {
@@ -116,19 +118,29 @@ func (p *Placeholders) ColumnValue() (interface{}, bool) {
 }
 
 func (p *Placeholders) derefValue(value interface{}, dereferencer ...*xunsafe.Type) interface{} {
-	for _, deref := range dereferencer {
-		if asIface, ok := value.(*interface{}); ok {
-			value = *asIface
-		} else {
-			value = deref.Deref(value)
+	rValue := reflect.ValueOf(value)
+	for rValue.IsValid() {
+		switch rValue.Kind() {
+		case reflect.Interface:
+			if rValue.IsNil() {
+				return nil
+			}
+			rValue = rValue.Elem()
+		case reflect.Ptr:
+			if rValue.IsNil() {
+				return nil
+			}
+			rValue = rValue.Elem()
+		default:
+			return rValue.Interface()
 		}
 	}
 
-	return value
+	return nil
 }
 
 func (p *Placeholders) CreatePlaceholderAt(i int) {
-	p.ptrs[i] = reflect.New(p.fields[i].ScanType()).Interface()
+	p.ptrs[i] = reflect.New(scanPlaceholderType(p.fields[i])).Interface()
 }
 
 func (p *Placeholders) ScanPlaceholders() []interface{} {
@@ -137,7 +149,7 @@ func (p *Placeholders) ScanPlaceholders() []interface{} {
 
 func (p *Placeholders) Values() []interface{} {
 	for i, dereferencer := range p.colDereferencers {
-		p.deref[i] = p.derefValue(p.ptrs[i], dereferencer...)
+		p.deref[i] = normalizeNilValue(p.derefValue(p.ptrs[i], dereferencer...))
 	}
 
 	return p.deref
@@ -159,4 +171,49 @@ func deref(rType reflect.Type) reflect.Type {
 	}
 
 	return rType
+}
+
+func scanPlaceholderType(field *cache.Field) reflect.Type {
+	scanType := field.ScanType()
+	if scanType == nil || scanType.Kind() == reflect.Ptr {
+		return scanType
+	}
+
+	nullable, ok := field.Nullable()
+	if !ok || !nullable || !isNullableScalarType(scanType) {
+		return scanType
+	}
+
+	return reflect.PtrTo(scanType)
+}
+
+func isNullableScalarType(scanType reflect.Type) bool {
+	switch scanType.Kind() {
+	case reflect.Bool,
+		reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
+		reflect.Float32, reflect.Float64,
+		reflect.String:
+		return true
+	case reflect.Struct:
+		return scanType == reflect.TypeOf(time.Time{})
+	}
+
+	return false
+}
+
+func normalizeNilValue(value interface{}) interface{} {
+	if value == nil {
+		return nil
+	}
+
+	rValue := reflect.ValueOf(value)
+	switch rValue.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Ptr, reflect.Slice:
+		if rValue.IsNil() {
+			return nil
+		}
+	}
+
+	return value
 }
