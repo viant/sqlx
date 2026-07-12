@@ -61,6 +61,27 @@ func TestDecoder(t *testing.T) {
 			marshaled: `[null]`,
 			expected:  []interface{}{nil},
 		},
+		{
+			scanTypes: []reflect.Type{
+				reflect.TypeOf(false),
+			},
+			marshaled: `[1]`,
+			expected:  []interface{}{boolPtr(true)},
+		},
+		{
+			scanTypes: []reflect.Type{
+				reflect.TypeOf(&falseValue),
+			},
+			marshaled: `[0]`,
+			expected:  []interface{}{boolDoublePtr(false)},
+		},
+		{
+			scanTypes: []reflect.Type{
+				reflect.TypeOf(&falseValue),
+			},
+			marshaled: `[null]`,
+			expected:  []interface{}{nil},
+		},
 	}
 
 	//for _, testCase := range testCases[len(testCases)-1:] {
@@ -73,8 +94,21 @@ func TestDecoder(t *testing.T) {
 	}
 }
 
+func TestDecoder_BoolNullToNonPointerFails(t *testing.T) {
+	decoder := NewDecoder([]reflect.Type{reflect.TypeOf(false)}, []byte(`[null]`))
+	err := gojay.UnmarshalJSONArray([]byte(`[null]`), decoder)
+	assert.EqualError(t, err, "Cannot unmarshal JSON to type 'bool'")
+}
+
 func boolPtr(b bool) *bool {
 	return &b
+}
+
+var falseValue bool
+
+func boolDoublePtr(b bool) **bool {
+	value := boolPtr(b)
+	return &value
 }
 
 func stringPtr(s string) *string {

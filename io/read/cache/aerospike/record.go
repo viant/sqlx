@@ -7,4 +7,6 @@ type RecordMatched struct {
 	record   *as.Record
 	keyValue string
 	hasKey   bool
+	baseURL  string
+	args     []byte
 }
