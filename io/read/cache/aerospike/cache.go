@@ -16,6 +16,7 @@ import (
 	"github.com/viant/sqlx/io/read/cache"
 	"github.com/viant/sqlx/io/read/cache/hash"
 	sio "io"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -51,7 +52,7 @@ type (
 	}
 )
 
-func (a *Cache) IndexBy(ctx context.Context, db *sql.DB, column, SQL string, args []interface{}) (int, error) {
+func (a *Cache) IndexBy(ctx context.Context, db *sql.DB, column, SQL string, args []interface{}, options ...interface{}) (int, error) {
 	if args == nil {
 		args = []interface{}{}
 	}
@@ -84,14 +85,16 @@ func (a *Cache) IndexBy(ctx context.Context, db *sql.DB, column, SQL string, arg
 		close(values)
 	}()
 
-	URL, err := hash.GenerateURL(SQL, "", "", args)
+	identitySQL, identityArgs, argsMarshal, err := a.resolveIndexIdentity(SQL, args, options...)
 	if err != nil {
 		return 0, err
 	}
-
-	argsMarshal, err := json.Marshal(args)
+	URL, err := a.identityURL(identitySQL, identityArgs, argsMarshal)
 	if err != nil {
 		return 0, err
+	}
+	if column != "" {
+		a.logWarmupMarker("IndexBy", column, URL, a.columnURL(URL, column))
 	}
 
 	fieldMarshal, err := json.Marshal(fields)
@@ -106,7 +109,7 @@ func (a *Cache) IndexBy(ctx context.Context, db *sql.DB, column, SQL string, arg
 	for value := range values {
 		var metaBin as.BinMap
 		if column == "" {
-			metaBin = a.metaBin(SQL, argsStringified, fieldsStringified, column)
+			metaBin = a.metaBin(identitySQL, argsStringified, fieldsStringified, column)
 		} else {
 			metaBin = as.BinMap{}
 		}
@@ -120,7 +123,7 @@ func (a *Cache) IndexBy(ctx context.Context, db *sql.DB, column, SQL string, arg
 	}
 
 	if column != "" {
-		return inserted + 1, a.putRowMarker(URL, column, a.metaBin(SQL, argsStringified, fieldsStringified, column))
+		return inserted + 1, a.putRowMarker(URL, column, a.metaBin(identitySQL, argsStringified, fieldsStringified, column))
 	}
 
 	return inserted, nil
@@ -305,12 +308,12 @@ func (a *Cache) readRecords(SQL string, args []interface{}, query *cache.Parmetr
 		if query == nil {
 			return
 		}
-		jsonEncodedArgs, e := query.MarshalArgs() //warmup args
+		identitySQL, identityArgs, identityArgsMarshal, e := query.WarmupIdentity()
 		if e != nil {
 			errors[1] = e
 			return
 		}
-		warmupMatch, errors[1] = a.readRecord(query.SQL, query.Args, jsonEncodedArgs, func(aKey string) (string, error) {
+		warmupMatch, errors[1] = a.readRecord(identitySQL, identityArgs, identityArgsMarshal, func(aKey string) (string, error) {
 			return a.columnURL(aKey, query.By), nil
 		})
 	}(query)
@@ -327,17 +330,15 @@ func (a *Cache) readRecords(SQL string, args []interface{}, query *cache.Parmetr
 
 func (a *Cache) readRecord(SQL string, args []interface{}, argsMarshal []byte, keyModifiers ...func(aKey string) (string, error)) (*RecordMatched, error) {
 	var keyValue string
+	var warmupURL string
 	var err error
 
-	if argsMarshal == nil {
-		keyValue, err = hash.GenerateURL(SQL, "", "", args)
-	} else {
-		keyValue, err = hash.GenerateWithMarshal(SQL, "", "", argsMarshal)
-	}
+	keyValue, err = a.identityURL(SQL, args, argsMarshal)
 
 	if err != nil {
 		return nil, err
 	}
+	warmupURL = keyValue
 
 	for _, modifier := range keyModifiers {
 		keyValue, err = modifier(keyValue)
@@ -352,12 +353,17 @@ func (a *Cache) readRecord(SQL string, args []interface{}, argsMarshal []byte, k
 	}
 
 	record, err := a.getRecord(storeKey, cachedBins...)
+	if len(keyModifiers) > 0 {
+		a.logWarmupRead(warmupURL, keyValue, record != nil && err == nil, err)
+	}
 
 	return &RecordMatched{
 		key:      storeKey,
 		record:   record,
 		keyValue: keyValue,
 		hasKey:   err == nil,
+		baseURL:  warmupURL,
+		args:     argsMarshal,
 	}, err
 }
 
@@ -615,6 +621,62 @@ func (a *Cache) columnURL(URL string, column string) string {
 	return strings.ToLower(column) + "#" + URL
 }
 
+func (a *Cache) identityURL(SQL string, args []interface{}, argsMarshal []byte) (string, error) {
+	if argsMarshal == nil {
+		return hash.GenerateURL(SQL, "", "", args)
+	}
+	return hash.GenerateWithMarshal(SQL, "", "", argsMarshal)
+}
+
+func (a *Cache) resolveIndexIdentity(SQL string, args []interface{}, options ...interface{}) (string, []interface{}, []byte, error) {
+	for _, option := range options {
+		matcher, ok := option.(*cache.ParmetrizedQuery)
+		if !ok || matcher == nil {
+			continue
+		}
+		return matcher.WarmupIdentity()
+	}
+
+	argsMarshal, err := json.Marshal(args)
+	if err != nil {
+		return "", nil, nil, err
+	}
+	return SQL, args, argsMarshal, nil
+}
+
+func (a *Cache) logWarmupMarker(stage string, column string, warmupURL string, markerKey string) {
+	a.logWarmupf("aerospike cache %s set=%s column=%s warmup_url=%s marker_key=%s\n", stage, a.set, column, warmupURL, markerKey)
+}
+
+func (a *Cache) logWarmupRead(warmupURL string, markerKey string, found bool, err error) {
+	by, _, _ := strings.Cut(markerKey, "#")
+	if err != nil && !a.isKeyNotFoundErr(err) {
+		a.logWarmupf("aerospike cache warmup_read set=%s by=%s warmup_url=%s marker_key=%s getRecord_found=%t err=%v\n", a.set, by, warmupURL, markerKey, found, err)
+		return
+	}
+	a.logWarmupf("aerospike cache warmup_read set=%s by=%s warmup_url=%s marker_key=%s getRecord_found=%t\n", a.set, by, warmupURL, markerKey, found)
+}
+
+func (a *Cache) logWarmupFailure(by string, warmupURL string, markerKey string, failure string) {
+	a.logWarmupf("aerospike cache warmup_failure set=%s by=%s warmup_url=%s marker_key=%s failure=%s\n", a.set, by, warmupURL, markerKey, failure)
+}
+
+func (a *Cache) logWarmupf(format string, args ...interface{}) {
+	if !warmupDebugEnabled() {
+		return
+	}
+	fmt.Printf(format, args...)
+}
+
+func warmupDebugEnabled() bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("SQLX_AEROSPIKE_WARMUP_DEBUG"))) {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
+	}
+}
+
 func (a *Cache) updateLazyMatchEntry(ctx context.Context, anEntry *cache.Entry, match *RecordMatched, SQL string, jsonEncodedArgs []byte, stats *cache.Stats) error {
 	if match == nil || !match.hasKey {
 		return nil
@@ -646,16 +708,29 @@ func (a *Cache) updateLazyMatchEntry(ctx context.Context, anEntry *cache.Entry, 
 }
 
 func (a *Cache) updateColumnsInMatchEntry(entry *cache.Entry, match *RecordMatched, matcher *cache.ParmetrizedQuery, stats *cache.Stats) error {
-	if match == nil || entry.ReadCloser != nil || !match.hasKey {
+	if matcher == nil || entry.ReadCloser != nil {
 		return nil
 	}
 
-	args, err := matcher.MarshalArgs()
+	identitySQL, _, identityArgsMarshal, err := matcher.WarmupIdentity()
 	if err != nil {
 		return err
 	}
 
-	if !a.recordMatches(match.record, matcher.SQL, args) {
+	if match == nil || !match.hasKey {
+		warmupURL, markerKey := "", ""
+		if identityURL, err := a.identityURL(identitySQL, nil, identityArgsMarshal); err == nil {
+			warmupURL = identityURL
+			markerKey = a.columnURL(identityURL, matcher.By)
+		}
+		a.logWarmupFailure(matcher.By, warmupURL, markerKey, "marker_miss")
+		return nil
+	}
+
+	markerKey := match.keyValue
+	warmupURL := match.baseURL
+	if !a.recordMatches(match.record, identitySQL, identityArgsMarshal) {
+		a.logWarmupFailure(matcher.By, warmupURL, markerKey, "marker_identity_mismatch")
 		return nil
 	}
 
@@ -669,10 +744,11 @@ func (a *Cache) updateColumnsInMatchEntry(entry *cache.Entry, match *RecordMatch
 	}
 
 	for i := range matcher.In {
-		a.readChan(readerChan, matcher, matcher.In[i])
+		a.readChan(readerChan, matcher, warmupURL, matcher.In[i])
 	}
 
 	counter := 0
+	childRowMiss := false
 	for reader := range readerChan {
 		if reader.err != nil {
 			return reader.err
@@ -680,12 +756,17 @@ func (a *Cache) updateColumnsInMatchEntry(entry *cache.Entry, match *RecordMatch
 
 		if reader.reader != nil {
 			multiReader.AddReader(reader.reader)
+		} else {
+			childRowMiss = true
 		}
 
 		counter++
 		if counter == chanSize {
 			close(readerChan)
 		}
+	}
+	if childRowMiss {
+		a.logWarmupFailure(matcher.By, warmupURL, markerKey, "child_row_miss")
 	}
 
 	entry.SetReader(multiReader, multiReader)
@@ -718,30 +799,32 @@ func (a *Cache) updateWriter(anEntry *cache.Entry, fullMatch *RecordMatched, SQL
 	return nil
 }
 
-func (a *Cache) readChan(readerChan chan *readerWrapper, matcher *cache.ParmetrizedQuery, columnValue interface{}) {
-	go func(matcher *cache.ParmetrizedQuery, columnValue interface{}) {
-		reader, err := a.newReader(matcher, columnValue)
+func (a *Cache) readChan(readerChan chan *readerWrapper, matcher *cache.ParmetrizedQuery, warmupURL string, columnValue interface{}) {
+	go func(matcher *cache.ParmetrizedQuery, warmupURL string, columnValue interface{}) {
+		reader, err := a.newReader(matcher, warmupURL, columnValue)
 		readerChan <- &readerWrapper{
 			err:    err,
 			reader: reader,
 		}
-	}(matcher, columnValue)
+	}(matcher, warmupURL, columnValue)
 }
 
-func (a *Cache) newReader(matcher *cache.ParmetrizedQuery, columnValue interface{}) (*Reader, error) {
+func (a *Cache) newReader(matcher *cache.ParmetrizedQuery, warmupURL string, columnValue interface{}) (*Reader, error) {
 	valueMarshal, err := json.Marshal(columnValue)
 	if err != nil {
 		return nil, err
 	}
 
-	args, err := matcher.MarshalArgs()
-	if err != nil {
-		return nil, err
-	}
-
-	actualKeyValue, err := hash.GenerateWithMarshal(matcher.SQL, "", "", args)
-	if err != nil {
-		return nil, err
+	actualKeyValue := warmupURL
+	if actualKeyValue == "" {
+		identitySQL, identityArgs, args, err := matcher.WarmupIdentity()
+		if err != nil {
+			return nil, err
+		}
+		actualKeyValue, err = a.identityURL(identitySQL, identityArgs, args)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	actualKeyValue = a.columnValueURL(matcher.By, valueMarshal, actualKeyValue)

@@ -41,7 +41,7 @@ type (
 	}
 )
 
-func (c *Cache) IndexBy(ctx context.Context, db *sql.DB, column, SQL string, args []interface{}) (int, error) {
+func (c *Cache) IndexBy(ctx context.Context, db *sql.DB, column, SQL string, args []interface{}, options ...interface{}) (int, error) {
 	return 0, nil
 }
 

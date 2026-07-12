@@ -2,6 +2,7 @@ package cache
 
 import (
 	"encoding/json"
+	"fmt"
 	"github.com/aerospike/aerospike-client-go/types"
 	"time"
 )
@@ -28,17 +29,20 @@ type (
 	Refresh bool
 	//ParmetrizedQuery abstraction to represent data optimisation with caching and custom pagination
 	ParmetrizedQuery struct {
-		By      string
-		SQL     string
-		Ordered bool //SQL uses order by indexby column
-		Args    []interface{}
-		In      []interface{}
-		Offset  int
-		Limit   int
-		OnSkip  func(values []interface{}) error
+		By           string
+		SQL          string
+		IdentitySQL  string
+		Ordered      bool //SQL uses order by indexby column
+		Args         []interface{}
+		IdentityArgs []interface{}
+		In           []interface{}
+		Offset       int
+		Limit        int
+		OnSkip       func(values []interface{}) error
 
-		marshalArgs []byte
-		initialized bool
+		marshalArgs         []byte
+		marshalIdentityArgs []byte
+		initialized         bool
 	}
 
 	Stats struct {
@@ -73,6 +77,9 @@ func (m *ParmetrizedQuery) Init() {
 	if m.Args == nil {
 		m.Args = []interface{}{}
 	}
+	if m.IdentitySQL != "" && m.IdentityArgs == nil {
+		m.IdentityArgs = []interface{}{}
+	}
 }
 
 func (m *ParmetrizedQuery) MarshalArgs() ([]byte, error) {
@@ -83,4 +90,36 @@ func (m *ParmetrizedQuery) MarshalArgs() ([]byte, error) {
 	var err error
 	m.marshalArgs, err = json.Marshal(m.Args)
 	return m.marshalArgs, err
+}
+
+func (m *ParmetrizedQuery) MarshalIdentityArgs() ([]byte, error) {
+	if m.marshalIdentityArgs != nil {
+		return m.marshalIdentityArgs, nil
+	}
+
+	if m.IdentityArgs == nil {
+		m.IdentityArgs = []interface{}{}
+	}
+
+	var err error
+	m.marshalIdentityArgs, err = json.Marshal(m.IdentityArgs)
+	return m.marshalIdentityArgs, err
+}
+
+func (m *ParmetrizedQuery) WarmupIdentity() (string, []interface{}, []byte, error) {
+	m.Init()
+
+	if m.IdentitySQL == "" {
+		if len(m.IdentityArgs) > 0 {
+			return "", nil, nil, fmt.Errorf("invalid warmup identity: identity args provided without identity SQL")
+		}
+		marshalArgs, err := m.MarshalArgs()
+		return m.SQL, m.Args, marshalArgs, err
+	}
+
+	marshalArgs, err := m.MarshalIdentityArgs()
+	if err != nil {
+		return "", nil, nil, err
+	}
+	return m.IdentitySQL, m.IdentityArgs, marshalArgs, nil
 }

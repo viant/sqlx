@@ -192,16 +192,129 @@ func interfaceDecoder(actualDataType reflect.Type) DecoderFn {
 func boolDecoder(ptr bool) DecoderFn {
 	if !ptr {
 		return func(decoder *gojay.Decoder) (interface{}, error) {
-			aBool := false
-			return &aBool, decoder.Bool(&aBool)
+			aBool, wasNull, err := decodeBoolLike(decoder)
+			if err != nil {
+				return nil, err
+			}
+			if wasNull {
+				return nil, fmt.Errorf("Cannot unmarshal JSON to type 'bool'")
+			}
+			return &aBool, nil
 		}
 	}
 
 	return func(decoder *gojay.Decoder) (interface{}, error) {
-		aBoolPtr := new(bool)
-		return &aBoolPtr, decoder.BoolNull(&aBoolPtr)
+		aBool, wasNull, err := decodeBoolLike(decoder)
+		if err != nil {
+			return nil, err
+		}
+		if wasNull {
+			return nil, nil
+		}
+		aBoolPtr := &aBool
+		return &aBoolPtr, nil
 	}
 
+}
+
+func decodeBoolLike(decoder *gojay.Decoder) (bool, bool, error) {
+	var value interface{}
+	if err := decoder.Interface(&value); err != nil {
+		return false, false, err
+	}
+
+	switch actual := value.(type) {
+	case nil:
+		return false, true, nil
+	case bool:
+		return actual, false, nil
+	case float64:
+		switch actual {
+		case 0:
+			return false, false, nil
+		case 1:
+			return true, false, nil
+		}
+	case float32:
+		switch actual {
+		case 0:
+			return false, false, nil
+		case 1:
+			return true, false, nil
+		}
+	case int:
+		switch actual {
+		case 0:
+			return false, false, nil
+		case 1:
+			return true, false, nil
+		}
+	case int8:
+		switch actual {
+		case 0:
+			return false, false, nil
+		case 1:
+			return true, false, nil
+		}
+	case int16:
+		switch actual {
+		case 0:
+			return false, false, nil
+		case 1:
+			return true, false, nil
+		}
+	case int32:
+		switch actual {
+		case 0:
+			return false, false, nil
+		case 1:
+			return true, false, nil
+		}
+	case int64:
+		switch actual {
+		case 0:
+			return false, false, nil
+		case 1:
+			return true, false, nil
+		}
+	case uint:
+		switch actual {
+		case 0:
+			return false, false, nil
+		case 1:
+			return true, false, nil
+		}
+	case uint8:
+		switch actual {
+		case 0:
+			return false, false, nil
+		case 1:
+			return true, false, nil
+		}
+	case uint16:
+		switch actual {
+		case 0:
+			return false, false, nil
+		case 1:
+			return true, false, nil
+		}
+	case uint32:
+		switch actual {
+		case 0:
+			return false, false, nil
+		case 1:
+			return true, false, nil
+		}
+	case uint64:
+		switch actual {
+		case 0:
+			return false, false, nil
+		case 1:
+			return true, false, nil
+		}
+	}
+
+	return false, false, fmt.Errorf("Cannot unmarshal JSON to type '*bool'")
 }
 
 func stringDecoder(ptr bool) DecoderFn {
