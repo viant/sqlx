@@ -12,6 +12,7 @@ import (
 	"github.com/aerospike/aerospike-client-go/types"
 	"github.com/google/uuid"
 	"github.com/viant/parsly/matcher"
+	"github.com/viant/sqlparser"
 	"github.com/viant/sqlx/io"
 	"github.com/viant/sqlx/io/read/cache"
 	"github.com/viant/sqlx/io/read/cache/hash"
@@ -21,6 +22,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
+	"unicode/utf8"
 )
 
 const (
@@ -85,14 +88,16 @@ func (a *Cache) IndexBy(ctx context.Context, db *sql.DB, column, SQL string, arg
 		close(values)
 	}()
 
-	identitySQL, identityArgs, argsMarshal, err := a.resolveIndexIdentity(SQL, args, options...)
+	identitySQL, identityArgs, argsMarshal, meta, err := a.resolveIndexIdentity(SQL, args, options...)
 	if err != nil {
 		return 0, err
 	}
+	identitySQL, argsMarshal, canonicalization := canonicalWarmupIdentity(identitySQL, argsMarshal)
 	URL, err := a.identityURL(identitySQL, identityArgs, argsMarshal)
 	if err != nil {
 		return 0, err
 	}
+	a.logWarmupIdentityResolved("index_write", column, URL, identitySQL, argsMarshal, canonicalization, meta)
 	if column != "" {
 		a.logWarmupMarker("IndexBy", column, URL, a.columnURL(URL, column))
 	}
@@ -308,10 +313,14 @@ func (a *Cache) readRecords(SQL string, args []interface{}, query *cache.Parmetr
 		if query == nil {
 			return
 		}
-		identitySQL, identityArgs, identityArgsMarshal, e := query.WarmupIdentity()
+		identitySQL, identityArgs, identityArgsMarshal, meta, e := query.WarmupIdentityResolved()
 		if e != nil {
 			errors[1] = e
 			return
+		}
+		identitySQL, identityArgsMarshal, canonicalization := canonicalWarmupIdentity(identitySQL, identityArgsMarshal)
+		if warmupURL, urlErr := a.identityURL(identitySQL, identityArgs, identityArgsMarshal); urlErr == nil {
+			a.logWarmupIdentityResolved("read_lookup", query.By, warmupURL, identitySQL, identityArgsMarshal, canonicalization, meta)
 		}
 		warmupMatch, errors[1] = a.readRecord(identitySQL, identityArgs, identityArgsMarshal, func(aKey string) (string, error) {
 			return a.columnURL(aKey, query.By), nil
@@ -628,24 +637,162 @@ func (a *Cache) identityURL(SQL string, args []interface{}, argsMarshal []byte) 
 	return hash.GenerateWithMarshal(SQL, "", "", argsMarshal)
 }
 
-func (a *Cache) resolveIndexIdentity(SQL string, args []interface{}, options ...interface{}) (string, []interface{}, []byte, error) {
+func canonicalWarmupIdentity(SQL string, argsMarshal []byte) (string, []byte, string) {
+	if canonicalSQL, ok, detail := canonicalWarmupSQL(SQL); ok {
+		return canonicalSQL, argsMarshal, detail
+	}
+	return SQL, argsMarshal, "fallback_parse_error"
+}
+
+func canonicalWarmupSQL(SQL string) (string, bool, string) {
+	parsed, err := sqlparser.ParseQuery(SQL)
+	if err != nil || parsed == nil {
+		return "", false, "fallback_parse_error"
+	}
+	return normalizeWarmupSQLWhitespace(sqlparser.Stringify(parsed)), true, "applied"
+}
+
+func normalizeWarmupSQLWhitespace(SQL string) string {
+	var builder strings.Builder
+	builder.Grow(len(SQL))
+
+	pendingSpace := false
+	inSingleQuote := false
+	inDoubleQuote := false
+	inBacktick := false
+
+	for i := 0; i < len(SQL); {
+		r, size := utf8.DecodeRuneInString(SQL[i:])
+		switch r {
+		case '\'':
+			if !inDoubleQuote && !inBacktick && !isEscapedSQLQuote(SQL, i) {
+				inSingleQuote = !inSingleQuote
+			}
+			if pendingSpace && builder.Len() > 0 {
+				builder.WriteByte(' ')
+			}
+			builder.WriteRune(r)
+			pendingSpace = false
+			i += size
+		case '"':
+			if !inSingleQuote && !inBacktick && !isEscapedSQLQuote(SQL, i) {
+				inDoubleQuote = !inDoubleQuote
+			}
+			if pendingSpace && builder.Len() > 0 {
+				builder.WriteByte(' ')
+			}
+			builder.WriteRune(r)
+			pendingSpace = false
+			i += size
+		case '`':
+			if !inSingleQuote && !inDoubleQuote {
+				inBacktick = !inBacktick
+			}
+			if pendingSpace && builder.Len() > 0 {
+				builder.WriteByte(' ')
+			}
+			builder.WriteRune(r)
+			pendingSpace = false
+			i += size
+		default:
+			if inSingleQuote || inDoubleQuote || inBacktick {
+				builder.WriteRune(r)
+				pendingSpace = false
+				i += size
+				continue
+			}
+			if unicode.IsSpace(r) {
+				pendingSpace = builder.Len() > 0
+				i += size
+				continue
+			}
+			if operator, width, ok := warmupSQLOperator(SQL[i:]); ok {
+				writeCanonicalWarmupOperator(&builder, &pendingSpace, operator)
+				i += width
+				continue
+			}
+			switch r {
+			case ')', ']', ',':
+				trimTrailingBuilderSpace(&builder)
+			case '(':
+				trimTrailingBuilderSpace(&builder)
+			case '.':
+				trimTrailingBuilderSpace(&builder)
+			default:
+				if pendingSpace && builder.Len() > 0 {
+					builder.WriteByte(' ')
+				}
+			}
+			builder.WriteRune(r)
+			pendingSpace = false
+			i += size
+		}
+	}
+
+	return strings.TrimSpace(builder.String())
+}
+
+func warmupSQLOperator(SQL string) (string, int, bool) {
+	switch {
+	case strings.HasPrefix(SQL, "<="), strings.HasPrefix(SQL, ">="), strings.HasPrefix(SQL, "!="), strings.HasPrefix(SQL, "<>"):
+		return SQL[:2], 2, true
+	case strings.HasPrefix(SQL, "="), strings.HasPrefix(SQL, "<"), strings.HasPrefix(SQL, ">"):
+		return SQL[:1], 1, true
+	default:
+		return "", 0, false
+	}
+}
+
+func writeCanonicalWarmupOperator(builder *strings.Builder, pendingSpace *bool, operator string) {
+	trimTrailingBuilderSpace(builder)
+	if builder.Len() > 0 {
+		text := builder.String()
+		if text[len(text)-1] != ' ' {
+			builder.WriteByte(' ')
+		}
+	}
+	builder.WriteString(operator)
+	*pendingSpace = true
+}
+
+func trimTrailingBuilderSpace(builder *strings.Builder) {
+	text := builder.String()
+	if len(text) == 0 || text[len(text)-1] != ' ' {
+		return
+	}
+	builder.Reset()
+	builder.WriteString(text[:len(text)-1])
+}
+
+func isEscapedSQLQuote(SQL string, index int) bool {
+	if index == 0 {
+		return false
+	}
+	return SQL[index-1] == '\\'
+}
+
+func (a *Cache) resolveIndexIdentity(SQL string, args []interface{}, options ...interface{}) (string, []interface{}, []byte, cache.WarmupIdentityMeta, error) {
 	for _, option := range options {
 		matcher, ok := option.(*cache.ParmetrizedQuery)
 		if !ok || matcher == nil {
 			continue
 		}
-		return matcher.WarmupIdentity()
+		return matcher.WarmupIdentityResolved()
 	}
 
 	argsMarshal, err := json.Marshal(args)
 	if err != nil {
-		return "", nil, nil, err
+		return "", nil, nil, cache.WarmupIdentityMeta{}, err
 	}
-	return SQL, args, argsMarshal, nil
+	return SQL, args, argsMarshal, cache.WarmupIdentityMeta{Source: "execution", Detail: "default_execution_identity"}, nil
 }
 
 func (a *Cache) logWarmupMarker(stage string, column string, warmupURL string, markerKey string) {
 	a.logWarmupf("aerospike cache %s set=%s column=%s warmup_url=%s marker_key=%s\n", stage, a.set, column, warmupURL, markerKey)
+}
+
+func (a *Cache) logWarmupIdentityResolved(stage string, by string, warmupURL string, SQL string, argsMarshal []byte, canonicalization string, meta cache.WarmupIdentityMeta) {
+	a.logWarmupf("aerospike cache warmup_identity_resolved set=%s stage=%s by=%s source=%s detail=%s canonicalization=%s warmup_url=%s args_json=%q sql=%q\n", a.set, stage, by, meta.Source, meta.Detail, canonicalization, warmupURL, string(argsMarshal), SQL)
 }
 
 func (a *Cache) logWarmupRead(warmupURL string, markerKey string, found bool, err error) {
@@ -716,6 +863,7 @@ func (a *Cache) updateColumnsInMatchEntry(entry *cache.Entry, match *RecordMatch
 	if err != nil {
 		return err
 	}
+	identitySQL, identityArgsMarshal, _ = canonicalWarmupIdentity(identitySQL, identityArgsMarshal)
 
 	if match == nil || !match.hasKey {
 		warmupURL, markerKey := "", ""
@@ -821,6 +969,7 @@ func (a *Cache) newReader(matcher *cache.ParmetrizedQuery, warmupURL string, col
 		if err != nil {
 			return nil, err
 		}
+		identitySQL, args, _ = canonicalWarmupIdentity(identitySQL, args)
 		actualKeyValue, err = a.identityURL(identitySQL, identityArgs, args)
 		if err != nil {
 			return nil, err

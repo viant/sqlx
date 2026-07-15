@@ -31,7 +31,7 @@ func TestWarmupDebugEnabled(t *testing.T) {
 func TestCacheResolveIndexIdentity_DefaultsToExecutionSQLAndArgs(t *testing.T) {
 	aCache := &Cache{}
 
-	identitySQL, identityArgs, identityArgsMarshal, err := aCache.resolveIndexIdentity(
+	identitySQL, identityArgs, identityArgsMarshal, meta, err := aCache.resolveIndexIdentity(
 		"SELECT * FROM campaign_flight WHERE tenant_id = ? AND campaign_id = ?",
 		[]interface{}{"tenant-a", 2002},
 	)
@@ -48,6 +48,9 @@ func TestCacheResolveIndexIdentity_DefaultsToExecutionSQLAndArgs(t *testing.T) {
 	if string(identityArgsMarshal) != `["tenant-a",2002]` {
 		t.Fatalf("unexpected marshaled identity args %s", string(identityArgsMarshal))
 	}
+	if meta.Source != "execution" {
+		t.Fatalf("expected execution identity source, got %q", meta.Source)
+	}
 }
 
 func TestCacheResolveIndexIdentity_UsesMatcherWarmupIdentity(t *testing.T) {
@@ -59,7 +62,7 @@ func TestCacheResolveIndexIdentity_UsesMatcherWarmupIdentity(t *testing.T) {
 		IdentityArgs: []interface{}{"tenant-a"},
 	}
 
-	identitySQL, identityArgs, identityArgsMarshal, err := aCache.resolveIndexIdentity(
+	identitySQL, identityArgs, identityArgsMarshal, meta, err := aCache.resolveIndexIdentity(
 		matcher.SQL,
 		matcher.Args,
 		matcher,
@@ -77,6 +80,9 @@ func TestCacheResolveIndexIdentity_UsesMatcherWarmupIdentity(t *testing.T) {
 	if string(identityArgsMarshal) != `["tenant-a"]` {
 		t.Fatalf("unexpected marshaled matcher identity args %s", string(identityArgsMarshal))
 	}
+	if meta.Source != "explicit" {
+		t.Fatalf("expected explicit identity source, got %q", meta.Source)
+	}
 }
 
 func TestCacheResolveIndexIdentity_RejectsInvalidMatcherIdentity(t *testing.T) {
@@ -86,8 +92,67 @@ func TestCacheResolveIndexIdentity_RejectsInvalidMatcherIdentity(t *testing.T) {
 		IdentityArgs: []interface{}{"tenant-a"},
 	}
 
-	_, _, _, err := aCache.resolveIndexIdentity(matcher.SQL, matcher.Args, matcher)
+	_, _, _, _, err := aCache.resolveIndexIdentity(matcher.SQL, matcher.Args, matcher)
 	if err == nil {
 		t.Fatalf("expected resolveIndexIdentity() to reject invalid matcher identity")
+	}
+}
+
+func TestCanonicalWarmupSQL_NormalizesEquivalentSQL(t *testing.T) {
+	writeSQL := "SELECT  t.CAMPAIGN_ID,  t.ID FROM (SELECT\n        cf.CAMPAIGN_ID,\n        cf.ID\n    FROM CI_CAMPAIGN_FLIGHT cf   ) AS t "
+	readSQL := "SELECT t.CAMPAIGN_ID, t.ID FROM  (SELECT cf.CAMPAIGN_ID, cf.ID FROM CI_CAMPAIGN_FLIGHT cf)  t"
+
+	canonicalWrite, ok, _ := canonicalWarmupSQL(writeSQL)
+	if !ok {
+		t.Fatalf("expected write SQL to be canonicalizable")
+	}
+	canonicalRead, ok, _ := canonicalWarmupSQL(readSQL)
+	if !ok {
+		t.Fatalf("expected read SQL to be canonicalizable")
+	}
+
+	if canonicalWrite != canonicalRead {
+		t.Fatalf("expected canonical SQL to match, got write=%q read=%q", canonicalWrite, canonicalRead)
+	}
+}
+
+func TestCanonicalWarmupSQL_NormalizesEquivalentOperators(t *testing.T) {
+	writeSQL := "SELECT t.audience_id FROM(SELECT si.audience_id FROM soft_ineligibilities si JOIN UNNEST(si.feature_rejection_estimates) fr ON 1=1 WHERE si.event_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 3 DAY)) t"
+	readSQL := "SELECT t.audience_id FROM(SELECT si.audience_id FROM soft_ineligibilities si JOIN UNNEST(si.feature_rejection_estimates) fr ON 1 = 1 WHERE si.event_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 3 DAY)) t"
+
+	canonicalWrite, ok, _ := canonicalWarmupSQL(writeSQL)
+	if !ok {
+		t.Fatalf("expected write SQL to be canonicalizable")
+	}
+	canonicalRead, ok, _ := canonicalWarmupSQL(readSQL)
+	if !ok {
+		t.Fatalf("expected read SQL to be canonicalizable")
+	}
+
+	if canonicalWrite != canonicalRead {
+		t.Fatalf("expected canonical SQL to match, got write=%q read=%q", canonicalWrite, canonicalRead)
+	}
+}
+
+func TestCanonicalWarmupIdentityURL_MatchesBetweenWriteAndReadForms(t *testing.T) {
+	aCache := &Cache{}
+	writeSQL := "SELECT  t.CAMPAIGN_ID,  t.ID FROM (SELECT\n        cf.CAMPAIGN_ID,\n        cf.ID\n    FROM CI_CAMPAIGN_FLIGHT cf   ) AS t "
+	readSQL := "SELECT t.CAMPAIGN_ID, t.ID FROM  (SELECT cf.CAMPAIGN_ID, cf.ID FROM CI_CAMPAIGN_FLIGHT cf)  t"
+	argsJSON := []byte("[]")
+
+	writeSQL, writeArgs, _ := canonicalWarmupIdentity(writeSQL, argsJSON)
+	readSQL, readArgs, _ := canonicalWarmupIdentity(readSQL, argsJSON)
+
+	writeURL, err := aCache.identityURL(writeSQL, nil, writeArgs)
+	if err != nil {
+		t.Fatalf("identityURL(write) error = %v", err)
+	}
+	readURL, err := aCache.identityURL(readSQL, nil, readArgs)
+	if err != nil {
+		t.Fatalf("identityURL(read) error = %v", err)
+	}
+
+	if writeURL != readURL {
+		t.Fatalf("expected canonical warmup URLs to match, got write=%s read=%s", writeURL, readURL)
 	}
 }
