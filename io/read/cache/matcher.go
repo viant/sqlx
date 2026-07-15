@@ -25,6 +25,11 @@ type (
 	ErrorType  string
 	AllowSmart bool
 
+	WarmupIdentityMeta struct {
+		Source string
+		Detail string
+	}
+
 	//Refresh forecase cache refresh
 	Refresh bool
 	//ParmetrizedQuery abstraction to represent data optimisation with caching and custom pagination
@@ -107,19 +112,28 @@ func (m *ParmetrizedQuery) MarshalIdentityArgs() ([]byte, error) {
 }
 
 func (m *ParmetrizedQuery) WarmupIdentity() (string, []interface{}, []byte, error) {
+	identitySQL, identityArgs, argsMarshal, _, err := m.WarmupIdentityResolved()
+	return identitySQL, identityArgs, argsMarshal, err
+}
+
+func (m *ParmetrizedQuery) WarmupIdentityResolved() (string, []interface{}, []byte, WarmupIdentityMeta, error) {
 	m.Init()
 
 	if m.IdentitySQL == "" {
 		if len(m.IdentityArgs) > 0 {
-			return "", nil, nil, fmt.Errorf("invalid warmup identity: identity args provided without identity SQL")
+			return "", nil, nil, WarmupIdentityMeta{}, fmt.Errorf("invalid warmup identity: identity args provided without identity SQL")
+		}
+		if identitySQL, identityArgs, ok, reason := deriveWarmupIdentityFromSQL(m.SQL, m.Args, m.By); ok {
+			marshalArgs, err := json.Marshal(identityArgs)
+			return identitySQL, identityArgs, marshalArgs, WarmupIdentityMeta{Source: "heuristic", Detail: reason}, err
 		}
 		marshalArgs, err := m.MarshalArgs()
-		return m.SQL, m.Args, marshalArgs, err
+		return m.SQL, m.Args, marshalArgs, WarmupIdentityMeta{Source: "execution", Detail: "default_execution_identity"}, err
 	}
 
 	marshalArgs, err := m.MarshalIdentityArgs()
 	if err != nil {
-		return "", nil, nil, err
+		return "", nil, nil, WarmupIdentityMeta{}, err
 	}
-	return m.IdentitySQL, m.IdentityArgs, marshalArgs, nil
+	return m.IdentitySQL, m.IdentityArgs, marshalArgs, WarmupIdentityMeta{Source: "explicit", Detail: "identity_fields_present"}, nil
 }
