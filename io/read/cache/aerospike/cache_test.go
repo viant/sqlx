@@ -156,3 +156,79 @@ func TestCanonicalWarmupIdentityURL_MatchesBetweenWriteAndReadForms(t *testing.T
 		t.Fatalf("expected canonical warmup URLs to match, got write=%s read=%s", writeURL, readURL)
 	}
 }
+
+func TestTryOrderedSQL_AppendsOrderByWhenMissing(t *testing.T) {
+	sql := "SELECT order_id, advertiser_time FROM metrics"
+
+	gotSQL, ordered := tryOrderedSQL(sql, "order_id")
+	if !ordered {
+		t.Fatalf("expected ordered result")
+	}
+	want := "SELECT order_id, advertiser_time FROM metrics ORDER BY order_id"
+	if gotSQL != want {
+		t.Fatalf("unexpected SQL %q, want %q", gotSQL, want)
+	}
+}
+
+func TestTryOrderedSQL_RecognizesExistingOrderByColumn(t *testing.T) {
+	sql := "SELECT order_id, advertiser_time FROM metrics ORDER BY order_id, advertiser_time"
+
+	gotSQL, ordered := tryOrderedSQL(sql, "order_id")
+	if !ordered {
+		t.Fatalf("expected ordered result")
+	}
+	if gotSQL != sql {
+		t.Fatalf("unexpected SQL %q, want original %q", gotSQL, sql)
+	}
+}
+
+func TestTryOrderedSQL_RecognizesQualifiedExistingOrderByColumn(t *testing.T) {
+	sql := "SELECT m.order_id, m.advertiser_time FROM metrics m ORDER BY m.order_id DESC, m.advertiser_time"
+
+	gotSQL, ordered := tryOrderedSQL(sql, "order_id")
+	if !ordered {
+		t.Fatalf("expected ordered result")
+	}
+	if gotSQL != sql {
+		t.Fatalf("unexpected SQL %q, want original %q", gotSQL, sql)
+	}
+}
+
+func TestTryOrderedSQL_DoesNotTreatSubstringMatchAsOrdered(t *testing.T) {
+	sql := "SELECT id, advertiser_id FROM metrics ORDER BY advertiser_id"
+
+	gotSQL, ordered := tryOrderedSQL(sql, "id")
+	if !ordered {
+		t.Fatalf("expected ordered result")
+	}
+	want := "SELECT * FROM (SELECT id, advertiser_id FROM metrics ORDER BY advertiser_id) AS _sqlx_warmup ORDER BY id"
+	if gotSQL != want {
+		t.Fatalf("unexpected SQL %q, want %q", gotSQL, want)
+	}
+}
+
+func TestTryOrderedSQL_WrapsWhenOrderedByDifferentColumn(t *testing.T) {
+	sql := "SELECT order_id, advertiser_time FROM metrics ORDER BY advertiser_time"
+
+	gotSQL, ordered := tryOrderedSQL(sql, "order_id")
+	if !ordered {
+		t.Fatalf("expected ordered result")
+	}
+	want := "SELECT * FROM (SELECT order_id, advertiser_time FROM metrics ORDER BY advertiser_time) AS _sqlx_warmup ORDER BY order_id"
+	if gotSQL != want {
+		t.Fatalf("unexpected SQL %q, want %q", gotSQL, want)
+	}
+}
+
+func TestTryOrderedSQL_TrimsTrailingSemicolon(t *testing.T) {
+	sql := "SELECT order_id FROM metrics;"
+
+	gotSQL, ordered := tryOrderedSQL(sql, "order_id")
+	if !ordered {
+		t.Fatalf("expected ordered result")
+	}
+	want := "SELECT order_id FROM metrics ORDER BY order_id"
+	if gotSQL != want {
+		t.Fatalf("unexpected SQL %q, want %q", gotSQL, want)
+	}
+}
