@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/viant/parsly/matcher"
 	"github.com/viant/sqlparser"
+	"github.com/viant/sqlparser/query"
 	"github.com/viant/sqlx/io"
 	"github.com/viant/sqlx/io/read/cache"
 	"github.com/viant/sqlx/io/read/cache/hash"
@@ -44,6 +45,8 @@ type (
 		recorder        cache.Recorder
 		typeHolder      *cache.ScanTypeHolder
 		client          *as.Client
+		getRecordFn     func(key *as.Key, bins ...string) (*as.Record, error)
+		putFn           func(key *as.Key, binMap as.BinMap) error
 		set             string
 		namespace       string
 		mux             sync.Mutex
@@ -80,14 +83,6 @@ func (a *Cache) IndexBy(ctx context.Context, db *sql.DB, column, SQL string, arg
 		return 0, err
 	}
 
-	var values = make(chan *cache.Indexed, 512)
-	errors := &Errors{}
-	go func() {
-		err = a.fetchAndIndexValues(ctx, fields, column, rows, values, isOrdered)
-		errors.Add(err)
-		close(values)
-	}()
-
 	identitySQL, identityArgs, argsMarshal, meta, err := a.resolveIndexIdentity(SQL, args, options...)
 	if err != nil {
 		return 0, err
@@ -109,26 +104,15 @@ func (a *Cache) IndexBy(ctx context.Context, db *sql.DB, column, SQL string, arg
 
 	argsStringified := string(argsMarshal)
 	fieldsStringified := string(fieldMarshal)
+	metaBin := a.metaBin(identitySQL, argsStringified, fieldsStringified, column)
 
-	inserted := 0
-	for value := range values {
-		var metaBin as.BinMap
-		if column == "" {
-			metaBin = a.metaBin(identitySQL, argsStringified, fieldsStringified, column)
-		} else {
-			metaBin = as.BinMap{}
-		}
-
-		errors.Add(a.writeIndexData(value, URL, column, metaBin))
-		inserted++
-	}
-
-	if err = errors.Err(); err != nil {
+	inserted, err := a.fetchAndIndexValues(ctx, fields, column, rows, isOrdered, URL, metaBin)
+	if err != nil {
 		return inserted, err
 	}
 
 	if column != "" {
-		return inserted + 1, a.putRowMarker(URL, column, a.metaBin(identitySQL, argsStringified, fieldsStringified, column))
+		return inserted + 1, a.putRowMarker(URL, column, metaBin)
 	}
 
 	return inserted, nil
@@ -139,17 +123,62 @@ func tryOrderedSQL(SQL string, column string) (string, bool) {
 		return SQL, false
 	}
 
-	lcSQL := strings.ToLower(SQL)
-	orderByIndex := strings.LastIndex(lcSQL, "order ")
-	if orderByIndex != -1 && !matcher.IsWhiteSpace(lcSQL[orderByIndex-1]) {
-		orderByIndex = -1
+	trimmedSQL := strings.TrimRightFunc(SQL, unicode.IsSpace)
+	trimmedSQL = strings.TrimSuffix(trimmedSQL, ";")
+	hasTopLevelOrderBy, orderedByColumn := warmupOrderState(trimmedSQL, column)
+	if !hasTopLevelOrderBy {
+		return trimmedSQL + " ORDER BY " + column, true
 	}
-	hasOrderBy := orderByIndex != -1
-	if hasOrderBy {
-		orderClause := string(lcSQL[orderByIndex+len("order ")])
-		return SQL, strings.Contains(orderClause, strings.ToLower(column))
+	if orderedByColumn {
+		return trimmedSQL, true
 	}
-	return SQL + " ORDER BY " + column, true
+	return "SELECT * FROM (" + trimmedSQL + ") AS _sqlx_warmup ORDER BY " + column, true
+}
+
+func warmupOrderState(SQL string, column string) (bool, bool) {
+	parsed, err := sqlparser.ParseQuery(SQL)
+	if err != nil || parsed == nil {
+		lcSQL := strings.ToLower(SQL)
+		orderByIndex := strings.LastIndex(lcSQL, "order by")
+		if orderByIndex != -1 && orderByIndex > 0 && !matcher.IsWhiteSpace(lcSQL[orderByIndex-1]) {
+			orderByIndex = -1
+		}
+		return orderByIndex != -1, false
+	}
+
+	if len(parsed.OrderBy) == 0 {
+		return false, false
+	}
+
+	return true, warmupFirstOrderMatches(parsed, column)
+}
+
+func warmupFirstOrderMatches(sel *query.Select, column string) bool {
+	if sel == nil || len(sel.OrderBy) == 0 {
+		return false
+	}
+
+	first := sel.OrderBy[0]
+	if first == nil {
+		return false
+	}
+
+	switch {
+	case first.Expr != nil:
+		return normalizeWarmupOrderExpr(sqlparser.Stringify(first.Expr)) == normalizeWarmupOrderExpr(column)
+	case first.Raw != "":
+		return normalizeWarmupOrderExpr(first.Raw) == normalizeWarmupOrderExpr(column)
+	default:
+		return false
+	}
+}
+
+func normalizeWarmupOrderExpr(value string) string {
+	value = strings.TrimSpace(strings.ToLower(value))
+	if index := strings.LastIndex(value, "."); index != -1 {
+		value = value[index+1:]
+	}
+	return strings.Trim(value, "`\"")
 }
 
 func (a *Cache) metaBin(SQL string, argsStringified string, fieldsStringified string, column string) as.BinMap {
@@ -536,40 +565,6 @@ func (a *Cache) updateEntryFields(record *as.Record, entry *cache.Entry) error {
 	}
 
 	return nil
-}
-
-func (a *Cache) writeIndexData(args *cache.Indexed, URL string, column string, metaBin as.BinMap) error {
-	if args.ColumnValue == nil && args.Column != "" {
-		return nil
-	}
-
-	marshal, err := json.Marshal(args.ColumnValue)
-	if err != nil {
-		return err
-	}
-
-	actualKey := a.columnValueURL(column, marshal, URL)
-	key, err := a.key(actualKey)
-	if err != nil {
-		return err
-	}
-
-	data := args.Data.Bytes()
-	isCompressed := false
-	if len(data) > compressionThreshold {
-		compressed, ok := compress(data)
-		isCompressed = ok
-
-		if ok {
-			metaBin[compDataBin] = compressed
-		}
-	}
-
-	if !isCompressed {
-		metaBin[dataBin] = string(data)
-	}
-
-	return a.put(key, metaBin)
 }
 
 func compress(data []byte) ([]byte, bool) {
@@ -1068,15 +1063,15 @@ func (a *Cache) updateMetaFields(entry *cache.Entry, match *RecordMatched, colum
 	return nil
 }
 
-func (a *Cache) fetchAndIndexValues(ctx context.Context, fields []*cache.Field, column string, rows *sql.Rows, dest chan *cache.Indexed, ordered bool) error {
+func (a *Cache) fetchAndIndexValues(ctx context.Context, fields []*cache.Field, column string, rows *sql.Rows, ordered bool, url string, metaBin as.BinMap) (int, error) {
 	const (
 		indexProgressInterval = 30 * time.Second
 		indexProgressRowStep  = 500000
 	)
 
-	indexSource, err := NewIndexSource(column, ordered, fields, dest)
+	indexSource, err := NewIndexSource(a, column, ordered, fields, url, metaBin)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	started := time.Now()
@@ -1089,7 +1084,7 @@ func (a *Cache) fetchAndIndexValues(ctx context.Context, fields []*cache.Field, 
 	for rows.Next() {
 		processed++
 		if err = rows.Scan(placeholders.ScanPlaceholders()...); err != nil {
-			return err
+			return indexSource.Count(), err
 		}
 
 		columnValue, ok := placeholders.ColumnValue()
@@ -1097,11 +1092,13 @@ func (a *Cache) fetchAndIndexValues(ctx context.Context, fields []*cache.Field, 
 			continue
 		}
 
-		indexed := indexSource.Index(columnValue)
-		indexed.Column = column
+		indexed, err := indexSource.Index(columnValue)
+		if err != nil {
+			return indexSource.Count(), err
+		}
 
-		if err = indexed.StringifyData(placeholders.Values()); err != nil {
-			return err
+		if _, err = indexed.appendRow(placeholders.Values()); err != nil {
+			return indexSource.Count(), err
 		}
 
 		if time.Since(lastProgress) >= indexProgressInterval && processed-lastProgressRows >= indexProgressRowStep {
@@ -1116,7 +1113,7 @@ func (a *Cache) fetchAndIndexValues(ctx context.Context, fields []*cache.Field, 
 	}
 
 	if err = indexSource.Close(); err != nil {
-		return err
+		return indexSource.Count(), err
 	}
 	cache.EmitIndexProgress(ctx, &cache.IndexProgressEvent{
 		Column:  column,
@@ -1124,7 +1121,7 @@ func (a *Cache) fetchAndIndexValues(ctx context.Context, fields []*cache.Field, 
 		Elapsed: time.Since(started),
 		Done:    true,
 	})
-	return nil
+	return indexSource.Count(), rows.Err()
 }
 
 func (a *Cache) handleResponseFailure(code types.ResultCode) {
@@ -1140,6 +1137,9 @@ func (a *Cache) handleResponseFailure(code types.ResultCode) {
 }
 
 func (a *Cache) getRecord(key *as.Key, bins ...string) (*as.Record, error) {
+	if a.getRecordFn != nil {
+		return a.getRecordFn(key, bins...)
+	}
 	record, err := a.client.Get(a.newBasePolicy(true), key, bins...)
 	if err != nil {
 		aerospikeErr, ok := asAerospikeErr(err)
@@ -1154,6 +1154,9 @@ func (a *Cache) getRecord(key *as.Key, bins ...string) (*as.Record, error) {
 }
 
 func (a *Cache) put(key *as.Key, binMap as.BinMap) error {
+	if a.putFn != nil {
+		return a.putFn(key, binMap)
+	}
 	policy := a.writePolicy()
 	err := a.client.Put(policy, key, binMap)
 	aerospikeErr, ok := asAerospikeErr(err)

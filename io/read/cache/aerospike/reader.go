@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"fmt"
 	as "github.com/aerospike/aerospike-client-go"
+	sio "io"
 )
 
 type (
@@ -30,7 +31,14 @@ func (r *Reader) ReadLine() (line []byte, prefix bool, err error) {
 	}
 
 	readLine, isPrefix, err := r.reader.ReadLine()
+	child := r.record.Bins[childBin]
 	if err != nil {
+		if err == sio.EOF && len(readLine) == 0 && child != nil {
+			if err = r.fetchChild(child); err != nil {
+				return nil, false, err
+			}
+			return r.ReadLine()
+		}
 		return readLine, isPrefix, err
 	}
 
@@ -48,7 +56,6 @@ func (r *Reader) ReadLine() (line []byte, prefix bool, err error) {
 		readLine = combined
 	}
 
-	child := r.record.Bins[childBin]
 	if len(readLine) == 0 && child != nil {
 		if err = r.fetchChild(child); err != nil {
 			return nil, false, err
@@ -110,7 +117,7 @@ func (r *Reader) fetchChild(childKeyValue interface{}) error {
 		return err
 	}
 
-	r.record, err = r.cache.getRecord(key, dataBin, childBin)
+	r.record, err = r.cache.getRecord(key, indexedReadBins()...)
 
 	if err != nil {
 		return err
@@ -118,4 +125,8 @@ func (r *Reader) fetchChild(childKeyValue interface{}) error {
 
 	r.reader = nil
 	return r.ensureReader()
+}
+
+func indexedReadBins() []string {
+	return []string{dataBin, compDataBin, childBin}
 }
