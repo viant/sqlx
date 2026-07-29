@@ -40,10 +40,13 @@ type (
 		Ordered      bool //SQL uses order by indexby column
 		Args         []interface{}
 		IdentityArgs []interface{}
-		In           []interface{}
-		Offset       int
-		Limit        int
-		OnSkip       func(values []interface{}) error
+		StoredFields []ProjectionField
+		// RequestedFields describes the caller's logical projection for warmup subset reads.
+		RequestedFields []ProjectionField
+		In              []interface{}
+		Offset          int
+		Limit           int
+		OnSkip          func(values []interface{}) error
 
 		marshalArgs         []byte
 		marshalIdentityArgs []byte

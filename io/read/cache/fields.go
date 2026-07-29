@@ -20,6 +20,16 @@ type (
 
 		initialized bool
 	}
+
+	ProjectionField struct {
+		Name         string   `json:",omitempty"`
+		FieldName    string   `json:",omitempty"`
+		ColumnName   string   `json:",omitempty"`
+		Source       string   `json:",omitempty"`
+		DimensionKey string   `json:",omitempty"`
+		MeasureKey   string   `json:",omitempty"`
+		Lookup       []string `json:",omitempty"`
+	}
 )
 
 func (f *Field) Name() string {

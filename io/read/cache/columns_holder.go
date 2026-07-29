@@ -16,9 +16,10 @@ func (s *ColumnsHolder) ConvertColumns() ([]io.Column, error) {
 		return s.ioColumns, nil
 	}
 
-	s.ioColumns = make([]io.Column, len(s.entry.Meta.Fields))
-	for i := range s.entry.Meta.Fields {
-		s.ioColumns[i] = s.entry.Meta.Fields[i]
+	fields := s.entry.Meta.EffectiveFields()
+	s.ioColumns = make([]io.Column, len(fields))
+	for i := range fields {
+		s.ioColumns[i] = fields[i]
 	}
 
 	return s.ioColumns, nil
