@@ -3,9 +3,9 @@ package aerospike
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	as "github.com/aerospike/aerospike-client-go"
 	"github.com/viant/sqlx/io/read/cache"
+	"log"
 	"strconv"
 )
 
@@ -109,7 +109,7 @@ func (w *Writer) delete(key *as.Key) {
 
 	err := w.cache.deleteCascade(key)
 	if err != nil {
-		fmt.Printf("error while removing entry %v\n", err.Error())
+		log.Printf("sqlx aerospike cache cleanup delete failed: %v", err)
 	}
 }
 

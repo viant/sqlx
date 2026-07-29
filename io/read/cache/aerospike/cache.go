@@ -28,17 +28,18 @@ import (
 )
 
 const (
-	sqlBin      = "SQL"
-	argsBin     = "Args"
-	dataBin     = "Data"
-	compDataBin = "CData"
-	typesBin    = "Type"
-	fieldsBin   = "Fields"
-	childBin    = "Child"
-	columnBin   = "Column"
+	sqlBin          = "SQL"
+	argsBin         = "Args"
+	dataBin         = "Data"
+	compDataBin     = "CData"
+	typesBin        = "Type"
+	fieldsBin       = "Fields"
+	storedFieldsBin = "StoredFields"
+	childBin        = "Child"
+	columnBin       = "Column"
 )
 
-var cachedBins = []string{typesBin, argsBin, sqlBin, dataBin, fieldsBin, compDataBin}
+var cachedBins = []string{typesBin, argsBin, sqlBin, dataBin, fieldsBin, storedFieldsBin, compDataBin}
 
 type (
 	Cache struct {
@@ -104,7 +105,11 @@ func (a *Cache) IndexBy(ctx context.Context, db *sql.DB, column, SQL string, arg
 
 	argsStringified := string(argsMarshal)
 	fieldsStringified := string(fieldMarshal)
-	metaBin := a.metaBin(identitySQL, argsStringified, fieldsStringified, column)
+	storedFieldsStringified, err := a.storedFieldsMeta(column, options...)
+	if err != nil {
+		return 0, err
+	}
+	metaBin := a.metaBin(identitySQL, argsStringified, fieldsStringified, storedFieldsStringified, column)
 
 	inserted, err := a.fetchAndIndexValues(ctx, fields, column, rows, isOrdered, URL, metaBin)
 	if err != nil {
@@ -181,12 +186,15 @@ func normalizeWarmupOrderExpr(value string) string {
 	return strings.Trim(value, "`\"")
 }
 
-func (a *Cache) metaBin(SQL string, argsStringified string, fieldsStringified string, column string) as.BinMap {
+func (a *Cache) metaBin(SQL string, argsStringified string, fieldsStringified string, storedFieldsStringified string, column string) as.BinMap {
 	metaBin := as.BinMap{
 		sqlBin:    SQL,
 		argsBin:   argsStringified,
 		fieldsBin: fieldsStringified,
 		columnBin: column,
+	}
+	if storedFieldsStringified != "" {
+		metaBin[storedFieldsBin] = storedFieldsStringified
 	}
 
 	return metaBin
@@ -285,8 +293,381 @@ func (a *Cache) get(ctx context.Context, SQL string, args []interface{}, columns
 	if err = a.updateMetaFields(anEntry, lazyMatch, warmupMatch); err != nil {
 		return nil, err
 	}
+	if err = a.applyWarmupProjection(anEntry, columnsInMatcher, cacheStats); err != nil {
+		return nil, err
+	}
 
 	return anEntry, a.updateWriter(anEntry, lazyMatch, SQL, jsonEncodedArgs, cacheStats)
+}
+
+func (a *Cache) applyWarmupProjection(entry *cache.Entry, matcher *cache.ParmetrizedQuery, stats *cache.Stats) error {
+	if entry == nil || matcher == nil || stats == nil || stats.Type != cache.TypeReadMulti || len(matcher.RequestedFields) == 0 {
+		return nil
+	}
+	exactMismatchIndex, exactMismatchStored, exactMismatchRequested := exactProjectionMismatch(entry.Meta.StoredFields, matcher.RequestedFields)
+	indexes, ok, reason, err := warmupProjectionIndexes(entry.Meta.StoredFields, matcher.RequestedFields)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		a.logWarmupf("aerospike cache warmup_projection_rejected set=%s reason=%s exact_mismatch_index=%d exact_mismatch_stored=%q exact_mismatch_requested=%q stored_fields=%v requested_fields=%v stored_meta=%v requested_meta=%v\n",
+			a.set,
+			reason,
+			exactMismatchIndex,
+			exactMismatchStored,
+			exactMismatchRequested,
+			projectionFieldNames(entry.Meta.StoredFields),
+			projectionFieldNames(matcher.RequestedFields),
+			projectionFieldDetails(entry.Meta.StoredFields),
+			projectionFieldDetails(matcher.RequestedFields),
+		)
+		if entry.ReadCloser != nil {
+			_ = entry.ReadCloser.Close()
+			entry.ReadCloser = nil
+		}
+		entry.Meta.Fields = nil
+		entry.Meta.StoredFields = nil
+		entry.Meta.Type = nil
+		entry.Meta.ProjectedIndexes = nil
+		stats.Type = cache.TypeNone
+		stats.FoundWarmup = false
+		stats.RecordsCounter = 0
+		return nil
+	}
+	entry.Meta.ProjectedIndexes = indexes
+	a.logWarmupf("aerospike cache warmup_projection set=%s stored_fields=%v requested_fields=%v stored_meta=%v requested_meta=%v projected_indexes=%v fields=%v type=%v\n",
+		a.set,
+		projectionFieldNames(entry.Meta.StoredFields),
+		projectionFieldNames(matcher.RequestedFields),
+		projectionFieldDetails(entry.Meta.StoredFields),
+		projectionFieldDetails(matcher.RequestedFields),
+		entry.Meta.ProjectedIndexes,
+		cacheFieldNames(entry.Meta.Fields),
+		entry.Meta.Type,
+	)
+	return nil
+}
+
+func projectionFieldNames(fields []cache.ProjectionField) []string {
+	result := make([]string, 0, len(fields))
+	for _, field := range fields {
+		result = append(result, field.Name)
+	}
+	return result
+}
+
+func projectionFieldDetails(fields []cache.ProjectionField) []string {
+	result := make([]string, 0, len(fields))
+	for _, field := range fields {
+		result = append(result, fmt.Sprintf("name=%q field=%q column=%q source=%q dim=%q measure=%q lookup=%v",
+			field.Name,
+			field.FieldName,
+			field.ColumnName,
+			field.Source,
+			field.DimensionKey,
+			field.MeasureKey,
+			field.Lookup,
+		))
+	}
+	return result
+}
+
+func cacheFieldNames(fields []*cache.Field) []string {
+	result := make([]string, 0, len(fields))
+	for _, field := range fields {
+		if field == nil {
+			result = append(result, "<nil>")
+			continue
+		}
+		result = append(result, field.Name())
+	}
+	return result
+}
+
+func warmupProjectionIndexes(storedFields []cache.ProjectionField, requestedFields []cache.ProjectionField) ([]int, bool, string, error) {
+	if len(requestedFields) == 0 {
+		return nil, false, "requested_projection_empty", nil
+	}
+	if len(storedFields) == 0 {
+		return nil, false, "stored_projection_empty", nil
+	}
+	if hasGroupedProjectionFields(storedFields) || hasGroupedProjectionFields(requestedFields) {
+		return groupedWarmupProjectionIndexes(storedFields, requestedFields)
+	}
+	if indexes, ok := exactProjectionIndexes(storedFields, requestedFields); ok {
+		return indexes, true, "", nil
+	}
+	return nonGroupedWarmupProjectionIndexes(storedFields, requestedFields)
+}
+
+func hasGroupedProjectionFields(fields []cache.ProjectionField) bool {
+	for _, field := range fields {
+		if field.DimensionKey != "" || field.MeasureKey != "" {
+			return true
+		}
+	}
+	return false
+}
+
+func nonGroupedWarmupProjectionIndexes(storedFields []cache.ProjectionField, requestedFields []cache.ProjectionField) ([]int, bool, string, error) {
+	const ambiguousProjectionIndex = -2
+	storedByName := map[string]int{}
+	storedByWeak := map[string]int{}
+	for index, field := range storedFields {
+		for _, name := range projectionFieldStrongLookup(field) {
+			if existing, exists := storedByName[name]; !exists {
+				storedByName[name] = index
+			} else if existing != index {
+				storedByName[name] = ambiguousProjectionIndex
+			}
+		}
+		for _, name := range projectionFieldWeakLookup(field) {
+			if existing, exists := storedByWeak[name]; !exists {
+				storedByWeak[name] = index
+			} else if existing != index {
+				storedByWeak[name] = ambiguousProjectionIndex
+			}
+		}
+	}
+	indexes := make([]int, 0, len(requestedFields))
+	for _, field := range requestedFields {
+		index, ok, reason := resolveProjectionFieldIndex(field, storedByName, ambiguousProjectionIndex, projectionFieldStrongLookup)
+		if !ok && reason != "" {
+			return nil, false, reason, nil
+		}
+		if index == -1 {
+			index, ok, reason = resolveProjectionFieldIndex(field, storedByWeak, ambiguousProjectionIndex, projectionFieldWeakLookup)
+			if !ok && reason != "" {
+				return nil, false, reason, nil
+			}
+		}
+		if index == -1 {
+			return nil, false, "non_grouped_missing_field", nil
+		}
+		indexes = append(indexes, index)
+	}
+	return indexes, true, "", nil
+}
+
+func resolveProjectionFieldIndex(field cache.ProjectionField, stored map[string]int, ambiguousProjectionIndex int, lookup func(cache.ProjectionField) []string) (int, bool, string) {
+	index := -1
+	for _, name := range lookup(field) {
+		candidate, ok := stored[name]
+		if !ok {
+			continue
+		}
+		if candidate == ambiguousProjectionIndex {
+			return -1, false, "non_grouped_ambiguous_stored_alias"
+		}
+		if index == -1 {
+			index = candidate
+			continue
+		}
+		if index != candidate {
+			return -1, false, "non_grouped_requested_alias_conflict"
+		}
+	}
+	return index, true, ""
+}
+
+func exactProjectionIndexes(storedFields []cache.ProjectionField, requestedFields []cache.ProjectionField) ([]int, bool) {
+	index, _, _ := exactProjectionMismatch(storedFields, requestedFields)
+	if index != -1 {
+		return nil, false
+	}
+	indexes := make([]int, len(requestedFields))
+	for i := range requestedFields {
+		indexes[i] = i
+	}
+	return indexes, true
+}
+
+func exactProjectionMismatch(storedFields []cache.ProjectionField, requestedFields []cache.ProjectionField) (int, string, string) {
+	if len(storedFields) != len(requestedFields) {
+		return minInt(len(storedFields), len(requestedFields)), "", ""
+	}
+	for i := range requestedFields {
+		if !projectionFieldStrongIdentityOverlap(storedFields[i], requestedFields[i]) {
+			return i, projectionFieldSummary(storedFields[i]), projectionFieldSummary(requestedFields[i])
+		}
+	}
+	return -1, "", ""
+}
+
+func groupedWarmupProjectionIndexes(storedFields []cache.ProjectionField, requestedFields []cache.ProjectionField) ([]int, bool, string, error) {
+	storedDimensions, storedMeasures, reason, ok := groupedProjectionPartitions(storedFields)
+	if !ok {
+		return nil, false, reason, nil
+	}
+	requestedDimensions, _, reason, ok := groupedProjectionPartitions(requestedFields)
+	if !ok {
+		return nil, false, reason, nil
+	}
+	if len(storedDimensions) != len(requestedDimensions) {
+		return nil, false, "grouped_dimension_mismatch", nil
+	}
+
+	storedDimensionSet := map[string]bool{}
+	for _, field := range storedDimensions {
+		if field.DimensionKey == "" || storedDimensionSet[field.DimensionKey] {
+			return nil, false, "grouped_duplicate_dimension", nil
+		}
+		storedDimensionSet[field.DimensionKey] = true
+	}
+	requestedDimensionSet := map[string]bool{}
+	for _, field := range requestedDimensions {
+		if field.DimensionKey == "" || requestedDimensionSet[field.DimensionKey] {
+			return nil, false, "grouped_duplicate_dimension", nil
+		}
+		requestedDimensionSet[field.DimensionKey] = true
+		if !storedDimensionSet[field.DimensionKey] {
+			return nil, false, "grouped_dimension_mismatch", nil
+		}
+	}
+
+	storedMeasureIndexes := map[string]int{}
+	for _, field := range storedMeasures {
+		if _, exists := storedMeasureIndexes[field.MeasureKey]; exists {
+			return nil, false, "grouped_duplicate_measure", nil
+		}
+		storedMeasureIndexes[field.MeasureKey] = indexOfProjectionField(storedFields, field)
+	}
+
+	indexes := make([]int, 0, len(requestedFields))
+	for _, requested := range requestedFields {
+		if requested.DimensionKey != "" {
+			index := indexOfProjectionFieldByDimensionKey(storedFields, requested.DimensionKey)
+			if index == -1 {
+				return nil, false, "grouped_dimension_mismatch", nil
+			}
+			indexes = append(indexes, index)
+			continue
+		}
+		if requested.MeasureKey == "" {
+			return nil, false, "grouped_invalid_metadata", nil
+		}
+		index, ok := storedMeasureIndexes[requested.MeasureKey]
+		if !ok {
+			return nil, false, "grouped_missing_measure", nil
+		}
+		indexes = append(indexes, index)
+	}
+
+	return indexes, true, "", nil
+}
+
+func groupedProjectionPartitions(fields []cache.ProjectionField) ([]cache.ProjectionField, []cache.ProjectionField, string, bool) {
+	dimensions := make([]cache.ProjectionField, 0)
+	measures := make([]cache.ProjectionField, 0)
+	for _, field := range fields {
+		switch {
+		case field.DimensionKey != "" && field.MeasureKey == "":
+			dimensions = append(dimensions, field)
+		case field.MeasureKey != "" && field.DimensionKey == "":
+			measures = append(measures, field)
+		default:
+			return nil, nil, "grouped_invalid_metadata", false
+		}
+	}
+	return dimensions, measures, "", true
+}
+
+func indexOfProjectionField(fields []cache.ProjectionField, target cache.ProjectionField) int {
+	for i, field := range fields {
+		if field.DimensionKey == target.DimensionKey && field.MeasureKey == target.MeasureKey {
+			return i
+		}
+	}
+	return -1
+}
+
+func indexOfProjectionFieldByDimensionKey(fields []cache.ProjectionField, dimensionKey string) int {
+	for i, field := range fields {
+		if field.DimensionKey == dimensionKey {
+			return i
+		}
+	}
+	return -1
+}
+
+func projectionFieldStrongLookup(field cache.ProjectionField) []string {
+	var result []string
+	add := func(value string) {
+		value = normalizeProjectionFieldName(value)
+		if value == "" {
+			return
+		}
+		result = append(result, value)
+	}
+	add(field.DimensionKey)
+	add(field.MeasureKey)
+	add(field.Name)
+	add(field.FieldName)
+	add(field.ColumnName)
+	return result
+}
+
+func projectionFieldWeakLookup(field cache.ProjectionField) []string {
+	var result []string
+	add := func(value string) {
+		value = normalizeProjectionFieldName(value)
+		if value == "" {
+			return
+		}
+		result = append(result, value)
+	}
+	add(field.Source)
+	return result
+}
+
+func projectionFieldStrongIdentityOverlap(stored cache.ProjectionField, requested cache.ProjectionField) bool {
+	storedValues := projectionFieldStrongLookup(stored)
+	requestedValues := projectionFieldStrongLookup(requested)
+	for _, storedValue := range storedValues {
+		for _, requestedValue := range requestedValues {
+			if storedValue == requestedValue {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func projectionFieldSummary(field cache.ProjectionField) string {
+	return fmt.Sprintf("name=%q field=%q column=%q dim=%q measure=%q lookup=%v source=%q",
+		field.Name,
+		field.FieldName,
+		field.ColumnName,
+		field.DimensionKey,
+		field.MeasureKey,
+		field.Lookup,
+		field.Source,
+	)
+}
+
+func minInt(left, right int) int {
+	if left < right {
+		return left
+	}
+	return right
+}
+
+func projectionFieldLookup(field cache.ProjectionField) []string {
+	result := projectionFieldStrongLookup(field)
+	result = append(result, projectionFieldWeakLookup(field)...)
+	return result
+}
+
+func normalizeProjectionFieldName(value string) string {
+	value = strings.TrimSpace(strings.ToLower(value))
+	if index := strings.LastIndex(value, "."); index != -1 && index+1 < len(value) {
+		value = value[index+1:]
+	}
+	value = strings.Trim(value, "`\"")
+	value = strings.ReplaceAll(value, "_", "")
+	value = strings.ReplaceAll(value, "-", "")
+	value = strings.ReplaceAll(value, ".", "")
+	return value
 }
 
 func (a *Cache) updateCacheStats(fullMatch *RecordMatched, columnsInMatch *RecordMatched, cacheStats *cache.Stats) {
@@ -782,6 +1163,24 @@ func (a *Cache) resolveIndexIdentity(SQL string, args []interface{}, options ...
 	return SQL, args, argsMarshal, cache.WarmupIdentityMeta{Source: "execution", Detail: "default_execution_identity"}, nil
 }
 
+func (a *Cache) storedFieldsMeta(column string, options ...interface{}) (string, error) {
+	if column == "" {
+		return "", nil
+	}
+	for _, option := range options {
+		matcher, ok := option.(*cache.ParmetrizedQuery)
+		if !ok || matcher == nil || matcher.StoredFields == nil {
+			continue
+		}
+		marshal, err := json.Marshal(matcher.StoredFields)
+		if err != nil {
+			return "", err
+		}
+		return string(marshal), nil
+	}
+	return "", nil
+}
+
 func (a *Cache) logWarmupMarker(stage string, column string, warmupURL string, markerKey string) {
 	a.logWarmupf("aerospike cache %s set=%s column=%s warmup_url=%s marker_key=%s\n", stage, a.set, column, warmupURL, markerKey)
 }
@@ -1028,12 +1427,16 @@ func (a *Cache) entryId(fullMatch *RecordMatched, columnsInMatch *RecordMatched)
 
 func (a *Cache) updateMetaFields(entry *cache.Entry, match *RecordMatched, columnsInMatch *RecordMatched) error {
 	var record *as.Record
+	var warmupRecord *as.Record
 	if match != nil {
 		record = match.record
 	}
 
-	if record == nil && columnsInMatch != nil {
-		record = columnsInMatch.record
+	if columnsInMatch != nil {
+		warmupRecord = columnsInMatch.record
+		if record == nil {
+			record = warmupRecord
+		}
 	}
 
 	if record == nil {
@@ -1058,6 +1461,24 @@ func (a *Cache) updateMetaFields(entry *cache.Entry, match *RecordMatched, colum
 		if err := field.Init(); err != nil {
 			return err
 		}
+	}
+
+	if warmupRecord == nil {
+		warmupRecord = record
+	}
+
+	storedFieldsValue := warmupRecord.Bins[storedFieldsBin]
+	if storedFieldsValue == nil {
+		return nil
+	}
+
+	storedFieldsStr, ok := storedFieldsValue.(string)
+	if !ok {
+		return fmt.Errorf("expected stored fields to be type of %T but got %T", storedFieldsStr, storedFieldsValue)
+	}
+
+	if err := json.Unmarshal([]byte(storedFieldsStr), &entry.Meta.StoredFields); err != nil {
+		return err
 	}
 
 	return nil

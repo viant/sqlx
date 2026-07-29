@@ -1,7 +1,13 @@
 package aerospike
 
 import (
+	"context"
+	"database/sql"
+	"encoding/json"
+	as "github.com/aerospike/aerospike-client-go"
+	_ "github.com/mattn/go-sqlite3"
 	"github.com/viant/sqlx/io/read/cache"
+	"reflect"
 	"testing"
 )
 
@@ -230,5 +236,642 @@ func TestTryOrderedSQL_TrimsTrailingSemicolon(t *testing.T) {
 	want := "SELECT order_id FROM metrics ORDER BY order_id"
 	if gotSQL != want {
 		t.Fatalf("unexpected SQL %q, want %q", gotSQL, want)
+	}
+}
+
+func TestCacheIndexBy_WritesStoredFieldsOnMarkerRecord(t *testing.T) {
+	db, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("sql.Open() error = %v", err)
+	}
+	defer db.Close()
+
+	if _, err = db.Exec(`CREATE TABLE metrics (order_id INTEGER, name TEXT)`); err != nil {
+		t.Fatalf("CREATE TABLE error = %v", err)
+	}
+	if _, err = db.Exec(`INSERT INTO metrics(order_id, name) VALUES (7, 'alpha')`); err != nil {
+		t.Fatalf("INSERT error = %v", err)
+	}
+
+	records := map[string]as.BinMap{}
+	aCache := &Cache{
+		namespace: "ns_memory",
+		set:       "steward_test",
+		putFn: func(key *as.Key, binMap as.BinMap) error {
+			records[key.String()] = cloneBinMap(binMap)
+			return nil
+		},
+	}
+
+	matcher := &cache.ParmetrizedQuery{
+		StoredFields: []cache.ProjectionField{
+			{Name: "order_id", ColumnName: "order_id"},
+			{Name: "name", ColumnName: "name"},
+		},
+	}
+
+	inserted, err := aCache.IndexBy(
+		context.Background(),
+		db,
+		"order_id",
+		"SELECT order_id, name FROM metrics",
+		nil,
+		matcher,
+	)
+	if err != nil {
+		t.Fatalf("IndexBy() error = %v", err)
+	}
+	if inserted != 2 {
+		t.Fatalf("IndexBy() inserted = %d, want 2", inserted)
+	}
+
+	var marker as.BinMap
+	for _, record := range records {
+		if _, ok := record[columnBin]; ok {
+			marker = record
+			break
+		}
+	}
+	if marker == nil {
+		t.Fatalf("expected marker record to be written")
+	}
+
+	storedFieldsValue, ok := marker[storedFieldsBin]
+	if !ok {
+		t.Fatalf("expected %s bin on marker record", storedFieldsBin)
+	}
+	storedFieldsJSON, ok := storedFieldsValue.(string)
+	if !ok {
+		t.Fatalf("expected %s bin to be string, got %T", storedFieldsBin, storedFieldsValue)
+	}
+
+	var storedFields []cache.ProjectionField
+	if err = json.Unmarshal([]byte(storedFieldsJSON), &storedFields); err != nil {
+		t.Fatalf("json.Unmarshal(stored fields) error = %v", err)
+	}
+	if len(storedFields) != 2 {
+		t.Fatalf("unexpected stored fields count %d", len(storedFields))
+	}
+	if storedFields[0].Name != "order_id" {
+		t.Fatalf("unexpected first stored field %+v", storedFields[0])
+	}
+}
+
+func TestCacheUpdateMetaFields_LoadsStoredFieldsFromWarmupMarker(t *testing.T) {
+	fieldsJSON := `[{"ColumnName":"order_id","ColumnScanType":"int","ColumnDatabaseName":"INTEGER"}]`
+	storedFieldsJSON := `[{"Name":"order_id","ColumnName":"order_id"}]`
+	entry := &cache.Entry{}
+
+	err := (&Cache{}).updateMetaFields(entry, nil, &RecordMatched{
+		record: &as.Record{
+			Bins: as.BinMap{
+				fieldsBin:       fieldsJSON,
+				storedFieldsBin: storedFieldsJSON,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("updateMetaFields() error = %v", err)
+	}
+
+	if len(entry.Meta.Fields) != 1 {
+		t.Fatalf("unexpected physical fields count %d", len(entry.Meta.Fields))
+	}
+	if len(entry.Meta.StoredFields) != 1 {
+		t.Fatalf("unexpected stored fields count %d", len(entry.Meta.StoredFields))
+	}
+	if entry.Meta.StoredFields[0].Name != "order_id" {
+		t.Fatalf("unexpected stored field %+v", entry.Meta.StoredFields[0])
+	}
+}
+
+func TestCacheUpdateMetaFields_ToleratesMissingStoredFieldsBin(t *testing.T) {
+	fieldsJSON := `[{"ColumnName":"order_id","ColumnScanType":"int","ColumnDatabaseName":"INTEGER"}]`
+	entry := &cache.Entry{}
+
+	err := (&Cache{}).updateMetaFields(entry, nil, &RecordMatched{
+		record: &as.Record{
+			Bins: as.BinMap{
+				fieldsBin: fieldsJSON,
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("updateMetaFields() error = %v", err)
+	}
+
+	if len(entry.Meta.Fields) != 1 {
+		t.Fatalf("unexpected physical fields count %d", len(entry.Meta.Fields))
+	}
+	if entry.Meta.StoredFields != nil {
+		t.Fatalf("expected missing stored fields bin to leave meta empty, got %+v", entry.Meta.StoredFields)
+	}
+}
+
+func TestCacheUpdateMetaFields_PrefersWarmupStoredFieldsWhenLazyRecordExists(t *testing.T) {
+	lazyFieldsJSON := `[{"ColumnName":"order_id","ColumnScanType":"int","ColumnDatabaseName":"INTEGER"}]`
+	warmupFieldsJSON := `[{"ColumnName":"campaign_id","ColumnScanType":"int","ColumnDatabaseName":"INTEGER"}]`
+	storedFieldsJSON := `[{"Name":"campaign_id","ColumnName":"campaign_id"}]`
+	entry := &cache.Entry{}
+
+	err := (&Cache{}).updateMetaFields(
+		entry,
+		&RecordMatched{
+			record: &as.Record{
+				Bins: as.BinMap{
+					fieldsBin: lazyFieldsJSON,
+				},
+			},
+		},
+		&RecordMatched{
+			record: &as.Record{
+				Bins: as.BinMap{
+					fieldsBin:       warmupFieldsJSON,
+					storedFieldsBin: storedFieldsJSON,
+				},
+			},
+		},
+	)
+	if err != nil {
+		t.Fatalf("updateMetaFields() error = %v", err)
+	}
+
+	if len(entry.Meta.Fields) != 1 || entry.Meta.Fields[0].ColumnName != "order_id" {
+		t.Fatalf("expected physical fields to stay sourced from lazy record, got %+v", entry.Meta.Fields)
+	}
+	if len(entry.Meta.StoredFields) != 1 {
+		t.Fatalf("unexpected stored fields count %d", len(entry.Meta.StoredFields))
+	}
+	if entry.Meta.StoredFields[0].Name != "campaign_id" {
+		t.Fatalf("unexpected stored field %+v", entry.Meta.StoredFields[0])
+	}
+}
+
+func TestWarmupProjectionIndexes_NonGroupableSubset(t *testing.T) {
+	stored := []cache.ProjectionField{
+		{Name: "order_id", FieldName: "OrderId", ColumnName: "order_id", Lookup: []string{"order_id", "orderid"}},
+		{Name: "bids", FieldName: "Bids", ColumnName: "bids", Lookup: []string{"bids"}},
+		{Name: "impressions", FieldName: "Impressions", ColumnName: "impressions", Lookup: []string{"impressions"}},
+	}
+	requested := []cache.ProjectionField{
+		{Name: "impressions"},
+		{Name: "order_id"},
+	}
+
+	indexes, ok, _, err := warmupProjectionIndexes(stored, requested)
+	if err != nil {
+		t.Fatalf("warmupProjectionIndexes() error = %v", err)
+	}
+	if !ok {
+		t.Fatalf("expected projection to be compatible")
+	}
+	if got, want := indexes, []int{2, 0}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("unexpected indexes %v, want %v", got, want)
+	}
+}
+
+func TestWarmupProjectionIndexes_MatchesCanonicalProjectionKeys(t *testing.T) {
+	stored := []cache.ProjectionField{
+		{Name: "Campaign", DimensionKey: "campaign.id"},
+		{Name: "Spend", MeasureKey: "metrics.spend"},
+	}
+	requested := []cache.ProjectionField{
+		{MeasureKey: "metrics.spend"},
+		{DimensionKey: "campaign.id"},
+	}
+
+	indexes, ok, _, err := warmupProjectionIndexes(stored, requested)
+	if err != nil {
+		t.Fatalf("warmupProjectionIndexes() error = %v", err)
+	}
+	if !ok {
+		t.Fatalf("expected canonical projection keys to match")
+	}
+	if got, want := indexes, []int{1, 0}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("unexpected indexes %v, want %v", got, want)
+	}
+}
+
+func TestWarmupProjectionIndexes_NonGroupedCanonicalKeysStillUseSubsetLogic(t *testing.T) {
+	stored := []cache.ProjectionField{
+		{Name: "Campaign", DimensionKey: "campaign.id"},
+		{Name: "Spend", MeasureKey: "metrics.spend"},
+		{Name: "Clicks", MeasureKey: "metrics.clicks"},
+	}
+	requested := []cache.ProjectionField{
+		{MeasureKey: "metrics.clicks"},
+		{DimensionKey: "campaign.id"},
+	}
+
+	indexes, ok, _, err := warmupProjectionIndexes(stored, requested)
+	if err != nil {
+		t.Fatalf("warmupProjectionIndexes() error = %v", err)
+	}
+	if !ok {
+		t.Fatalf("expected non-grouped canonical-key subset to stay compatible")
+	}
+	if got, want := indexes, []int{2, 0}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("unexpected indexes %v, want %v", got, want)
+	}
+}
+
+func TestWarmupProjectionIndexes_RejectsAmbiguousStoredAliases(t *testing.T) {
+	stored := []cache.ProjectionField{
+		{Name: "campaign_id"},
+		{Name: "campaignid"},
+	}
+	requested := []cache.ProjectionField{{Name: "campaign_id"}}
+
+	_, ok, _, err := warmupProjectionIndexes(stored, requested)
+	if err != nil {
+		t.Fatalf("warmupProjectionIndexes() error = %v", err)
+	}
+	if ok {
+		t.Fatalf("expected ambiguous stored aliases to be rejected")
+	}
+}
+
+func TestWarmupProjectionIndexes_IgnoresRequestedLookupWhenCanonicalIdentityIsUnique(t *testing.T) {
+	stored := []cache.ProjectionField{
+		{Name: "campaign_id"},
+		{Name: "order_id", Lookup: []string{"campaignid"}},
+	}
+	requested := []cache.ProjectionField{{
+		Name:   "campaign_id",
+		Lookup: []string{"order_id"},
+	}}
+
+	indexes, ok, _, err := warmupProjectionIndexes(stored, requested)
+	if err != nil {
+		t.Fatalf("warmupProjectionIndexes() error = %v", err)
+	}
+	if !ok {
+		t.Fatalf("expected canonical identity to win over conflicting requested lookup aliases")
+	}
+	if got, want := indexes, []int{0}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("unexpected indexes %v, want %v", got, want)
+	}
+}
+
+func TestWarmupProjectionIndexes_AllowsExactShapeWithDuplicateSource(t *testing.T) {
+	stored := []cache.ProjectionField{
+		{Name: "campaign_id", FieldName: "CampaignId", Source: "ID"},
+		{Name: "media_plan_id", FieldName: "MediaPlanId", Source: "ID"},
+		{Name: "spend", FieldName: "Spend", Source: "SPEND"},
+	}
+	requested := []cache.ProjectionField{
+		{Name: "campaign_id", FieldName: "CampaignId", Source: "ID"},
+		{Name: "media_plan_id", FieldName: "MediaPlanId", Source: "ID"},
+		{Name: "spend", FieldName: "Spend", Source: "SPEND"},
+	}
+
+	indexes, ok, _, err := warmupProjectionIndexes(stored, requested)
+	if err != nil {
+		t.Fatalf("warmupProjectionIndexes() error = %v", err)
+	}
+	if !ok {
+		t.Fatalf("expected exact-shape projection to be compatible")
+	}
+	if got, want := indexes, []int{0, 1, 2}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("unexpected indexes %v, want %v", got, want)
+	}
+}
+
+func TestWarmupProjectionIndexes_IgnoresDuplicateSourceWhenPrimaryIdentityIsUnique(t *testing.T) {
+	stored := []cache.ProjectionField{
+		{Name: "campaign_id", FieldName: "CampaignId", Source: "ID"},
+		{Name: "media_plan_id", FieldName: "MediaPlanId", Source: "ID"},
+		{Name: "spend", FieldName: "Spend", Source: "SPEND"},
+	}
+	requested := []cache.ProjectionField{
+		{Name: "media_plan_id", FieldName: "MediaPlanId"},
+		{Name: "campaign_id", FieldName: "CampaignId"},
+	}
+
+	indexes, ok, _, err := warmupProjectionIndexes(stored, requested)
+	if err != nil {
+		t.Fatalf("warmupProjectionIndexes() error = %v", err)
+	}
+	if !ok {
+		t.Fatalf("expected unique output identities to match despite duplicate source aliases")
+	}
+	if got, want := indexes, []int{1, 0}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("unexpected indexes %v, want %v", got, want)
+	}
+}
+
+func TestWarmupProjectionIndexes_UsesUniqueSourceAsWeakFallback(t *testing.T) {
+	stored := []cache.ProjectionField{
+		{Name: "campaign_id", FieldName: "CampaignId", Source: "CAMPAIGN_ID"},
+		{Name: "media_plan_id", FieldName: "MediaPlanId", Source: "MEDIA_PLAN_ID"},
+	}
+	requested := []cache.ProjectionField{
+		{Source: "MEDIA_PLAN_ID"},
+	}
+
+	indexes, ok, _, err := warmupProjectionIndexes(stored, requested)
+	if err != nil {
+		t.Fatalf("warmupProjectionIndexes() error = %v", err)
+	}
+	if !ok {
+		t.Fatalf("expected unique source fallback to match")
+	}
+	if got, want := indexes, []int{1}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("unexpected indexes %v, want %v", got, want)
+	}
+}
+
+func TestWarmupProjectionIndexes_RejectsDuplicateSourceOnlyWhenNoStrongIdentityMatches(t *testing.T) {
+	stored := []cache.ProjectionField{
+		{Name: "campaign_id", FieldName: "CampaignId", Source: "ID"},
+		{Name: "media_plan_id", FieldName: "MediaPlanId", Source: "ID"},
+	}
+	requested := []cache.ProjectionField{
+		{Source: "ID"},
+	}
+
+	_, ok, reason, err := warmupProjectionIndexes(stored, requested)
+	if err != nil {
+		t.Fatalf("warmupProjectionIndexes() error = %v", err)
+	}
+	if ok {
+		t.Fatalf("expected duplicate source fallback to be rejected")
+	}
+	if reason != "non_grouped_ambiguous_stored_alias" {
+		t.Fatalf("unexpected reason %q", reason)
+	}
+}
+
+func TestWarmupProjectionIndexes_AllowsExactShapeWithDuplicateLookupAliases(t *testing.T) {
+	stored := []cache.ProjectionField{
+		{Name: "CAMPAIGN_ID", FieldName: "CAMPAIGN_ID", ColumnName: "CAMPAIGN_ID", Source: "ID", Lookup: []string{"CAMPAIGN_ID", "campaignid", "campaign_id", "ID", "id"}},
+		{Name: "MEDIA_PLAN_ID", FieldName: "MEDIA_PLAN_ID", ColumnName: "MEDIA_PLAN_ID", Source: "ID", Lookup: []string{"MEDIA_PLAN_ID", "mediaplanid", "media_plan_id", "ID", "id"}},
+	}
+	requested := []cache.ProjectionField{
+		{Name: "CAMPAIGN_ID", FieldName: "CAMPAIGN_ID", ColumnName: "CAMPAIGN_ID", Source: "ID", Lookup: []string{"CAMPAIGN_ID", "campaignid", "campaign_id", "ID", "id"}},
+		{Name: "MEDIA_PLAN_ID", FieldName: "MEDIA_PLAN_ID", ColumnName: "MEDIA_PLAN_ID", Source: "ID", Lookup: []string{"MEDIA_PLAN_ID", "mediaplanid", "media_plan_id", "ID", "id"}},
+	}
+
+	indexes, ok, _, err := warmupProjectionIndexes(stored, requested)
+	if err != nil {
+		t.Fatalf("warmupProjectionIndexes() error = %v", err)
+	}
+	if !ok {
+		t.Fatalf("expected exact-shape projection to be compatible despite duplicate weak lookup aliases")
+	}
+	if got, want := indexes, []int{0, 1}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("unexpected indexes %v, want %v", got, want)
+	}
+}
+
+func TestWarmupProjectionIndexes_IgnoresDuplicateLookupAliasesWhenStrongIdentityIsUnique(t *testing.T) {
+	stored := []cache.ProjectionField{
+		{Name: "CAMPAIGN_ID", FieldName: "CAMPAIGN_ID", ColumnName: "CAMPAIGN_ID", Source: "ID", Lookup: []string{"CAMPAIGN_ID", "campaignid", "campaign_id", "ID", "id"}},
+		{Name: "MEDIA_PLAN_ID", FieldName: "MEDIA_PLAN_ID", ColumnName: "MEDIA_PLAN_ID", Source: "ID", Lookup: []string{"MEDIA_PLAN_ID", "mediaplanid", "media_plan_id", "ID", "id"}},
+	}
+	requested := []cache.ProjectionField{
+		{Name: "MEDIA_PLAN_ID", FieldName: "MEDIA_PLAN_ID", ColumnName: "MEDIA_PLAN_ID", Lookup: []string{"MEDIA_PLAN_ID", "mediaplanid", "media_plan_id", "ID", "id"}},
+		{Name: "CAMPAIGN_ID", FieldName: "CAMPAIGN_ID", ColumnName: "CAMPAIGN_ID", Lookup: []string{"CAMPAIGN_ID", "campaignid", "campaign_id", "ID", "id"}},
+	}
+
+	indexes, ok, _, err := warmupProjectionIndexes(stored, requested)
+	if err != nil {
+		t.Fatalf("warmupProjectionIndexes() error = %v", err)
+	}
+	if !ok {
+		t.Fatalf("expected unique strong identities to match despite duplicate weak lookup aliases")
+	}
+	if got, want := indexes, []int{1, 0}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("unexpected indexes %v, want %v", got, want)
+	}
+}
+
+func TestWarmupProjectionIndexes_RejectsDuplicateLookupAliasesWhenNoCanonicalIdentityExists(t *testing.T) {
+	stored := []cache.ProjectionField{
+		{Source: "ID", Lookup: []string{"ID", "id"}},
+		{Source: "ID", Lookup: []string{"ID", "id"}},
+	}
+	requested := []cache.ProjectionField{
+		{Source: "ID", Lookup: []string{"ID", "id"}},
+	}
+
+	_, ok, reason, err := warmupProjectionIndexes(stored, requested)
+	if err != nil {
+		t.Fatalf("warmupProjectionIndexes() error = %v", err)
+	}
+	if ok {
+		t.Fatalf("expected duplicate source fallback without canonical identity to be rejected")
+	}
+	if reason != "non_grouped_ambiguous_stored_alias" {
+		t.Fatalf("unexpected reject reason %q", reason)
+	}
+}
+
+func TestWarmupProjectionIndexes_GroupedAllowsSameDimensionsAndSubsetMeasures(t *testing.T) {
+	stored := []cache.ProjectionField{
+		{Name: "Campaign", DimensionKey: "campaign.id"},
+		{Name: "Day", DimensionKey: "date.day"},
+		{Name: "Spend", MeasureKey: "metrics.spend"},
+		{Name: "Clicks", MeasureKey: "metrics.clicks"},
+	}
+	requested := []cache.ProjectionField{
+		{Name: "Day", DimensionKey: "date.day"},
+		{Name: "Campaign", DimensionKey: "campaign.id"},
+		{Name: "Clicks", MeasureKey: "metrics.clicks"},
+	}
+
+	indexes, ok, _, err := warmupProjectionIndexes(stored, requested)
+	if err != nil {
+		t.Fatalf("warmupProjectionIndexes() error = %v", err)
+	}
+	if !ok {
+		t.Fatalf("expected grouped projection to be compatible")
+	}
+	if got, want := indexes, []int{1, 0, 3}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("unexpected indexes %v, want %v", got, want)
+	}
+}
+
+func TestWarmupProjectionIndexes_GroupedRejectsDifferentDimensions(t *testing.T) {
+	stored := []cache.ProjectionField{
+		{Name: "Campaign", DimensionKey: "campaign.id"},
+		{Name: "Day", DimensionKey: "date.day"},
+		{Name: "Spend", MeasureKey: "metrics.spend"},
+	}
+	requested := []cache.ProjectionField{
+		{Name: "Campaign", DimensionKey: "campaign.id"},
+		{Name: "Hour", DimensionKey: "date.hour"},
+		{Name: "Spend", MeasureKey: "metrics.spend"},
+	}
+
+	_, ok, _, err := warmupProjectionIndexes(stored, requested)
+	if err != nil {
+		t.Fatalf("warmupProjectionIndexes() error = %v", err)
+	}
+	if ok {
+		t.Fatalf("expected grouped projection with different dimensions to be rejected")
+	}
+}
+
+func TestWarmupProjectionIndexes_GroupedRejectsDuplicateRequestedDimensions(t *testing.T) {
+	stored := []cache.ProjectionField{
+		{Name: "Campaign", DimensionKey: "campaign.id"},
+		{Name: "Day", DimensionKey: "date.day"},
+		{Name: "Spend", MeasureKey: "metrics.spend"},
+	}
+	requested := []cache.ProjectionField{
+		{Name: "Campaign", DimensionKey: "campaign.id"},
+		{Name: "CampaignAgain", DimensionKey: "campaign.id"},
+		{Name: "Spend", MeasureKey: "metrics.spend"},
+	}
+
+	_, ok, reason, err := warmupProjectionIndexes(stored, requested)
+	if err != nil {
+		t.Fatalf("warmupProjectionIndexes() error = %v", err)
+	}
+	if ok {
+		t.Fatalf("expected grouped projection with duplicate requested dimensions to be rejected")
+	}
+	if reason != "grouped_duplicate_dimension" {
+		t.Fatalf("unexpected reject reason %q", reason)
+	}
+}
+
+func TestWarmupProjectionIndexes_GroupedRejectsDuplicateStoredDimensions(t *testing.T) {
+	stored := []cache.ProjectionField{
+		{Name: "Campaign", DimensionKey: "campaign.id"},
+		{Name: "CampaignAgain", DimensionKey: "campaign.id"},
+		{Name: "Spend", MeasureKey: "metrics.spend"},
+	}
+	requested := []cache.ProjectionField{
+		{Name: "Campaign", DimensionKey: "campaign.id"},
+		{Name: "Spend", MeasureKey: "metrics.spend"},
+	}
+
+	_, ok, _, err := warmupProjectionIndexes(stored, requested)
+	if err != nil {
+		t.Fatalf("warmupProjectionIndexes() error = %v", err)
+	}
+	if ok {
+		t.Fatalf("expected grouped projection with duplicate stored dimensions to be rejected")
+	}
+}
+
+func TestWarmupProjectionIndexes_GroupedRejectsMissingMeasureSubset(t *testing.T) {
+	stored := []cache.ProjectionField{
+		{Name: "Campaign", DimensionKey: "campaign.id"},
+		{Name: "Spend", MeasureKey: "metrics.spend"},
+	}
+	requested := []cache.ProjectionField{
+		{Name: "Campaign", DimensionKey: "campaign.id"},
+		{Name: "Clicks", MeasureKey: "metrics.clicks"},
+	}
+
+	_, ok, reason, err := warmupProjectionIndexes(stored, requested)
+	if err != nil {
+		t.Fatalf("warmupProjectionIndexes() error = %v", err)
+	}
+	if ok {
+		t.Fatalf("expected grouped projection with missing measure to be rejected")
+	}
+	if reason != "grouped_missing_measure" {
+		t.Fatalf("unexpected reject reason %q", reason)
+	}
+}
+
+func TestWarmupProjectionIndexes_GroupedRejectsMissingCanonicalKeys(t *testing.T) {
+	stored := []cache.ProjectionField{
+		{Name: "Campaign"},
+		{Name: "Spend", MeasureKey: "metrics.spend"},
+	}
+	requested := []cache.ProjectionField{
+		{Name: "Campaign", DimensionKey: "campaign.id"},
+		{Name: "Spend", MeasureKey: "metrics.spend"},
+	}
+
+	_, ok, reason, err := warmupProjectionIndexes(stored, requested)
+	if err != nil {
+		t.Fatalf("warmupProjectionIndexes() error = %v", err)
+	}
+	if ok {
+		t.Fatalf("expected grouped projection without canonical keys to be rejected")
+	}
+	if reason != "grouped_invalid_metadata" {
+		t.Fatalf("unexpected reject reason %q", reason)
+	}
+}
+
+func TestWarmupProjectionIndexes_GroupedRejectsHybridDimensionMeasureField(t *testing.T) {
+	stored := []cache.ProjectionField{
+		{Name: "Campaign", DimensionKey: "campaign.id", MeasureKey: "metrics.campaign"},
+	}
+	requested := []cache.ProjectionField{
+		{Name: "Campaign", DimensionKey: "campaign.id"},
+	}
+
+	_, ok, reason, err := warmupProjectionIndexes(stored, requested)
+	if err != nil {
+		t.Fatalf("warmupProjectionIndexes() error = %v", err)
+	}
+	if ok {
+		t.Fatalf("expected grouped hybrid field to be rejected")
+	}
+	if reason != "grouped_invalid_metadata" {
+		t.Fatalf("unexpected reject reason %q", reason)
+	}
+}
+
+func TestWarmupProjectionIndexes_GroupedExactShapeStillRejectsInvalidMetadata(t *testing.T) {
+	stored := []cache.ProjectionField{
+		{Name: "Campaign", DimensionKey: "campaign.id", MeasureKey: "metrics.campaign"},
+	}
+	requested := []cache.ProjectionField{
+		{Name: "Campaign", DimensionKey: "campaign.id", MeasureKey: "metrics.campaign"},
+	}
+
+	_, ok, reason, err := warmupProjectionIndexes(stored, requested)
+	if err != nil {
+		t.Fatalf("warmupProjectionIndexes() error = %v", err)
+	}
+	if ok {
+		t.Fatalf("expected exact-shape grouped invalid metadata to be rejected")
+	}
+	if reason != "grouped_invalid_metadata" {
+		t.Fatalf("unexpected reject reason %q", reason)
+	}
+}
+
+func TestCacheApplyWarmupProjection_ClearsWarmupMetadataOnIncompatibleProjection(t *testing.T) {
+	entry := &cache.Entry{
+		Meta: cache.Meta{
+			Fields: []*cache.Field{
+				{ColumnName: "order_id", ColumnScanType: "int"},
+				{ColumnName: "bids", ColumnScanType: "int"},
+			},
+			Type: []string{"int", "int"},
+			StoredFields: []cache.ProjectionField{
+				{Name: "order_id"},
+				{Name: "bids"},
+			},
+		},
+	}
+	matcher := &cache.ParmetrizedQuery{
+		RequestedFields: []cache.ProjectionField{{Name: "clicks"}},
+	}
+	stats := &cache.Stats{Type: cache.TypeReadMulti, FoundWarmup: true, RecordsCounter: 1}
+
+	err := (&Cache{}).applyWarmupProjection(entry, matcher, stats)
+	if err != nil {
+		t.Fatalf("applyWarmupProjection() error = %v", err)
+	}
+
+	if stats.Type != cache.TypeNone {
+		t.Fatalf("expected stats type %q, got %q", cache.TypeNone, stats.Type)
+	}
+	if stats.FoundWarmup {
+		t.Fatalf("expected warmup flag to be cleared")
+	}
+	if entry.Meta.Fields != nil || entry.Meta.StoredFields != nil || entry.Meta.Type != nil || entry.Meta.ProjectedIndexes != nil {
+		t.Fatalf("expected warmup metadata to be cleared, got %+v", entry.Meta)
 	}
 }
