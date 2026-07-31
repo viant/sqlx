@@ -16,7 +16,7 @@ var pgSQL9 = database.Product{
 	Major:     9,
 }
 
-//PqSQL9 return PostgreSQL 9.x product
+// PqSQL9 return PostgreSQL 9.x product
 func PqSQL9() *database.Product {
 	return &pgSQL9
 }
@@ -264,6 +264,7 @@ WHERE pid=pg_backend_pid() LIMIT 1;
 		CanAutoincrement:        true,
 		CanLastInsertID:         false,
 		CanReturning:            true,
+		MaxPlaceholders:         65530,
 		QuoteCharacter:          '\'',
 		PlaceholderResolver:     &PlaceholderGenerator{},
 		AutoincrementFunc:       "nextval",

@@ -1,13 +1,16 @@
 package info
 
 import (
+	"strings"
+
 	"github.com/viant/sqlx/metadata/database"
 	"github.com/viant/sqlx/metadata/info/dialect"
 	"github.com/viant/sqlx/metadata/info/placeholder"
-	"strings"
 )
 
-//Dialect represents dialect
+const DefaultMaxPlaceholders = 1000
+
+// Dialect represents dialect
 type Dialect struct {
 	database.Product
 	Placeholder         string // prepare statement placeholder, default '?', but oracle uses ':'
@@ -22,6 +25,7 @@ type Dialect struct {
 	CanLastInsertID   bool
 	CanReturning      bool //Postgress supports Returning Data From Modified Rows in one statement
 	QuoteCharacter    byte
+	MaxPlaceholders   int
 	// TODO: check if column has a space or exist in keywords in this case use quote if keyword is specified
 	// i.e. normalized column on the dialect
 	Keywords                  map[string]bool
@@ -29,10 +33,10 @@ type Dialect struct {
 	SpecialKeywordEscapeQuote byte
 }
 
-//Dialects represents dialects
+// Dialects represents dialects
 type Dialects []*Dialect
 
-//PlaceholderGetter returns PlaceholderResolver if not nil, otherwise returns function that returns Placeholder
+// PlaceholderGetter returns PlaceholderResolver if not nil, otherwise returns function that returns Placeholder
 func (d *Dialect) PlaceholderGetter() func() string {
 	if d.PlaceholderResolver != nil {
 		return d.PlaceholderResolver.Resolver()
@@ -40,7 +44,15 @@ func (d *Dialect) PlaceholderGetter() func() string {
 	return (&placeholder.DefaultGenerator{}).Resolver()
 }
 
-//EnsurePlaceholders converts '?' to specific dialect placeholders if needed
+// MaxPlaceholderCount returns the dialect parameter cap.
+func (d *Dialect) MaxPlaceholderCount() int {
+	if d != nil && d.MaxPlaceholders > 0 {
+		return d.MaxPlaceholders
+	}
+	return DefaultMaxPlaceholders
+}
+
+// EnsurePlaceholders converts '?' to specific dialect placeholders if needed
 func (d *Dialect) EnsurePlaceholders(SQL string) string {
 	if d.Placeholder == placeholder.Default {
 		return SQL

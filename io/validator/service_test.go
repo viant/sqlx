@@ -656,6 +656,75 @@ func TestNewValidationWithCache(t *testing.T) {
 	}
 }
 
+func TestRefValidationWithMaxPlaceholders(t *testing.T) {
+	db, err := sql.Open("sqlite3", t.TempDir()+"/sqllite.db")
+	if !assert.Nil(t, err) {
+		log.Panic(err)
+	}
+	defer db.Close()
+
+	for _, SQL := range []string{
+		"CREATE TABLE IF NOT EXISTS dept01 (id INTEGER PRIMARY KEY, name TEXT, desc TEXT, unk TEXT)",
+		"delete from dept01",
+		`insert into dept01 values(1, "Admin 1", "admin dept 1", "101")`,
+		`insert into dept01 values(3, "Admin 3", "admin dept 3", "103")`,
+		`insert into dept01 values(5, "Admin 5", "admin dept 5", "105")`,
+	} {
+		_, err := db.Exec(SQL)
+		if !assert.Nil(t, err) {
+			return
+		}
+	}
+
+	validation, err := New().Validate(context.Background(), db, []*FkRecord{
+		{Id: 1, DeptId: intPtr(1)},
+		{Id: 2, DeptId: intPtr(2)},
+		{Id: 3, DeptId: intPtr(3)},
+		{Id: 4, DeptId: intPtr(4)},
+		{Id: 5, DeptId: intPtr(5)},
+	}, WithMaxPlaceholders(2))
+
+	assert.Nil(t, err)
+	if assert.True(t, validation.Failed) {
+		assert.Len(t, validation.Violations, 2)
+		assert.Contains(t, validation.Error(), "does not exists")
+	}
+}
+
+func TestRefValidationWithMaxPlaceholdersValid(t *testing.T) {
+	db, err := sql.Open("sqlite3", t.TempDir()+"/sqllite.db")
+	if !assert.Nil(t, err) {
+		log.Panic(err)
+	}
+	defer db.Close()
+
+	for _, SQL := range []string{
+		"CREATE TABLE IF NOT EXISTS dept01 (id INTEGER PRIMARY KEY, name TEXT, desc TEXT, unk TEXT)",
+		"delete from dept01",
+		`insert into dept01 values(1, "Admin 1", "admin dept 1", "101")`,
+		`insert into dept01 values(2, "Admin 2", "admin dept 2", "102")`,
+		`insert into dept01 values(3, "Admin 3", "admin dept 3", "103")`,
+		`insert into dept01 values(4, "Admin 4", "admin dept 4", "104")`,
+		`insert into dept01 values(5, "Admin 5", "admin dept 5", "105")`,
+	} {
+		_, err := db.Exec(SQL)
+		if !assert.Nil(t, err) {
+			return
+		}
+	}
+
+	validation, err := New().Validate(context.Background(), db, []*FkRecord{
+		{Id: 1, DeptId: intPtr(1)},
+		{Id: 2, DeptId: intPtr(2)},
+		{Id: 3, DeptId: intPtr(3)},
+		{Id: 4, DeptId: intPtr(4)},
+		{Id: 5, DeptId: intPtr(5)},
+	}, WithMaxPlaceholders(2))
+
+	assert.Nil(t, err)
+	assert.False(t, validation.Failed)
+}
+
 func stringPtr(s string) *string {
 	return &s
 }

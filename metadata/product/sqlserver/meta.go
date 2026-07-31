@@ -21,7 +21,7 @@ var sqlServer = database.Product{
 	//Release:   int
 }
 
-//SQLServer return SQLServer product
+// SQLServer return SQLServer product
 func SQLServer() *database.Product {
 	return &sqlServer
 }
@@ -503,6 +503,7 @@ FROM @T
 		QuoteCharacter:          '\'',
 		CanAutoincrement:        true,
 		CanLastInsertID:         false, //TODO ???
+		MaxPlaceholders:         2095,
 		AutoincrementFunc:       "",
 		PlaceholderResolver:     new(PlaceHolderGenerator),
 		DefaultPresetIDStrategy: dialect.PresetIDStrategyUndefined,

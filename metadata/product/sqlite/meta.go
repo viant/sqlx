@@ -41,6 +41,10 @@ func init() {
 }
 
 func registerProduct(product database.Product, schemaTable string) {
+	maxPlaceholders := 994
+	if product.Minor >= 32 {
+		maxPlaceholders = 32761
+	}
 	err := registry.Register(
 		info.NewQuery(info.KindVersion, "SELECT 'SQLite - ' || sqlite_version()", product),
 		info.NewQuery(info.KindSchemas, `SELECT 
@@ -221,6 +225,7 @@ FROM pragma_database_list
 		Load:                    dialect.LoadTypeUnsupported,
 		CanAutoincrement:        true,
 		CanLastInsertID:         true,
+		MaxPlaceholders:         maxPlaceholders,
 		DefaultPresetIDStrategy: dialect.PresetIDStrategyUndefined,
 	})
 }
