@@ -11,6 +11,7 @@ type (
 		SQL             string
 		placeholders    []string
 		values          []interface{}
+		entries         []*queryValue
 		index           map[interface{}]*queryValue
 		queryExclusions []*additionalCriteria
 		queryInclusion  []*additionalCriteria
@@ -32,11 +33,13 @@ func (p *queryContext) Append(value interface{}, field string, path *Path) {
 	}
 	p.placeholders = append(p.placeholders, "?")
 	p.values = append(p.values, value)
-	p.index[mapKey(value)] = &queryValue{
+	entry := &queryValue{
 		value: value,
 		field: field,
 		path:  path,
 	}
+	p.entries = append(p.entries, entry)
+	p.index[mapKey(value)] = entry
 }
 
 func (p *queryContext) AddInclusion(columns []*io.Column, recUPtr unsafe.Pointer, itemPath *Path) {
@@ -101,6 +104,35 @@ id, dep, unk
 */
 func (p *queryContext) Query() string {
 	return p.SQL + " IN (" + strings.Join(p.placeholders, ",") + ")"
+}
+
+func (p *queryContext) QueryChunks(maxPlaceholders int) []*queryContext {
+	if maxPlaceholders <= 0 || len(p.placeholders) <= maxPlaceholders {
+		return []*queryContext{p}
+	}
+	if len(p.values) != len(p.placeholders) || len(p.queryExclusions) > 0 || len(p.queryInclusion) > 0 {
+		return []*queryContext{p}
+	}
+	chunks := make([]*queryContext, 0, len(p.placeholders)/maxPlaceholders+1)
+	for start := 0; start < len(p.placeholders); start += maxPlaceholders {
+		end := start + maxPlaceholders
+		if end > len(p.placeholders) {
+			end = len(p.placeholders)
+		}
+		chunks = append(chunks, p.Slice(start, end))
+	}
+	return chunks
+}
+
+func (p *queryContext) Slice(start, end int) *queryContext {
+	result := newQueryContext(p.SQL)
+	result.placeholders = append(result.placeholders, p.placeholders[start:end]...)
+	result.values = append(result.values, p.values[start:end]...)
+	result.entries = append(result.entries, p.entries[start:end]...)
+	for _, entry := range result.entries {
+		result.index[mapKey(entry.value)] = entry
+	}
+	return result
 }
 
 func (p *queryContext) QueryWithCriteria() string {

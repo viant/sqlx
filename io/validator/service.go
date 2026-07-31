@@ -4,8 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+
 	"github.com/viant/sqlx/io"
 	"github.com/viant/sqlx/io/read"
+	"github.com/viant/sqlx/metadata/info"
+	"github.com/viant/sqlx/metadata/registry"
 	"github.com/viant/sqlx/option"
 	"github.com/viant/xunsafe"
 	"reflect"
@@ -21,6 +24,8 @@ type (
 		mux    sync.RWMutex
 	}
 )
+
+const minKnownMaxPlaceholders = 994
 
 func (s *Service) checksFor(t reflect.Type, setMarker *option.SetMarker) (*Checks, error) {
 	if t.Kind() == reflect.Ptr {
@@ -89,6 +94,39 @@ func (s *Service) Validate(ctx context.Context, db *sql.DB, any interface{}, opt
 	ret.Failed = len(ret.Violations) > 0
 	ret.sort()
 	return &ret, nil
+}
+
+func (s *Service) initMaxPlaceholders(db *sql.DB, options *Options, valueCount int) int {
+	if options.MaxPlaceholders > 0 {
+		return options.MaxPlaceholders
+	}
+	if valueCount <= minKnownMaxPlaceholders {
+		return 0
+	}
+	if db != nil {
+		if dialect := s.lookupDialect(db); dialect != nil {
+			options.MaxPlaceholders = dialect.MaxPlaceholderCount()
+			return options.MaxPlaceholders
+		}
+	}
+	if valueCount <= info.DefaultMaxPlaceholders {
+		return 0
+	}
+	options.MaxPlaceholders = info.DefaultMaxPlaceholders
+	return options.MaxPlaceholders
+}
+
+func (s *Service) lookupDialect(db *sql.DB) (dialect *info.Dialect) {
+	defer func() {
+		if recover() != nil {
+			dialect = nil
+		}
+	}()
+	product := registry.MatchProduct(db)
+	if product == nil {
+		return nil
+	}
+	return registry.LookupDialect(product)
 }
 
 var timeType = reflect.TypeOf(time.Time{})
@@ -292,25 +330,28 @@ func (s *Service) checkRef(ctx context.Context, path *Path, db *sql.DB, at io.Va
 	if len(queryCtx.values) == 0 {
 		return nil
 	}
-	//build query for all values that should be unique
-	reader, err := read.New(ctx, db, queryCtx.Query(), func() interface{} {
-		return reflect.New(check.CheckType).Interface()
-	})
-	if err != nil {
-		return err
-	}
+	maxPlaceholders := s.initMaxPlaceholders(db, options, len(queryCtx.placeholders))
 	var index = map[interface{}]bool{}
-	err = reader.QueryAll(ctx, func(record interface{}) error {
-		recordPtr := xunsafe.AsPointer(record)
-		value := check.CheckField.Value(recordPtr)
-		index[mapKey(value)] = true
-		return nil
-	}, queryCtx.values...)
-	if stmt := reader.Stmt(); stmt != nil {
-		_ = stmt.Close()
-	}
-	if err != nil {
-		return err
+	for _, chunk := range queryCtx.QueryChunks(maxPlaceholders) {
+		//build query for all reference values
+		reader, err := read.New(ctx, db, chunk.Query(), func() interface{} {
+			return reflect.New(check.CheckType).Interface()
+		})
+		if err != nil {
+			return err
+		}
+		err = reader.QueryAll(ctx, func(record interface{}) error {
+			recordPtr := xunsafe.AsPointer(record)
+			value := check.CheckField.Value(recordPtr)
+			index[mapKey(value)] = true
+			return nil
+		}, chunk.values...)
+		if stmt := reader.Stmt(); stmt != nil {
+			_ = stmt.Close()
+		}
+		if err != nil {
+			return err
+		}
 	}
 	//we do not check 0 references
 	for refValue, ctxElem := range queryCtx.index { //all struct index values should have value in reference table

@@ -6,11 +6,12 @@ import (
 
 type (
 	Options struct {
-		CheckUnique bool
-		CheckRef    bool
-		Location    string
-		Shallow     bool
-		SetMarker   *option.SetMarker
+		CheckUnique     bool
+		CheckRef        bool
+		Location        string
+		Shallow         bool
+		MaxPlaceholders int
+		SetMarker       *option.SetMarker
 	}
 	Option func(c *Options)
 )
@@ -46,6 +47,13 @@ func WithLocation(location string) Option {
 func WithShallow(flag bool) Option {
 	return func(c *Options) {
 		c.Shallow = flag
+	}
+}
+
+// WithMaxPlaceholders sets the maximum placeholder count for validator queries.
+func WithMaxPlaceholders(size int) Option {
+	return func(c *Options) {
+		c.MaxPlaceholders = size
 	}
 }
 

@@ -1,13 +1,14 @@
 package mysql
 
 import (
+	"log"
+	"strconv"
+
 	"github.com/viant/sqlx/metadata/database"
 	"github.com/viant/sqlx/metadata/info"
 	"github.com/viant/sqlx/metadata/info/dialect"
 	"github.com/viant/sqlx/metadata/product/mysql/sequence"
 	"github.com/viant/sqlx/metadata/registry"
-	"log"
-	"strconv"
 )
 
 const product = "MySQL"
@@ -256,6 +257,7 @@ RELEASE_LOCK('$Args[0].$Args[1].$Args[2]')  AS SUCCESS`,
 		QuoteCharacter:            '\'',
 		CanAutoincrement:          true,
 		CanLastInsertID:           true, // in reality true but multi-insert gives us the id from the first row, not the last one
+		MaxPlaceholders:           65530,
 		// TODO: provide real autoincrement function
 		AutoincrementFunc:       "autoincrement",
 		DefaultPresetIDStrategy: dialect.PresetIDWithTransientTransaction,
