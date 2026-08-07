@@ -6,6 +6,17 @@ import (
 )
 
 type ScannerFn func(args ...interface{}) error
+
+type IndexByResult struct {
+	GroupsWritten int
+	WarmupKey     string
+	MarkerKey     string
+}
+
+type WarmupIndexer interface {
+	IndexByWithResult(ctx context.Context, db *sql.DB, column, SQL string, args []interface{}, options ...interface{}) (*IndexByResult, error)
+}
+
 type Cache interface {
 	AsSource(ctx context.Context, entry *Entry) (Source, error)
 	AddValues(ctx context.Context, entry *Entry, values []interface{}) error
