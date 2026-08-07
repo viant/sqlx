@@ -57,6 +57,8 @@ type (
 		Type           Type
 		RecordsCounter int
 		Key            string
+		WarmupKey      string
+		MarkerKey      string
 		Dataset        string
 		Namespace      string
 		FoundWarmup    bool             `json:",omitempty"`
@@ -70,6 +72,8 @@ type (
 func (s *Stats) Init() {
 	s.Type = TypeNone
 	s.RecordsCounter = 0
+	s.WarmupKey = ""
+	s.MarkerKey = ""
 }
 
 func (s *Stats) FoundAny() bool {

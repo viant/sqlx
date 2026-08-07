@@ -4,7 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	as "github.com/aerospike/aerospike-client-go"
+	"github.com/aerospike/aerospike-client-go/types"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/viant/sqlx/io/read/cache"
 	"reflect"
@@ -270,7 +272,7 @@ func TestCacheIndexBy_WritesStoredFieldsOnMarkerRecord(t *testing.T) {
 		},
 	}
 
-	inserted, err := aCache.IndexBy(
+	result, err := aCache.IndexByWithResult(
 		context.Background(),
 		db,
 		"order_id",
@@ -281,19 +283,26 @@ func TestCacheIndexBy_WritesStoredFieldsOnMarkerRecord(t *testing.T) {
 	if err != nil {
 		t.Fatalf("IndexBy() error = %v", err)
 	}
-	if inserted != 2 {
-		t.Fatalf("IndexBy() inserted = %d, want 2", inserted)
+	if result == nil {
+		t.Fatalf("IndexBy() result was nil")
+	}
+	if result.GroupsWritten != 1 {
+		t.Fatalf("IndexBy() GroupsWritten = %d, want 1", result.GroupsWritten)
+	}
+	if result.WarmupKey == "" {
+		t.Fatalf("IndexBy() WarmupKey was empty")
+	}
+	if result.MarkerKey == "" {
+		t.Fatalf("IndexBy() MarkerKey was empty")
 	}
 
-	var marker as.BinMap
-	for _, record := range records {
-		if _, ok := record[columnBin]; ok {
-			marker = record
-			break
-		}
+	markerKey, err := aCache.key(result.MarkerKey)
+	if err != nil {
+		t.Fatalf("key(%q) error = %v", result.MarkerKey, err)
 	}
-	if marker == nil {
-		t.Fatalf("expected marker record to be written")
+	marker, ok := records[markerKey.String()]
+	if !ok {
+		t.Fatalf("expected marker record for key %q to be written", result.MarkerKey)
 	}
 
 	storedFieldsValue, ok := marker[storedFieldsBin]
@@ -314,6 +323,149 @@ func TestCacheIndexBy_WritesStoredFieldsOnMarkerRecord(t *testing.T) {
 	}
 	if storedFields[0].Name != "order_id" {
 		t.Fatalf("unexpected first stored field %+v", storedFields[0])
+	}
+}
+
+func TestCacheIndexBy_UnindexedReturnsWarmupKeyWithoutMarkerKey(t *testing.T) {
+	db, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("sql.Open() error = %v", err)
+	}
+	defer db.Close()
+
+	if _, err = db.Exec(`CREATE TABLE metrics (name TEXT)`); err != nil {
+		t.Fatalf("CREATE TABLE error = %v", err)
+	}
+	if _, err = db.Exec(`INSERT INTO metrics(name) VALUES ('alpha')`); err != nil {
+		t.Fatalf("INSERT error = %v", err)
+	}
+
+	writes := 0
+	aCache := &Cache{
+		namespace: "ns_memory",
+		set:       "steward_test",
+		putFn: func(key *as.Key, binMap as.BinMap) error {
+			writes++
+			return nil
+		},
+	}
+
+	result, err := aCache.IndexByWithResult(
+		context.Background(),
+		db,
+		"",
+		"SELECT name FROM metrics",
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("IndexBy() error = %v", err)
+	}
+	if result == nil {
+		t.Fatalf("IndexBy() result was nil")
+	}
+	if result.GroupsWritten != 1 {
+		t.Fatalf("IndexBy() GroupsWritten = %d, want 1", result.GroupsWritten)
+	}
+	if result.WarmupKey == "" {
+		t.Fatalf("IndexBy() WarmupKey was empty")
+	}
+	if result.MarkerKey != "" {
+		t.Fatalf("IndexBy() MarkerKey = %q, want empty", result.MarkerKey)
+	}
+	if writes != 1 {
+		t.Fatalf("expected exactly one cache write, got %d", writes)
+	}
+}
+
+func TestCacheIndexBy_MarkerWriteFailureDoesNotCountMarker(t *testing.T) {
+	db, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("sql.Open() error = %v", err)
+	}
+	defer db.Close()
+
+	if _, err = db.Exec(`CREATE TABLE metrics (order_id INTEGER, name TEXT)`); err != nil {
+		t.Fatalf("CREATE TABLE error = %v", err)
+	}
+	if _, err = db.Exec(`INSERT INTO metrics(order_id, name) VALUES (7, 'alpha')`); err != nil {
+		t.Fatalf("INSERT error = %v", err)
+	}
+
+	var markerWrites int
+	markerErr := errors.New("marker write failed")
+	aCache := &Cache{
+		namespace: "ns_memory",
+		set:       "steward_test",
+		putFn: func(key *as.Key, binMap as.BinMap) error {
+			if _, ok := binMap[columnBin]; ok {
+				markerWrites++
+				return markerErr
+			}
+			return nil
+		},
+	}
+
+	result, err := aCache.IndexByWithResult(
+		context.Background(),
+		db,
+		"order_id",
+		"SELECT order_id, name FROM metrics",
+		nil,
+	)
+	if !errors.Is(err, markerErr) {
+		t.Fatalf("IndexBy() error = %v, want %v", err, markerErr)
+	}
+	if result == nil {
+		t.Fatalf("IndexBy() result was nil")
+	}
+	if result.GroupsWritten != 1 {
+		t.Fatalf("IndexBy() GroupsWritten = %d, want 1", result.GroupsWritten)
+	}
+	if result.WarmupKey == "" {
+		t.Fatalf("IndexBy() WarmupKey was empty")
+	}
+	if result.MarkerKey == "" {
+		t.Fatalf("IndexBy() MarkerKey was empty")
+	}
+	if markerWrites != 1 {
+		t.Fatalf("expected one marker write attempt, got %d", markerWrites)
+	}
+}
+
+func TestCacheIndexBy_LegacyCountIncludesMarkerForIndexedWarmup(t *testing.T) {
+	db, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("sql.Open() error = %v", err)
+	}
+	defer db.Close()
+
+	if _, err = db.Exec(`CREATE TABLE metrics (order_id INTEGER, name TEXT)`); err != nil {
+		t.Fatalf("CREATE TABLE error = %v", err)
+	}
+	if _, err = db.Exec(`INSERT INTO metrics(order_id, name) VALUES (7, 'alpha')`); err != nil {
+		t.Fatalf("INSERT error = %v", err)
+	}
+
+	aCache := &Cache{
+		namespace: "ns_memory",
+		set:       "steward_test",
+		putFn: func(key *as.Key, binMap as.BinMap) error {
+			return nil
+		},
+	}
+
+	count, err := aCache.IndexBy(
+		context.Background(),
+		db,
+		"order_id",
+		"SELECT order_id, name FROM metrics",
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("IndexBy() error = %v", err)
+	}
+	if count != 2 {
+		t.Fatalf("IndexBy() count = %d, want 2", count)
 	}
 }
 
@@ -873,5 +1025,80 @@ func TestCacheApplyWarmupProjection_ClearsWarmupMetadataOnIncompatibleProjection
 	}
 	if entry.Meta.Fields != nil || entry.Meta.StoredFields != nil || entry.Meta.Type != nil || entry.Meta.ProjectedIndexes != nil {
 		t.Fatalf("expected warmup metadata to be cleared, got %+v", entry.Meta)
+	}
+}
+
+func TestCacheReadRecords_PopulatesWarmupStatsOnMarkerMiss(t *testing.T) {
+	aCache := &Cache{namespace: "ns_memory", set: "steward_test"}
+	matcher := &cache.ParmetrizedQuery{
+		By:  "campaign_id",
+		SQL: "SELECT campaign_id, name FROM campaign WHERE tenant_id = ?",
+		Args: []interface{}{
+			"tenant-a",
+		},
+	}
+	stats := &cache.Stats{}
+	aCache.getRecordFn = func(key *as.Key, bins ...string) (*as.Record, error) {
+		return nil, types.NewAerospikeError(types.KEY_NOT_FOUND_ERROR)
+	}
+
+	_, _, err := aCache.readRecords("SELECT * FROM lazy WHERE id = ?", []interface{}{1}, matcher, stats)
+	if err != nil {
+		t.Fatalf("readRecords() error = %v", err)
+	}
+	if stats.WarmupKey == "" {
+		t.Fatalf("expected WarmupKey to be populated")
+	}
+	if stats.MarkerKey == "" {
+		t.Fatalf("expected MarkerKey to be populated")
+	}
+}
+
+func TestCacheReadRecords_PopulatesWarmupStatsOnMarkerHit(t *testing.T) {
+	aCache := &Cache{namespace: "ns_memory", set: "steward_test"}
+	matcher := &cache.ParmetrizedQuery{
+		By:  "campaign_id",
+		SQL: "SELECT campaign_id, name FROM campaign WHERE tenant_id = ?",
+		Args: []interface{}{
+			"tenant-a",
+		},
+	}
+	stats := &cache.Stats{}
+
+	identitySQL, _, identityArgsMarshal, err := matcher.WarmupIdentity()
+	if err != nil {
+		t.Fatalf("WarmupIdentity() error = %v", err)
+	}
+	identitySQL, identityArgsMarshal, _ = canonicalWarmupIdentity(identitySQL, identityArgsMarshal)
+	warmupKey, err := aCache.identityURL(identitySQL, nil, identityArgsMarshal)
+	if err != nil {
+		t.Fatalf("identityURL() error = %v", err)
+	}
+	markerKey := aCache.columnURL(warmupKey, matcher.By)
+	markerStoreKey, err := aCache.key(markerKey)
+	if err != nil {
+		t.Fatalf("key(%q) error = %v", markerKey, err)
+	}
+	aCache.getRecordFn = func(key *as.Key, bins ...string) (*as.Record, error) {
+		if key.String() == markerStoreKey.String() {
+			return &as.Record{
+				Bins: as.BinMap{
+					sqlBin:  identitySQL,
+					argsBin: string(identityArgsMarshal),
+				},
+			}, nil
+		}
+		return nil, types.NewAerospikeError(types.KEY_NOT_FOUND_ERROR)
+	}
+
+	_, _, err = aCache.readRecords("SELECT * FROM lazy WHERE id = ?", []interface{}{1}, matcher, stats)
+	if err != nil {
+		t.Fatalf("readRecords() error = %v", err)
+	}
+	if stats.WarmupKey != warmupKey {
+		t.Fatalf("expected WarmupKey %q, got %q", warmupKey, stats.WarmupKey)
+	}
+	if stats.MarkerKey != markerKey {
+		t.Fatalf("expected MarkerKey %q, got %q", markerKey, stats.MarkerKey)
 	}
 }

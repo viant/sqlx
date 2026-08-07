@@ -60,6 +60,18 @@ type (
 )
 
 func (a *Cache) IndexBy(ctx context.Context, db *sql.DB, column, SQL string, args []interface{}, options ...interface{}) (int, error) {
+	result, err := a.IndexByWithResult(ctx, db, column, SQL, args, options...)
+	if result == nil {
+		return 0, err
+	}
+	count := result.GroupsWritten
+	if column != "" {
+		count++
+	}
+	return count, err
+}
+
+func (a *Cache) IndexByWithResult(ctx context.Context, db *sql.DB, column, SQL string, args []interface{}, options ...interface{}) (*cache.IndexByResult, error) {
 	if args == nil {
 		args = []interface{}{}
 	}
@@ -67,7 +79,7 @@ func (a *Cache) IndexBy(ctx context.Context, db *sql.DB, column, SQL string, arg
 	querySQL, isOrdered := tryOrderedSQL(SQL, column)
 	rows, err := db.Query(querySQL, args...)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 
 	defer func() {
@@ -76,51 +88,60 @@ func (a *Cache) IndexBy(ctx context.Context, db *sql.DB, column, SQL string, arg
 
 	columnTypes, err := rows.ColumnTypes()
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 
 	fields, err := cache.ColumnsToFields(io.TypesToColumns(columnTypes))
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 
 	identitySQL, identityArgs, argsMarshal, meta, err := a.resolveIndexIdentity(SQL, args, options...)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 	identitySQL, argsMarshal, canonicalization := canonicalWarmupIdentity(identitySQL, argsMarshal)
 	URL, err := a.identityURL(identitySQL, identityArgs, argsMarshal)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
+	result := &cache.IndexByResult{WarmupKey: URL}
 	a.logWarmupIdentityResolved("index_write", column, URL, identitySQL, argsMarshal, canonicalization, meta)
 	if column != "" {
-		a.logWarmupMarker("IndexBy", column, URL, a.columnURL(URL, column))
+		result.MarkerKey = a.columnURL(URL, column)
+		a.logWarmupMarker("IndexBy", column, URL, result.MarkerKey)
 	}
 
 	fieldMarshal, err := json.Marshal(fields)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 
 	argsStringified := string(argsMarshal)
 	fieldsStringified := string(fieldMarshal)
 	storedFieldsStringified, err := a.storedFieldsMeta(column, options...)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 	metaBin := a.metaBin(identitySQL, argsStringified, fieldsStringified, storedFieldsStringified, column)
 
 	inserted, err := a.fetchAndIndexValues(ctx, fields, column, rows, isOrdered, URL, metaBin)
 	if err != nil {
-		return inserted, err
+		result.GroupsWritten = inserted
+		return result, err
 	}
 
 	if column != "" {
-		return inserted + 1, a.putRowMarker(URL, column, metaBin)
+		if err = a.putRowMarker(URL, column, metaBin); err != nil {
+			result.GroupsWritten = inserted
+			return result, err
+		}
+		result.GroupsWritten = inserted
+		return result, nil
 	}
 
-	return inserted, nil
+	result.GroupsWritten = inserted
+	return result, nil
 }
 
 func tryOrderedSQL(SQL string, column string) (string, bool) {
@@ -255,7 +276,7 @@ func (a *Cache) Get(ctx context.Context, SQL string, args []interface{}, options
 }
 
 func (a *Cache) get(ctx context.Context, SQL string, args []interface{}, columnsInMatcher *cache.ParmetrizedQuery, cacheStats *cache.Stats, refresh bool) (*cache.Entry, error) {
-	lazyMatch, warmupMatch, err := a.readRecords(SQL, args, columnsInMatcher)
+	lazyMatch, warmupMatch, err := a.readRecords(SQL, args, columnsInMatcher, cacheStats)
 	if refresh {
 		lazyMatch.hasKey = false
 		lazyMatch.record = nil
@@ -708,7 +729,7 @@ func (a *Cache) findActualError(err error) (string, types.ResultCode, error) {
 	return "", types.OK, nil
 }
 
-func (a *Cache) readRecords(SQL string, args []interface{}, query *cache.ParmetrizedQuery) (lazyMatch *RecordMatched, warmupMatch *RecordMatched, err error) {
+func (a *Cache) readRecords(SQL string, args []interface{}, query *cache.ParmetrizedQuery, stats *cache.Stats) (lazyMatch *RecordMatched, warmupMatch *RecordMatched, err error) {
 	var errors = make([]error, 2)
 	wg := sync.WaitGroup{}
 
@@ -730,6 +751,12 @@ func (a *Cache) readRecords(SQL string, args []interface{}, query *cache.Parmetr
 		}
 		identitySQL, identityArgsMarshal, canonicalization := canonicalWarmupIdentity(identitySQL, identityArgsMarshal)
 		if warmupURL, urlErr := a.identityURL(identitySQL, identityArgs, identityArgsMarshal); urlErr == nil {
+			if stats != nil {
+				stats.WarmupKey = warmupURL
+				if query.By != "" {
+					stats.MarkerKey = a.columnURL(warmupURL, query.By)
+				}
+			}
 			a.logWarmupIdentityResolved("read_lookup", query.By, warmupURL, identitySQL, identityArgsMarshal, canonicalization, meta)
 		}
 		warmupMatch, errors[1] = a.readRecord(identitySQL, identityArgs, identityArgsMarshal, func(aKey string) (string, error) {
@@ -1182,24 +1209,24 @@ func (a *Cache) storedFieldsMeta(column string, options ...interface{}) (string,
 }
 
 func (a *Cache) logWarmupMarker(stage string, column string, warmupURL string, markerKey string) {
-	a.logWarmupf("aerospike cache %s set=%s column=%s warmup_url=%s marker_key=%s\n", stage, a.set, column, warmupURL, markerKey)
+	a.logWarmupf("aerospike cache %s set=%s column=%s warmup_key=%s marker_key=%s\n", stage, a.set, column, warmupURL, markerKey)
 }
 
 func (a *Cache) logWarmupIdentityResolved(stage string, by string, warmupURL string, SQL string, argsMarshal []byte, canonicalization string, meta cache.WarmupIdentityMeta) {
-	a.logWarmupf("aerospike cache warmup_identity_resolved set=%s stage=%s by=%s source=%s detail=%s canonicalization=%s warmup_url=%s args_json=%q sql=%q\n", a.set, stage, by, meta.Source, meta.Detail, canonicalization, warmupURL, string(argsMarshal), SQL)
+	a.logWarmupf("aerospike cache warmup_identity_resolved set=%s stage=%s by=%s source=%s detail=%s canonicalization=%s warmup_key=%s args_json=%q sql=%q\n", a.set, stage, by, meta.Source, meta.Detail, canonicalization, warmupURL, string(argsMarshal), SQL)
 }
 
 func (a *Cache) logWarmupRead(warmupURL string, markerKey string, found bool, err error) {
 	by, _, _ := strings.Cut(markerKey, "#")
 	if err != nil && !a.isKeyNotFoundErr(err) {
-		a.logWarmupf("aerospike cache warmup_read set=%s by=%s warmup_url=%s marker_key=%s getRecord_found=%t err=%v\n", a.set, by, warmupURL, markerKey, found, err)
+		a.logWarmupf("aerospike cache warmup_read set=%s by=%s warmup_key=%s marker_key=%s getRecord_found=%t err=%v\n", a.set, by, warmupURL, markerKey, found, err)
 		return
 	}
-	a.logWarmupf("aerospike cache warmup_read set=%s by=%s warmup_url=%s marker_key=%s getRecord_found=%t\n", a.set, by, warmupURL, markerKey, found)
+	a.logWarmupf("aerospike cache warmup_read set=%s by=%s warmup_key=%s marker_key=%s getRecord_found=%t\n", a.set, by, warmupURL, markerKey, found)
 }
 
 func (a *Cache) logWarmupFailure(by string, warmupURL string, markerKey string, failure string) {
-	a.logWarmupf("aerospike cache warmup_failure set=%s by=%s warmup_url=%s marker_key=%s failure=%s\n", a.set, by, warmupURL, markerKey, failure)
+	a.logWarmupf("aerospike cache warmup_failure set=%s by=%s warmup_key=%s marker_key=%s failure=%s\n", a.set, by, warmupURL, markerKey, failure)
 }
 
 func (a *Cache) logWarmupf(format string, args ...interface{}) {
@@ -1258,19 +1285,21 @@ func (a *Cache) updateColumnsInMatchEntry(entry *cache.Entry, match *RecordMatch
 		return err
 	}
 	identitySQL, identityArgsMarshal, _ = canonicalWarmupIdentity(identitySQL, identityArgsMarshal)
-
-	if match == nil || !match.hasKey {
-		warmupURL, markerKey := "", ""
-		if identityURL, err := a.identityURL(identitySQL, nil, identityArgsMarshal); err == nil {
-			warmupURL = identityURL
+	warmupURL, markerKey := "", ""
+	if identityURL, err := a.identityURL(identitySQL, nil, identityArgsMarshal); err == nil {
+		warmupURL = identityURL
+		if matcher.By != "" {
 			markerKey = a.columnURL(identityURL, matcher.By)
 		}
+	}
+
+	if match == nil || !match.hasKey {
 		a.logWarmupFailure(matcher.By, warmupURL, markerKey, "marker_miss")
 		return nil
 	}
 
-	markerKey := match.keyValue
-	warmupURL := match.baseURL
+	markerKey = match.keyValue
+	warmupURL = match.baseURL
 	if !a.recordMatches(match.record, identitySQL, identityArgsMarshal) {
 		a.logWarmupFailure(matcher.By, warmupURL, markerKey, "marker_identity_mismatch")
 		return nil
