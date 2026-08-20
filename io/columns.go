@@ -120,7 +120,15 @@ func NormalizeColumnType(scanType reflect.Type, name string) reflect.Type {
 		return normalizeTypeRange(rType)
 	}
 
-	return normalizeTypeRange(normalizeScanType(scanType))
+	// Some database drivers do not expose scan metadata for derived or
+	// expression columns. Keep the mapper usable instead of passing a nil
+	// reflect.Type to normalizeTypeRange.
+	normalized := normalizeScanType(scanType)
+	if normalized == nil {
+		return xreflect.InterfaceType
+	}
+
+	return normalizeTypeRange(normalized)
 }
 
 func normalizeScanType(scanType reflect.Type) reflect.Type {
