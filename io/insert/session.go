@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/viant/sqlx/io"
 	"github.com/viant/sqlx/io/config"
+	"github.com/viant/sqlx/io/errx"
 	"github.com/viant/sqlx/metadata/info/dialect"
 	"github.com/viant/sqlx/metadata/sink"
 	"github.com/viant/sqlx/option"
@@ -163,6 +164,12 @@ func (s *session) flush(ctx context.Context, values []interface{}, identities []
 	}
 	result, err := s.stmt.ExecContext(ctx, values...)
 	if err != nil {
+		if errx.IsDuplicateKey(err) {
+			return 0, 0, errx.DuplicateKey("insert", s.TableName, err)
+		}
+		if errx.IsConstraint(err) {
+			return 0, 0, errx.Constraint("insert", s.TableName, err)
+		}
 		return 0, 0, err
 	}
 
@@ -197,6 +204,12 @@ func (s *session) flushQuery(ctx context.Context, values []interface{}, identiti
 	var rowsAffected, newLastInsertedID int64
 	rows, err := s.stmt.QueryContext(ctx, values...)
 	if err != nil {
+		if errx.IsDuplicateKey(err) {
+			return 0, 0, errx.DuplicateKey("insert", s.TableName, err)
+		}
+		if errx.IsConstraint(err) {
+			return 0, 0, errx.Constraint("insert", s.TableName, err)
+		}
 		return 0, 0, err
 	}
 	defer io.RunWithError(rows.Close, &err)
