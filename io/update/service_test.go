@@ -10,6 +10,7 @@ import (
 	"github.com/viant/sqlx/io/update"
 	_ "github.com/viant/sqlx/metadata/product/sqlite"
 	"github.com/viant/sqlx/option"
+	"path/filepath"
 	"testing"
 )
 
@@ -336,4 +337,56 @@ outer:
 		assertly.AssertValues(t, testCase.expect, actual)
 		assertly.AssertValues(t, actual, testCase.expect)
 	}
+}
+
+func TestService_Exec_CompositePK(t *testing.T) {
+	type SocialToken struct {
+		UserID   string `sqlx:"user_id,primaryKey" validate:"required"`
+		Provider string `sqlx:"provider,primaryKey" validate:"required"`
+		EncToken string `sqlx:"enc_token" validate:"required"`
+	}
+
+	dsn := filepath.Join(t.TempDir(), "composite_pk.db")
+	db, err := sql.Open("sqlite3", dsn)
+	if err != nil {
+		t.Fatalf("failed to open test database: %v", err)
+	}
+	defer db.Close()
+
+	initSQL := []string{
+		`CREATE TABLE social_tokens (
+user_id TEXT NOT NULL,
+provider TEXT NOT NULL,
+enc_token TEXT,
+PRIMARY KEY (user_id, provider)
+)`,
+		`INSERT INTO social_tokens (user_id, provider, enc_token) VALUES ('u1','google','old-token')`,
+		`INSERT INTO social_tokens (user_id, provider, enc_token) VALUES ('u1','github','keep-me')`,
+	}
+	for _, statement := range initSQL {
+		if _, err = db.Exec(statement); err != nil {
+			t.Fatalf("failed to initialize test database with %q: %v", statement, err)
+		}
+	}
+
+	updater, err := update.New(context.Background(), db, "social_tokens")
+	if err != nil {
+		t.Fatalf("failed to create updater: %v", err)
+	}
+
+	record := &SocialToken{UserID: "u1", Provider: "google", EncToken: "new-token"}
+	affected, err := updater.Exec(context.Background(), []interface{}{record})
+	if err != nil {
+		t.Fatalf("failed to update record: %v", err)
+	}
+	assert.EqualValues(t, 1, affected)
+
+	var token string
+	err = db.QueryRow(`SELECT enc_token FROM social_tokens WHERE user_id = ? AND provider = ?`, "u1", "google").Scan(&token)
+	assert.NoError(t, err)
+	assert.Equal(t, "new-token", token)
+
+	err = db.QueryRow(`SELECT enc_token FROM social_tokens WHERE user_id = ? AND provider = ?`, "u1", "github").Scan(&token)
+	assert.NoError(t, err)
+	assert.Equal(t, "keep-me", token)
 }
