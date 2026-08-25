@@ -209,7 +209,7 @@ func (c *MapperCache) Put(entry *MapperCacheEntry, fields []io.Field) {
 }
 
 func (c *MapperCache) generateKey(structType reflect.Type, columns []io.Column) (string, error) {
-	dataType := structType.String()
+	dataType := structType.PkgPath() + structType.String()
 	size := len(dataType) + len(columns)
 	for _, column := range columns {
 		size += len(column.Name())
