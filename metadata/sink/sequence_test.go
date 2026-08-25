@@ -1,9 +1,10 @@
 package sink
 
 import (
+	"testing"
+
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/stretchr/testify/assert"
-	"testing"
 )
 
 // MySQL has problems with some cases (StartValue > IncrementBy && IncrementBy > 1)
@@ -173,14 +174,115 @@ func TestSequence_MinValue(t *testing.T) {
 			expect: 5,
 		},
 		{
-			description: "10 nodes active cluster, with local node 5 offset, seqValue: 13, recordCnt: 2",
+			description: "10 nodes active cluster, with local node 5 offset, seqValue: 38, recordCnt: 2",
 			records:     2,
 			seq: &Sequence{
 				Value:       38,
 				IncrementBy: 10,
-				StartValue:  5, //35 -> 25 -> 15
+				StartValue:  5, //38 -> 25 -> 15
 			},
 			expect: 15,
+		},
+		{
+			description: "3 nodes active cluster, with local node 10 offset, seqValue: 13, recordCnt: 2",
+			records:     1,
+			seq: &Sequence{
+				Value:       10,
+				IncrementBy: 3,
+				StartValue:  10, //10 -> 10
+			},
+			expect: 10,
+		},
+		// Additional edge cases
+		{
+			description: "Value equals StartValue, recordCnt:1",
+			records:     1,
+			seq: &Sequence{
+				Value:       5,
+				IncrementBy: 10,
+				StartValue:  5,
+			},
+			expect: 5,
+		},
+		{
+			description: "Value equals StartValue, recordCnt:3",
+			records:     3,
+			seq: &Sequence{
+				Value:       5,
+				IncrementBy: 10,
+				StartValue:  5,
+			},
+			expect: 5,
+		},
+		{
+			description: "Value less than StartValue, recordCnt:1",
+			records:     1,
+			seq: &Sequence{
+				Value:       7,
+				IncrementBy: 3,
+				StartValue:  10,
+			},
+			expect: 10,
+		},
+		{
+			description: "Value less than StartValue, recordCnt:4",
+			records:     4,
+			seq: &Sequence{
+				Value:       7,
+				IncrementBy: 3,
+				StartValue:  10,
+			},
+			expect: 10,
+		},
+		{
+			description: "Aligned and > StartValue, recordCnt:1",
+			records:     1,
+			seq: &Sequence{
+				Value:       12,
+				IncrementBy: 5,
+				StartValue:  2, // 2,7,12 -> expect 7
+			},
+			expect: 7,
+		},
+		{
+			description: "Aligned and > StartValue, recordCnt:2",
+			records:     2,
+			seq: &Sequence{
+				Value:       12,
+				IncrementBy: 5,
+				StartValue:  2, // 2,7,12 -> expect 2
+			},
+			expect: 2,
+		},
+		{
+			description: "Large step, multiple records",
+			records:     3,
+			seq: &Sequence{
+				Value:       250,
+				IncrementBy: 50,
+				StartValue:  100, // 100,150,200,250 -> expect 100
+			},
+			expect: 100,
+		},
+		{
+			description: "StartValue > IncrementBy edge, Value==StartValue",
+			records:     2,
+			seq: &Sequence{
+				Value:       7,
+				IncrementBy: 3,
+				StartValue:  7,
+			},
+			expect: 7,
+		},
+		{
+			description: "IncrementBy=1 baseline, Value>StartValue",
+			records:     4,
+			seq: &Sequence{
+				Value:       10,
+				IncrementBy: 1,
+				StartValue:  1, // 10 -> 6
+			},
+			expect: 6,
 		},
 	}
 
