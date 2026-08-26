@@ -69,6 +69,51 @@ func TestSessionCached_NoCacheFallback(t *testing.T) {
 	}
 }
 
+func TestSessionCached_EmptyKeyFallback(t *testing.T) {
+	ctx := context.Background()
+	productName := "unittest_empty_key"
+	calls := 0
+	registerTestSessionHandler(t, productName, func() { calls++ })
+
+	d := &info.Dialect{Product: database.Product{Name: productName}}
+	cache := &sync.Map{}
+	emptyKey := metaKey{hashKey: "", dialect: d.Name}
+
+	first, err := SessionCached(ctx, nil, d, "", cache)
+	if err != nil {
+		t.Fatalf("unexpected error on first call: %v", err)
+	}
+	second, err := SessionCached(ctx, nil, d, "", cache)
+	if err != nil {
+		t.Fatalf("unexpected error on second call: %v", err)
+	}
+	if calls != 2 {
+		t.Fatalf("expected a fresh session on each call; calls=%d", calls)
+	}
+	if first == second {
+		t.Fatal("expected distinct session pointers for an empty cache key")
+	}
+	if _, ok := cache.Load(emptyKey); ok {
+		t.Fatal("expected an empty cache key not to be stored")
+	}
+
+	cached := &sink.Session{PID: "cached"}
+	cache.Store(emptyKey, cached)
+	got, err := SessionCached(ctx, nil, d, "", cache)
+	if err != nil {
+		t.Fatalf("unexpected error with a pre-existing empty-key entry: %v", err)
+	}
+	if calls != 3 {
+		t.Fatalf("expected the pre-existing empty-key entry to be ignored; calls=%d", calls)
+	}
+	if got == cached {
+		t.Fatal("expected a fresh session instead of the pre-existing empty-key entry")
+	}
+	if stored, ok := cache.Load(emptyKey); !ok || stored != cached {
+		t.Fatal("expected the pre-existing empty-key entry to remain untouched")
+	}
+}
+
 func TestSessionCached_CacheHit(t *testing.T) {
 	ctx := context.Background()
 	productName := "unittest_hit"

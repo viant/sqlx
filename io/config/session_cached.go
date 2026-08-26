@@ -22,7 +22,7 @@ func SessionCached(ctx context.Context, db *sql.DB, aDialect *info.Dialect, meta
 	}
 
 	// If no cache or key provided, fallback to creating a fresh session
-	if cache == nil {
+	if cache == nil || metaSessionCacheKey == "" {
 		return Session(ctx, db, aDialect)
 	}
 
