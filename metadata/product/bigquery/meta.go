@@ -36,9 +36,9 @@ COALESCE(LOCATION,'') AS SQL_PATH,
 'utf8' DEFAULT_CHARACTER_SET_NAME,
 '' AS  DEFAULT_COLLATION_NAME,
 LOCATION AS REGION
-FROM INFORMATION_SCHEMA.SCHEMATA
+FROM $Args[0].INFORMATION_SCHEMA.SCHEMATA
 `, bigQuery,
-			info.NewCriterion(info.Catalog, "CATALOG_NAME"),
+			info.NewCriterion(info.Catalog, ""),
 		),
 		info.NewQuery(info.KindSchema, `SELECT
 CATALOG_NAME, 
@@ -47,9 +47,9 @@ COALESCE(LOCATION,'') AS SQL_PATH,
 'utf8' DEFAULT_CHARACTER_SET_NAME,
 '' AS  DEFAULT_COLLATION_NAME,
 LOCATION AS REGION
-FROM INFORMATION_SCHEMA.SCHEMATA
+FROM $Args[0].INFORMATION_SCHEMA.SCHEMATA
 `, bigQuery,
-			info.NewCriterion(info.Catalog, "CATALOG_NAME"),
+			info.NewCriterion(info.Catalog, ""),
 			info.NewCriterion(info.Schema, "SCHEMA_NAME"),
 		),
 		info.NewQuery(info.KindSchema, `SELECT
@@ -59,9 +59,9 @@ COALESCE(LOCATION,'') AS SQL_PATH,
 'utf8' DEFAULT_CHARACTER_SET_NAME,
 '' AS  DEFAULT_COLLATION_NAME,
 LOCATION AS REGION
-FROM INFORMATION_SCHEMA.SCHEMATA
+FROM $Args[0].INFORMATION_SCHEMA.SCHEMATA
 `, bigQuery,
-			info.NewCriterion(info.Catalog, "CATALOG_NAME"),
+			info.NewCriterion(info.Catalog, ""),
 			info.NewCriterion(info.Schema, "SCHEMA_NAME"),
 		),
 		info.NewQuery(info.KindTables, `SELECT
@@ -76,28 +76,9 @@ CREATION_TIME AS UPDATE_TIME,
 '' VERSION,
 TABLE_TYPE AS ENGINE,
 DDL
-FROM INFORMATION_SCHEMA.TABLES
-`,
+FROM $Args[1].INFORMATION_SCHEMA.TABLES`,
 			bigQuery,
-			info.NewCriterion(info.Catalog, "CATALOG_NAME"),
-			info.NewCriterion(info.Schema, "SCHEMA_NAME"),
-		),
-
-		info.NewQuery(info.KindTables, `SELECT
-TABLE_CATALOG,
-TABLE_SCHEMA,
-TABLE_TYPE,
-TABLE_NAME,
-'' AS AUTO_INCREMENT,
-CREATION_TIME AS CREATE_TIME,
-CREATION_TIME AS UPDATE_TIME,
-0 AS TABLE_ROWS,
-'' VERSION,
-TABLE_TYPE AS ENGINE,
-DDL
-FROM INFORMATION_SCHEMA.TABLES`,
-			bigQuery,
-			info.NewCriterion(info.Catalog, "TABLE_CATALOG"),
+			info.NewCriterion(info.Catalog, ""),
 			info.NewCriterion(info.Schema, "TABLE_SCHEMA"),
 		),
 
@@ -115,10 +96,10 @@ CAST(NULL AS INT64) NUMERIC_SCALE,
 IS_NULLABLE,
 '' COLUMN_DEFAULT,
 '' COLUMN_KEY
-FROM INFORMATION_SCHEMA.COLUMNS
+FROM $Args[1].INFORMATION_SCHEMA.COLUMNS
 `,
 			bigQuery,
-			info.NewCriterion(info.Catalog, "TABLE_CATALOG"),
+			info.NewCriterion(info.Catalog, ""),
 			info.NewCriterion(info.Schema, "TABLE_SCHEMA"),
 			info.NewCriterion(info.Table, "TABLE_NAME"),
 		),
@@ -216,6 +197,7 @@ SESSION_USER() AS USER_NAME,
 	registry.RegisterDialect(&info.Dialect{
 		Product:                 bigQuery,
 		Placeholder:             "?",
+		CompositeInRenderer:     compositeIn,
 		Transactional:           false, //only script is transactional
 		Insert:                  dialect.InsertWithMultiValues,
 		Upsert:                  dialect.UpsertTypeMerge,

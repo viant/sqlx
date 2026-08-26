@@ -15,6 +15,7 @@ type Dialect struct {
 	database.Product
 	Placeholder         string // prepare statement placeholder, default '?', but oracle uses ':'
 	PlaceholderResolver placeholder.Generator
+	CompositeInRenderer func(columns []string, rowCount int) string
 	Transactional       bool
 	Insert              dialect.InsertFeatures
 	Upsert              dialect.UpsertFeatures
