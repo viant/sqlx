@@ -19,6 +19,7 @@ const (
 	dbTypeNameBool    = "bool"
 	dbTypeNameBytes   = "bytes"
 	dbTypeNameBlob    = "blob"
+	dbTypeNameUUID    = "uuid"
 )
 
 var (
@@ -38,7 +39,7 @@ func ensureScanType(columnTypeName string, scanType reflect.Type) reflect.Type {
 		return scanType
 	}
 	dbTypeName := strings.ToLower(columnTypeName)
-	if strings.Contains(dbTypeName, dbTypeNameChar) || strings.Contains(dbTypeName, dbTypeNameString) || strings.Contains(dbTypeName, dbTypeNameText) {
+	if strings.Contains(dbTypeName, dbTypeNameChar) || strings.Contains(dbTypeName, dbTypeNameString) || strings.Contains(dbTypeName, dbTypeNameText) || strings.Contains(dbTypeName, dbTypeNameUUID) {
 		return typeString
 	}
 	if strings.Contains(dbTypeName, dbTypeNameInt) {
