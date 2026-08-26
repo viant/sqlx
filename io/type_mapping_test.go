@@ -1,6 +1,7 @@
 package io
 
 import (
+	"encoding/json"
 	"reflect"
 	"strings"
 	"testing"
@@ -19,7 +20,11 @@ func TestParseType(t *testing.T) {
 		{name: "GUID", dbType: "guid", expected: reflect.TypeOf("")},
 		{name: "timestamp with timezone", dbType: "timestamptz", expected: reflect.TypeOf(time.Time{})},
 		{name: "real", dbType: "real", expected: reflect.TypeOf(float64(0))},
-		{name: "JSON remains bytes in stage 5A", dbType: "json", expected: reflect.TypeOf([]byte{})},
+		{name: "JSON", dbType: "json", expected: reflect.TypeOf(json.RawMessage{})},
+		{name: "JSONB", dbType: "jsonb", expected: reflect.TypeOf(json.RawMessage{})},
+		{name: "sql.RawBytes remains bytes", dbType: "sql.rawbytes", expected: reflect.TypeOf([]byte{})},
+		{name: "RawBytes remains bytes", dbType: "rawbytes", expected: reflect.TypeOf([]byte{})},
+		{name: "bytes remains bytes", dbType: "bytes", expected: reflect.TypeOf([]byte{})},
 	}
 
 	for _, testCase := range testCases {
@@ -50,6 +55,8 @@ func TestNormalizeColumnType(t *testing.T) {
 	}{
 		{name: "nil scan metadata", scanType: nil, dbType: "unknown_type", expected: xreflect.InterfaceType},
 		{name: "UUID overrides interface scan type", scanType: xreflect.InterfaceType, dbType: "UUID", expected: reflect.TypeOf("")},
+		{name: "JSON uses RawMessage", scanType: reflect.TypeOf([]byte{}), dbType: "JSON", expected: reflect.TypeOf(json.RawMessage{})},
+		{name: "JSONB uses RawMessage", scanType: reflect.TypeOf([]byte{}), dbType: "JSONB", expected: reflect.TypeOf(json.RawMessage{})},
 		{name: "REAL uses float64", scanType: reflect.TypeOf(float32(0)), dbType: "REAL", expected: reflect.TypeOf(float64(0))},
 		{name: "TIMESTAMPTZ uses time", scanType: reflect.TypeOf(""), dbType: "TIMESTAMPTZ", expected: reflect.TypeOf(time.Time{})},
 	}
