@@ -120,6 +120,10 @@ func (s *UnmarshalSession) buildParentNode() (Node, bool) {
 }
 
 func (s *UnmarshalSession) destWithAppender(field *Field) (interface{}, *xunsafe.Appender) {
+	// Marshal constructs the field tree without an unmarshal destination.
+	if s.dest == nil {
+		return nil, nil
+	}
 	if field.path == "" {
 		dest := s.dest
 		var appender *xunsafe.Appender
@@ -135,6 +139,6 @@ func (s *UnmarshalSession) destWithAppender(field *Field) (interface{}, *xunsafe
 		parentType = reflect.SliceOf(parentType)
 	}
 
-	dest := reflect.New(field.parentType).Interface()
+	dest := reflect.New(parentType).Interface()
 	return dest, xunsafe.NewSlice(parentType).Appender(xunsafe.AsPointer(dest))
 }

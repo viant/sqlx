@@ -38,6 +38,12 @@ func (c *Scanner) New(e *Entry) ScannerFn {
 		}
 
 		for i, cachedValue := range decoder.values {
+			if handled, err := scannerValue(values[i], cachedValue); handled {
+				if err != nil {
+					return err
+				}
+				continue
+			}
 			if cachedValue == nil {
 				continue
 			}
@@ -86,6 +92,12 @@ func NewProjectedScanner(entry *Entry, indexes []int, typeHolder *ScanTypeHolder
 				return fmt.Errorf("invalid projected cache format, stored index %v out of range %v", storedIndex, len(decoder.values))
 			}
 			cachedValue := decoder.values[storedIndex]
+			if handled, err := scannerValue(values[destIndex], cachedValue); handled {
+				if err != nil {
+					return err
+				}
+				continue
+			}
 			if cachedValue == nil {
 				zeroScanDestination(values[destIndex])
 				continue

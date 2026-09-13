@@ -14,6 +14,7 @@ type Option func(o *options)
 
 type options struct {
 	getRowMapper       NewRowMapper
+	columnsObserver    func([]io.Column) error
 	unmappedFn         io.Resolve
 	cache              cache.Cache
 	mapperCache        *MapperCache
@@ -31,6 +32,12 @@ func WithRowMapper(mapper NewRowMapper) Option {
 	return func(o *options) {
 		o.getRowMapper = mapper
 	}
+}
+
+// WithColumnsObserver observes the native source schema before mapper creation,
+// for both database reads and cache replay. It does not replace row mapping.
+func WithColumnsObserver(observer func([]io.Column) error) Option {
+	return func(o *options) { o.columnsObserver = observer }
 }
 
 func WithUnmappedFn(fn io.Resolve) Option {

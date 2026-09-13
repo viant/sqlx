@@ -183,6 +183,8 @@ func fieldGetter(tag *Tag, field *xunsafe.Field, recordType reflect.Type) (xunsa
 	switch tag.Encoding {
 	case EncodingJSON:
 		return jsonFieldEncodder(tag, field, recordType), nil
+	case EncodingCSV:
+		return func(pointer unsafe.Pointer) interface{} { return &CSVEncodedValue{Val: field.Addr(pointer)} }, nil
 	default:
 		return nil, fmt.Errorf("unsupported column encoding type %v", tag.Encoding)
 	}

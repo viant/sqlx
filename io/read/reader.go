@@ -66,10 +66,16 @@ func (r *Reader) QueryAll(ctx context.Context, emit func(row interface{}) error,
 
 	rows, source, err := r.createSource(ctx, entry, args, r.inMatcher)
 	if err != nil {
+		if entry != nil && r.cache != nil {
+			_ = r.cache.Rollback(context.WithoutCancel(ctx), entry)
+		}
 		return fmt.Errorf("failed to create stmt source: %w", err)
 	}
 
 	if err = r.applyRowsIfNeeded(entry, rows); err != nil {
+		if source != nil {
+			_ = source.Rollback(context.WithoutCancel(ctx))
+		}
 		return fmt.Errorf("failed to assign rows: %w", err)
 	}
 
@@ -95,12 +101,12 @@ func (r *Reader) createSource(ctx context.Context, entry *cache.Entry, args []in
 			return nil, nil, fmt.Errorf("failed to run query: %v, due to %w", r.query, err)
 		}
 
-		source, err := NewRows(rows, r.cache, entry, matcher)
+		source, err := NewRows(rows, r.cache, entry, nil)
 		if err != nil {
 			return nil, nil, err
 		}
 
-		return rows, source, nil
+		return rows, withWindow(source, matcher, entry), nil
 	}
 
 	source, err := r.cache.AsSource(ctx, entry)
@@ -108,18 +114,18 @@ func (r *Reader) createSource(ctx context.Context, entry *cache.Entry, args []in
 		return nil, nil, err
 	}
 
-	return nil, source, nil
+	return nil, withWindow(source, matcher, entry), nil
 }
 
 // ReadAll read all
 func (r *Reader) ReadAll(ctx context.Context, rows *sql.Rows, emit func(row interface{}) error, options ...option.Option) error {
 	cacheEntry := r.getCacheEntry(options)
-	readerRows, err := NewRows(rows, r.cache, cacheEntry, r.inMatcher)
+	readerRows, err := NewRows(rows, r.cache, cacheEntry, nil)
 	if err != nil {
 		return err
 	}
 
-	if err = r.readAll(ctx, emit, cacheEntry, readerRows); err != nil {
+	if err = r.readAll(ctx, emit, cacheEntry, withWindow(readerRows, r.inMatcher, cacheEntry)); err != nil {
 		return err
 	}
 
@@ -302,6 +308,11 @@ func (r *Reader) ensureRowMapper(source cache.Source, mapperPtr *RowMapper) (Row
 	columns, err := source.ConvertColumns()
 	if err != nil {
 		return nil, err
+	}
+	if r.columnsObserver != nil {
+		if err := r.columnsObserver(columns); err != nil {
+			return nil, err
+		}
 	}
 
 	var mapper RowMapper

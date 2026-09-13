@@ -10,6 +10,7 @@ import (
 
 const (
 	EncodingJSON = "JSON"
+	EncodingCSV  = "CSV"
 	//TagSqlx defines sqlx annotation
 
 	TagSqlx = "sqlx"

@@ -35,6 +35,8 @@ type (
 	//ParmetrizedQuery abstraction to represent data optimisation with caching and custom pagination
 	ParmetrizedQuery struct {
 		By           string
+		ByColumns    []string
+		InTuples     [][]interface{}
 		SQL          string
 		IdentitySQL  string
 		Ordered      bool //SQL uses order by indexby column
