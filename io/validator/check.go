@@ -25,6 +25,9 @@ type (
 		CheckField     *xunsafe.Field
 		UniqueDep      *io.Column
 		IdentityColumn *io.Column
+		columnIndex    int
+		columns        []io.Column
+		bind           io.PlaceholderBinder
 	}
 
 	Checks struct {
@@ -33,6 +36,7 @@ type (
 		RefKey   []*Check
 		NoNull   []*Check
 		presence *option.SetMarker
+		bind     io.PlaceholderBinder
 	}
 )
 
@@ -42,15 +46,18 @@ func NewChecks(p reflect.Type, presence *option.SetMarker) (*Checks, error) {
 	if sType.Kind() == reflect.Ptr {
 		sType = sType.Elem()
 	}
-	var opts []option.Option
-	if presence != nil {
-		opts = append(opts, presence)
-	}
-	columns, err := io.StructColumns(p, opts...)
+	// Compile presence independently of the first invocation's validation mode.
+	// A cached full-record check must remain usable by a later sparse check.
+	compiledPresence := &option.SetMarker{}
+	columns, bind, err := io.StructColumnMapper(p, compiledPresence)
 	if err != nil {
 		return nil, err
 	}
-	result.presence = presence
+	result.presence = compiledPresence
+	result.bind = bind
+	if presence != nil {
+		*presence = *compiledPresence
+	}
 
 	identityColPos := io.Columns(columns).IdentityColumnPos()
 	var identityColumn io.Column
@@ -63,7 +70,7 @@ func NewChecks(p reflect.Type, presence *option.SetMarker) (*Checks, error) {
 		columnByName[column.Name()] = column
 	}
 
-	for _, column := range columns {
+	for columnIndex, column := range columns {
 		tag := column.Tag()
 		if tag == nil {
 			continue
@@ -80,8 +87,9 @@ func NewChecks(p reflect.Type, presence *option.SetMarker) (*Checks, error) {
 
 		if tag.Required {
 			result.NoNull = append(result.NoNull, &Check{
-				Field:    xField,
-				ErrorMsg: tag.ErrorMgs,
+				Field:       xField,
+				ErrorMsg:    tag.ErrorMgs,
+				columnIndex: columnIndex,
 			})
 		}
 
@@ -99,6 +107,9 @@ func NewChecks(p reflect.Type, presence *option.SetMarker) (*Checks, error) {
 			}
 
 			result.Unique = append(result.Unique, &Check{
+				columnIndex:    columnIndex,
+				columns:        columns,
+				bind:           bind,
 				SQL:            "SELECT " + column.Name() + " AS Val FROM " + schema(tag.Db) + tag.Table + " WHERE " + column.Name(),
 				CheckType:      checkType,
 				CheckField:     checkField,

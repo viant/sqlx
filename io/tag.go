@@ -181,6 +181,12 @@ func (t *Tag) isIdentity(name string) bool {
 	return t.Autoincrement || t.PrimaryKey || strings.ToLower(t.Column) == "id" || strings.ToLower(name) == "id"
 }
 
+// HasDefaultGenerator reports whether this field activates native database
+// default generation. Identity allocation is a separate producer.
+func (t *Tag) HasDefaultGenerator() bool {
+	return t != nil && t.Generator != "" && !(t.PrimaryKey && t.Autoincrement)
+}
+
 func (t *Tag) validateWithField(field reflect.StructField) error {
 	if t.Sequence != "" {
 		columnName := t.getColumnName(field)

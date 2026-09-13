@@ -61,7 +61,7 @@ func (s *Service) NextSequence(ctx context.Context, any interface{}, recordCount
 	batchSize := option.Options(options).BatchSize()
 	record := valueAt(0)
 	db := option.Options(options).Db()
-	sess, err := s.NewSession(ctx, record, db, batchSize)
+	sess, err := s.NewSession(ctx, record, db, batchSize, options...)
 	if err != nil {
 		return nil, err
 	}
@@ -106,7 +106,7 @@ func (s *Service) Exec(ctx context.Context, any interface{}, options ...option.O
 		db = s.db
 	}
 
-	sess, err := s.NewSession(ctx, record, db, batchSize)
+	sess, err := s.NewSession(ctx, record, db, batchSize, options...)
 	if err != nil {
 		return 0, 0, err
 	}
@@ -123,7 +123,7 @@ func (s *Service) Exec(ctx context.Context, any interface{}, options ...option.O
 	options = append(options, sess.Dialect)
 
 	var batchRecordBuffer = make([]interface{}, batchSize*len(sess.columns))
-	var identities = make([]interface{}, batchSize)
+	var identities = make([]interface{}, batchSize*len(sess.recordUpdaters))
 	defGenerator, err := generator.NewDefault(ctx, sess.Dialect, sess.db, sess.info, s.metaSessionCacheKey, s.metaSessionCache)
 	if err != nil {
 		return 0, 0, err
@@ -151,11 +151,14 @@ func (s *Service) Exec(ctx context.Context, any interface{}, options ...option.O
 }
 
 // NewSession creates a new session
-func (s *Service) NewSession(ctx context.Context, record interface{}, db *sql.DB, batchSize int) (*session, error) {
+func (s *Service) NewSession(ctx context.Context, record interface{}, db *sql.DB, batchSize int, options ...option.Option) (*session, error) {
 	s.mux.Lock()
 	defer s.mux.Unlock()
+	if db == nil {
+		db = s.db
+	}
 	rType := reflect.TypeOf(record)
-	if sess := s.cachedSession; sess != nil && sess.rType == rType && sess.batchSize == batchSize {
+	if sess := s.cachedSession; sess != nil && sess.rType == rType && sess.batchSize == batchSize && sess.db == db {
 		if db == nil {
 			db = sess.db
 		}
@@ -167,6 +170,7 @@ func (s *Service) NewSession(ctx context.Context, record interface{}, db *sql.DB
 			db:        db,
 			batchSize: sess.batchSize,
 			info:      sess.info,
+			setMarker: sess.setMarker,
 		}
 		// Build fresh recordUpdaters bound to newSess so per-call state
 		// (sequence, sequenceValue, detectedPreset, ...) is not shared
@@ -183,15 +187,21 @@ func (s *Service) NewSession(ctx context.Context, record interface{}, db *sql.DB
 		return newSess, nil
 	}
 
-	aDialect, err := config.Dialect(ctx, s.db)
+	// Session/version discovery only needs the connection owner. Statement Args,
+	// columns and mapper options belong to the insert operation, not metadata SQL.
+	var metadataOptions []option.Option
+	if tx := option.Options(append(append([]option.Option(nil), options...), s.options...)).Tx(); tx != nil {
+		metadataOptions = append(metadataOptions, tx)
+	}
+	aDialect, err := config.Dialect(ctx, db, metadataOptions...)
 	if err != nil {
 		return nil, err
 	}
 	var metaSession *sink.Session
 	if s.metaSessionCacheKey != "" {
-		metaSession, err = config.SessionCached(ctx, s.db, aDialect, s.metaSessionCacheKey, s.metaSessionCache)
+		metaSession, err = config.SessionCached(ctx, db, aDialect, s.metaSessionCacheKey, s.metaSessionCache, metadataOptions...)
 	} else {
-		metaSession, err = config.Session(ctx, s.db, aDialect)
+		metaSession, err = config.Session(ctx, db, append(metadataOptions, aDialect)...)
 	}
 
 	if err != nil {
@@ -206,9 +216,9 @@ func (s *Service) NewSession(ctx context.Context, record interface{}, db *sql.DB
 		batchSize: batchSize,
 		Config:    conf,
 		info:      metaSession,
-		db:        s.db,
+		db:        db,
 	}
-	if err = result.ApplyOption(ctx, s.db, s.options...); err != nil {
+	if err = result.ApplyOption(ctx, db, s.options...); err != nil {
 		return nil, err
 	}
 

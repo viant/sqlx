@@ -8,6 +8,7 @@ import (
 
 	"github.com/viant/sqlx/metadata/info"
 	"github.com/viant/sqlx/metadata/sink"
+	"github.com/viant/sqlx/option"
 )
 
 type metaKey struct {
@@ -15,15 +16,16 @@ type metaKey struct {
 	dialect string
 }
 
-func SessionCached(ctx context.Context, db *sql.DB, aDialect *info.Dialect, metaSessionCacheKey string, cache *sync.Map) (*sink.Session, error) {
+func SessionCached(ctx context.Context, db *sql.DB, aDialect *info.Dialect, metaSessionCacheKey string, cache *sync.Map, options ...option.Option) (*sink.Session, error) {
 	// Resolve dialect from options or detect it.
 	if aDialect == nil {
 		return nil, fmt.Errorf("dialect was not provided")
 	}
+	options = append(append([]option.Option(nil), options...), aDialect)
 
 	// If no cache or key provided, fallback to creating a fresh session
 	if cache == nil || metaSessionCacheKey == "" {
-		return Session(ctx, db, aDialect)
+		return Session(ctx, db, options...)
 	}
 
 	key := metaKey{
@@ -36,7 +38,7 @@ func SessionCached(ctx context.Context, db *sql.DB, aDialect *info.Dialect, meta
 	}
 
 	// Miss: create and store
-	sess, err := Session(ctx, db, aDialect)
+	sess, err := Session(ctx, db, options...)
 
 	if err != nil {
 		return nil, err

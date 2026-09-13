@@ -6,7 +6,6 @@ import (
 	"fmt"
 
 	"github.com/viant/sqlx/io"
-	"github.com/viant/sqlx/io/read"
 	"github.com/viant/sqlx/metadata/info"
 	"github.com/viant/sqlx/metadata/registry"
 	"github.com/viant/sqlx/option"
@@ -57,6 +56,9 @@ func (s *Service) Validate(ctx context.Context, db *sql.DB, any interface{}, opt
 	for _, opt := range opts {
 		opt(options)
 	}
+	if options.previousSet && !options.Shallow {
+		return nil, fmt.Errorf("explicit previous validation requires shallow rows; validate nested matched rows separately")
+	}
 	valueAt, count, err := io.Values(any)
 
 	if err != nil {
@@ -78,6 +80,9 @@ func (s *Service) Validate(ctx context.Context, db *sql.DB, any interface{}, opt
 		if reflect.TypeOf(any).Kind() == reflect.Slice {
 			path.IsSlice = true
 		}
+	}
+	if err = s.checkNotNull(ctx, path, valueAt, count, checks, &ret, options); err != nil {
+		return nil, err
 	}
 	if err = s.checkUniques(ctx, path, db, valueAt, count, checks.Unique, &ret, options); err != nil {
 		return nil, err
@@ -252,15 +257,16 @@ func (s *Service) checkUniques(ctx context.Context, path *Path, db *sql.DB, at i
 }
 
 func (s *Service) checkUnique(ctx context.Context, path *Path, db *sql.DB, at io.ValueAccessor, count int, check *Check, violations *Validation, options *Options) error {
+	if options.previousSet {
+		return s.checkUniquePrevious(ctx, path, db, at, count, check, violations, options)
+	}
 	queryCtx := s.buildUniqueMatchContext(check, count, path, at, options)
 	if len(queryCtx.values) == 0 {
 		return nil
 	}
 	SQL := queryCtx.QueryWithCriteria()
 	//build query for all values that should be unique
-	reader, err := read.New(ctx, db, SQL, func() interface{} {
-		return reflect.New(check.CheckType).Interface()
-	})
+	reader, err := options.reader(ctx, db, SQL, check.CheckType)
 	if err != nil {
 		return err
 	}
@@ -287,13 +293,12 @@ func (s *Service) checkUnique(ctx context.Context, path *Path, db *sql.DB, at io
 
 func (s *Service) buildUniqueMatchContext(check *Check, count int, path *Path, at io.ValueAccessor, options *Options) *queryContext {
 	queryCtx := newQueryContext(check.SQL)
-	setMarker := options.SetMarker
 	for i := 0; i < count; i++ {
 		itemPath := path.AppendIndex(i)
 		fieldPath := itemPath.AppendField(check.Field.Name)
 		record := at(i)
 		recordPtr := xunsafe.AsPointer(record)
-		if setMarker != nil && !setMarker.IsSet(recordPtr, int(setMarker.Marker.Index(check.Field.Name))) {
+		if !options.includes(record, check.Field.Name) {
 			continue
 		}
 		value := check.Field.Value(recordPtr)
@@ -334,9 +339,7 @@ func (s *Service) checkRef(ctx context.Context, path *Path, db *sql.DB, at io.Va
 	var index = map[interface{}]bool{}
 	for _, chunk := range queryCtx.QueryChunks(maxPlaceholders) {
 		//build query for all reference values
-		reader, err := read.New(ctx, db, chunk.Query(), func() interface{} {
-			return reflect.New(check.CheckType).Interface()
-		})
+		reader, err := options.reader(ctx, db, chunk.Query(), check.CheckType)
 		if err != nil {
 			return err
 		}
@@ -364,13 +367,12 @@ func (s *Service) checkRef(ctx context.Context, path *Path, db *sql.DB, at io.Va
 
 func (s *Service) buildCheckRefQueryContext(check *Check, count int, path *Path, at io.ValueAccessor, options *Options, violations *Validation) *queryContext {
 	queryCtx := newQueryContext(check.SQL)
-	setMarker := options.SetMarker
 	for i := 0; i < count; i++ {
 		itemPath := path.AppendIndex(i)
 		fieldPath := itemPath.AppendField(check.Field.Name)
 		record := at(i)
 		recordPtr := xunsafe.AsPointer(record)
-		if setMarker != nil && !setMarker.IsSet(recordPtr, int(setMarker.Marker.Index(check.Field.Name))) {
+		if !options.includes(record, check.Field.Name) {
 			continue
 		}
 		value := check.Field.Value(recordPtr)

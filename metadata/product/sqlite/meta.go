@@ -72,7 +72,7 @@ FROM `+schemaTable+` WHERE type='table' AND name NOT IN('sqlite_sequence')`, pro
   t.cid AS ORDINAL_POSITION, 
   t.type AS DATA_TYPE, 
   COALESCE(t.dflt_value,'') AS COLUMN_DEFAULT, 
-  CASE WHEN t.pk = 1 THEN 'PRI' ELSE '' END AS COLUMN_KEY
+  CASE WHEN t.pk > 0 THEN 'PRI' ELSE '' END AS COLUMN_KEY
 FROM `+schemaTable+` AS m,
 pragma_table_info(m.name) AS t
 `, product,
@@ -135,10 +135,11 @@ FROM SQLITE_SEQUENCE`,
 		'PRIMARY KEY' AS CONSTRAINT_TYPE,
 		m.name AS TABLE_NAME,
 		t.name AS COLUMN_NAME,
-		t.cid AS ORDINAL_POSITION
-	FROM `+schemaTable+` AS m,
-	pragma_table_info(m.name) AS t
-	WHERE t.pk = 1 `,
+		t.pk - 1 AS ORDINAL_POSITION
+	FROM `+schemaTable+` AS m
+	JOIN pragma_table_info(m.name) AS t ON t.pk > 0
+	$WHERE
+	ORDER BY m.name, t.pk `,
 			product,
 			info.NewCriterion(info.Catalog, ""),
 			info.NewCriterion(info.Schema, ""),

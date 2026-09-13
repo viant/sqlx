@@ -115,6 +115,10 @@ func (f *Matcher) indexFields(idx index, owner *Field, xStruct *xunsafe.Struct, 
 		field := Field{
 			Field: structField,
 		}
+		if owner != nil {
+			field.fieldIndex = append(field.fieldIndex, owner.fieldIndex...)
+		}
+		field.fieldIndex = append(field.fieldIndex, int(structField.Index))
 		field.buildEvalAddr(owner)
 		if parsed := ParseTag(structField.Tag); parsed != nil {
 			field.Tag = *parsed

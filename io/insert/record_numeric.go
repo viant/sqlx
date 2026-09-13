@@ -28,9 +28,17 @@ type numericSequencer struct {
 	shallPresetIdentities bool
 	muxPreset             sync.Mutex
 	muxSequenceValue      sync.Mutex
+	explicitIdentities    map[interface{}]bool
 }
 
 func (n *numericSequencer) updateRecord(ctx context.Context, sess *session, record interface{}, columnValue *interface{}, recordCount int, identitiesBatched []interface{}, options []option.Option) error {
+	if columnValue != nil && n.explicitIdentity(record, *columnValue) {
+		if n.explicitIdentities == nil {
+			n.explicitIdentities = map[interface{}]bool{}
+		}
+		n.explicitIdentities[*columnValue] = true
+		return nil
+	}
 	if err := n.prepareSequenceIfNeeded(ctx, sess, record, columnValue, recordCount, identitiesBatched, options); err != nil {
 		return err
 	}
@@ -58,6 +66,7 @@ func (n *numericSequencer) prepare(_ context.Context, options []option.Option, s
 	n.options = options
 	n.presetRecord = nil
 	n.presetRecordCount = 0
+	n.explicitIdentities = nil
 	if at == nil || count <= 0 {
 		return nil, nil
 	}
@@ -66,6 +75,13 @@ func (n *numericSequencer) prepare(_ context.Context, options []option.Option, s
 	for i := 0; i < count; i++ {
 		record := at(i)
 		sess.binder(record, buffer, 0, len(sess.columns))
+		if n.explicitIdentity(record, buffer[n.position]) {
+			if n.explicitIdentities == nil {
+				n.explicitIdentities = map[interface{}]bool{}
+			}
+			n.explicitIdentities[buffer[n.position]] = true
+			continue
+		}
 		if !isZero(buffer[n.position]) {
 			continue
 		}
@@ -80,6 +96,7 @@ func (n *numericSequencer) prepare(_ context.Context, options []option.Option, s
 
 func (n *numericSequencer) nextSequence(ctx context.Context, sess *session, record interface{}, batchRecordBuffer []interface{}, recordCount int, options []option.Option) (*sink.Sequence, error) {
 	options = append(n.options, options...)
+	options = append(options, option.SequenceTable(sess.TableName))
 	presetIDStrategy := option.Options(options).PresetIDStrategy()
 	if presetIDStrategy == dialect.PresetIDStrategyUndefined {
 		presetIDStrategy = sess.Dialect.DefaultPresetIDStrategy
@@ -209,7 +226,7 @@ func (n *numericSequencer) afterFlush(ctx context.Context, values []interface{},
 		return lastInsertedID, nil
 	}
 
-	if isZero(identities[0]) {
+	if !n.explicitIdentities[identities[0]] && isZero(identities[0]) {
 		if rowsAffected == 1 {
 			err := assign(identities[0], lastInsertedID)
 			if err != nil {
@@ -230,7 +247,7 @@ func (n *numericSequencer) afterFlush(ctx context.Context, values []interface{},
 	case 0: //no info about sequence
 		for i := 0; i < int(rowsAffected); i++ {
 			identityValue := identities[i]
-			if !isZero(identityValue) {
+			if n.explicitIdentities[identityValue] || !isZero(identityValue) {
 				continue
 			}
 
@@ -252,6 +269,9 @@ func (n *numericSequencer) afterFlush(ctx context.Context, values []interface{},
 			return lastInsertedID, nil
 		}
 		for i := 0; i < int(rowsAffected); i++ {
+			if n.explicitIdentities[identities[i]] {
+				continue
+			}
 			if err := assign(identities[i], lastInsertedID); err != nil {
 				return 0, err
 			}
@@ -282,7 +302,7 @@ func isZero(value interface{}) bool {
 
 func (n *numericSequencer) updateSequencer(ctx context.Context, sequenceName string, recordCount int) {
 	meta := metadata.New()
-	options := []option.Option{option.NewArgs(n.session.info.Catalog, n.session.info.Schema, sequenceName), n.session.Dialect}
+	options := append(append([]option.Option(nil), n.options...), option.NewArgs(n.session.info.Catalog, n.session.info.Schema, sequenceName), n.session.Dialect)
 
 	if n.sequence == nil {
 		n.sequence = &sink.Sequence{IncrementBy: 1}

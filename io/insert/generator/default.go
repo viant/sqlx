@@ -183,7 +183,7 @@ func (d *Default) shouldLoadColumnInfo(rType reflect.Type) bool {
 
 	for i := 0; i < rType.NumField(); i++ {
 		tag := io.ParseTag(rType.Field(i).Tag)
-		if tag.Generator != "" && !(tag.PrimaryKey && tag.Autoincrement) {
+		if tag.HasDefaultGenerator() {
 			return true
 		}
 	}

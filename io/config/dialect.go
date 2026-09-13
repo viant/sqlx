@@ -10,14 +10,14 @@ import (
 	"github.com/viant/sqlx/option"
 )
 
-//Dialect returns a dialect
+// Dialect returns a dialect
 func Dialect(ctx context.Context, db *sql.DB, opts ...option.Option) (*info.Dialect, error) {
 	options := option.Options(opts)
 	product := options.Product()
 	if product == nil {
 		var err error
 		meta := metadata.New()
-		product, err = meta.DetectProduct(ctx, db)
+		product, err = meta.DetectProduct(ctx, db, opts...)
 		if err != nil {
 			return nil, fmt.Errorf("missing product option: %T %v", db, err)
 		}

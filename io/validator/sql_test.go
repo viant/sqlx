@@ -7,6 +7,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	_ "github.com/viant/sqlx/metadata/product/sqlite"
+	"github.com/viant/sqlx/metadata/registry"
 )
 
 func TestQueryContextQueryChunks(t *testing.T) {
@@ -53,7 +54,7 @@ func TestInitMaxPlaceholdersFallbackThreshold(t *testing.T) {
 	assert.Equal(t, 1000, options.MaxPlaceholders)
 }
 
-func TestInitMaxPlaceholdersUsesDialectBelowFallback(t *testing.T) {
+func TestInitMaxPlaceholdersUsesSelectedDialect(t *testing.T) {
 	db, err := sql.Open("sqlite3", ":memory:")
 	if !assert.Nil(t, err) {
 		return
@@ -63,7 +64,14 @@ func TestInitMaxPlaceholdersUsesDialectBelowFallback(t *testing.T) {
 
 	service := New()
 	options := NewOptions()
-
-	assert.Equal(t, 994, service.initMaxPlaceholders(db, options, 995))
-	assert.Equal(t, 994, options.MaxPlaceholders)
+	// Other native callers may have detected the actual SQLite version already.
+	// Modern SQLite has a larger limit than the conservative unknown version;
+	// validation must use the selected dialect, not a process-order assumption.
+	dialect := registry.LookupDialect(registry.MatchProduct(db))
+	if !assert.NotNil(t, dialect) {
+		return
+	}
+	want := dialect.MaxPlaceholderCount()
+	assert.Equal(t, want, service.initMaxPlaceholders(db, options, 995))
+	assert.Equal(t, want, options.MaxPlaceholders)
 }
