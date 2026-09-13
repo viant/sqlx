@@ -51,6 +51,19 @@ func (c *Column) IsNullable() bool {
 	return false
 }
 
+// IsNotNull reports an explicitly known NOT NULL column. Missing or unknown
+// metadata is not evidence of a constraint, so it is not !IsNullable().
+func (c *Column) IsNotNull() bool {
+	if c == nil {
+		return false
+	}
+	switch strings.ToLower(strings.TrimSpace(c.Nullable)) {
+	case "no", "n", "false", "f", "0":
+		return true
+	}
+	return false
+}
+
 func (c *Column) IsUnique() bool {
 	if c.Key == "" {
 		return false
