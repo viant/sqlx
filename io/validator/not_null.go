@@ -22,7 +22,7 @@ func (s *Service) checkNotNull(ctx context.Context, path *Path, at io.ValueAcces
 		}
 		record := at(i)
 		for _, check := range checks.NoNull {
-			if !options.includes(record, check.Field.Name) {
+			if options.deferredAt(i, check.Field.Name) || !options.includesAt(i, record, check.Field.Name) {
 				continue
 			}
 			checks.bind(record, parameter, check.columnIndex, 1)

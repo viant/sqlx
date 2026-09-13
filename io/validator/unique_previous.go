@@ -8,6 +8,7 @@ import (
 	"reflect"
 
 	"github.com/viant/sqlx/io"
+	"github.com/viant/sqlx/metadata/info"
 )
 
 type uniqueCandidate struct {
@@ -24,7 +25,9 @@ type uniqueBytesKey string
 // query. A shared exclusion set would hide collisions with another updated row.
 func (s *Service) checkUniquePrevious(ctx context.Context, path *Path, db *sql.DB, at io.ValueAccessor, count int, check *Check, result *Validation, options *Options) error {
 	previous := func(int) interface{} { return nil }
-	if options.Previous != nil {
+	if options.candidatePoliciesSet {
+		previous = func(index int) interface{} { return options.CandidatePolicies[index].Previous }
+	} else if options.Previous != nil {
 		var n int
 		var err error
 		previous, n, err = io.Values(options.Previous)
@@ -35,13 +38,8 @@ func (s *Service) checkUniquePrevious(ctx context.Context, path *Path, db *sql.D
 			return fmt.Errorf("previous row count %d does not match candidate count %d", n, count)
 		}
 	}
-	if db == nil {
-		return fmt.Errorf("unique validation requires a database")
-	}
-	dialect, err := options.resolveDialect(ctx, db)
-	if err != nil {
-		return err
-	}
+	var dialect *info.Dialect
+	var err error
 	var keyIndexes []int
 	var keyNames []string
 	for i, column := range check.columns {
@@ -68,17 +66,32 @@ func (s *Service) checkUniquePrevious(ctx context.Context, path *Path, db *sql.D
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		current := at(i)
-		prior, err := check.previousRow(current, previous(i), i)
-		if err != nil {
-			return err
+		if options.deferredAt(i, check.Field.Name) || (dependencyIndex >= 0 && options.deferredAt(i, dependencyField)) {
+			continue
 		}
-		valueSet, dependencySet := options.includes(current, check.Field.Name), true
+		current := at(i)
+		prior := previous(i)
+		if !options.candidatePoliciesSet {
+			prior, err = check.previousRow(current, prior, i)
+			if err != nil {
+				return err
+			}
+		}
+		valueSet, dependencySet := options.includesAt(i, current, check.Field.Name), true
 		if dependencyIndex >= 0 {
-			dependencySet = options.includes(current, dependencyField)
+			dependencySet = options.includesAt(i, current, dependencyField)
 		}
 		if !valueSet && (dependencyIndex < 0 || !dependencySet) {
 			continue
+		}
+		if dialect == nil {
+			if db == nil {
+				return fmt.Errorf("unique validation requires a database")
+			}
+			dialect, err = options.resolveDialect(ctx, db)
+			if err != nil {
+				return err
+			}
 		}
 		valueSource := current
 		if !valueSet {

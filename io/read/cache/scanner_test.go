@@ -1,6 +1,71 @@
 package cache
 
-import "testing"
+import (
+	"database/sql"
+	"encoding/json"
+	"reflect"
+	"testing"
+	"time"
+)
+
+func TestScannerStandardNullTypesReuse(t *testing.T) {
+	for _, projected := range []bool{false, true} {
+		name := "full"
+		if projected {
+			name = "projected"
+		}
+		t.Run(name, func(t *testing.T) {
+			var i sql.NullInt64
+			var i32 sql.NullInt32
+			var i16 sql.NullInt16
+			var b sql.NullByte
+			var s sql.NullString
+			var flag sql.NullBool
+			var f sql.NullFloat64
+			var tm sql.NullTime
+			dest := []any{&i, &i32, &i16, &b, &s, &flag, &f, &tm}
+			holder := &ScanTypeHolder{}
+			holder.InitType(dest)
+			entry := &Entry{}
+			indexes := make([]int, len(dest))
+			for j, scanType := range []string{"int64", "int64", "int64", "int64", "string", "bool", "float64", "time.Time"} {
+				indexes[j] = j
+				field := &Field{ColumnName: "value", ColumnScanType: scanType}
+				if err := field.Init(); err != nil {
+					t.Fatal(err)
+				}
+				entry.Meta.Fields = append(entry.Meta.Fields, field)
+			}
+			scan := NewScanner(holder, nil).New(entry)
+			if projected {
+				scan = NewProjectedScanner(entry, indexes, holder, nil)
+			}
+			for _, valid := range []bool{true, false, true, false} {
+				want := []any{sql.NullInt64{Int64: 0, Valid: valid}, sql.NullInt32{Int32: 0, Valid: valid}, sql.NullInt16{Int16: 0, Valid: valid}, sql.NullByte{Byte: 0, Valid: valid}, sql.NullString{String: "", Valid: valid}, sql.NullBool{Bool: false, Valid: valid}, sql.NullFloat64{Float64: 0, Valid: valid}, sql.NullTime{Valid: valid}}
+				if valid {
+					want[7] = sql.NullTime{Time: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC), Valid: true}
+				}
+				if valid {
+					var err error
+					entry.Data, err = json.Marshal(want)
+					if err != nil {
+						t.Fatal(err)
+					}
+				} else {
+					entry.Data = []byte(`[null,null,null,null,null,null,null,null]`)
+				}
+				if err := scan(dest...); err != nil {
+					t.Fatal(err)
+				}
+				for j, value := range dest {
+					if !reflect.DeepEqual(reflect.ValueOf(value).Elem().Interface(), want[j]) {
+						t.Fatalf("destination %d got %#v want %#v", j, value, want[j])
+					}
+				}
+			}
+		})
+	}
+}
 
 func TestNewProjectedScanner_ScansRequestedSubsetInRequestedOrder(t *testing.T) {
 	fields := []*Field{

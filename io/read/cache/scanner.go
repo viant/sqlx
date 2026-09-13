@@ -45,6 +45,10 @@ func (c *Scanner) New(e *Entry) ScannerFn {
 				continue
 			}
 			if cachedValue == nil {
+				// Rows.Scan clears nullable pointers even when the target is reused.
+				if c.typeHolder.scanTypes[i].Kind() == reflect.Ptr {
+					zeroScanDestination(values[i])
+				}
 				continue
 			}
 

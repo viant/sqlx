@@ -7,18 +7,32 @@ import (
 )
 
 type (
+	CandidatePolicy struct {
+		Previous    any
+		FieldFilter func(string) bool
+		// DeferredFields marks temporarily unavailable INSERT inputs, independently
+		// of sparse coverage. A nonnil function requires nil normalized Previous.
+		DeferredFields func(string) bool
+		// SatisfiedReferences are trusted, exact reference receipts for this insert.
+		// They require nil normalized Previous and nil DeferredFields.
+		SatisfiedReferences []Reference
+	}
+
 	Options struct {
-		CheckUnique     bool
-		CheckRef        bool
-		Location        string
-		Shallow         bool
-		MaxPlaceholders int
-		SetMarker       *option.SetMarker
-		fieldFilter     func(string) bool
-		Previous        interface{}
-		previousSet     bool
-		transaction     *sql.Tx
-		dialect         *info.Dialect
+		CheckUnique          bool
+		CheckRef             bool
+		Location             string
+		Shallow              bool
+		MaxPlaceholders      int
+		SetMarker            *option.SetMarker
+		CandidatePolicies    []CandidatePolicy
+		candidatePoliciesSet bool
+		fieldFilter          func(string) bool
+		fieldFilterSet       bool
+		Previous             interface{}
+		previousSet          bool
+		transaction          *sql.Tx
+		dialect              *info.Dialect
 	}
 	Option func(c *Options)
 )
@@ -27,7 +41,18 @@ type (
 // names. A nonnil filter takes precedence over WithSetMarker; it does not modify
 // any marker. Nil leaves the default full/marker-gated behavior unchanged.
 func WithFieldFilter(include func(field string) bool) Option {
-	return func(c *Options) { c.fieldFilter = include }
+	return func(c *Options) { c.fieldFilter, c.fieldFilterSet = include, true }
+}
+
+// WithCandidatePolicies supplies an aligned policy for each root candidate in a
+// shallow batch. Nil Previous means insert; nil FieldFilter means full coverage.
+// A typed nil Previous must point to the candidate's struct type. Empty typed
+// batches must contain structs or struct pointers; empty []any is also accepted.
+func WithCandidatePolicies(policies []CandidatePolicy) Option {
+	return func(c *Options) {
+		c.CandidatePolicies = policies
+		c.candidatePoliciesSet = true
+	}
 }
 
 // WithTransaction executes constraint reads in the caller's transaction.
