@@ -22,7 +22,7 @@ func indexSQL(SQL, column string, columns []string) string {
 // exact query. Existing readers may finish, but later readers cannot select the
 // stale publication over the newly refreshed query. Group data remains governed
 // by its marker generation and TTL; retiring the marker makes it unreachable.
-func (c *Cache) refreshWarmup(ctx context.Context, query *cache.ParmetrizedQuery) error {
+func (c *Cache) refreshWarmup(ctx context.Context, query *cache.ParmetrizedQuery, stats *cache.Stats) error {
 	SQL, args := query.IdentitySQL, query.IdentityArgs
 	if query.By != "" || len(query.ByColumns) > 0 {
 		var err error
@@ -37,6 +37,13 @@ func (c *Cache) refreshWarmup(ctx context.Context, query *cache.ParmetrizedQuery
 	URL, err := hash.GenerateURL(SQL, c.storage, c.extension, args)
 	if err != nil {
 		return err
+	}
+	if stats != nil {
+		stats.Key = URL
+		stats.WarmupKey = URL
+		if query.By != "" || len(query.ByColumns) > 0 {
+			stats.MarkerKey = URL
+		}
 	}
 	if c.mark(URL) {
 		return fmt.Errorf("cache refresh conflicts with an active warmup writer")

@@ -77,7 +77,15 @@ func NewCache(URL string, ttl time.Duration, signature string, stream *option.St
 	return cache, nil
 }
 
-func (c *Cache) Get(ctx context.Context, SQL string, args []interface{}, options ...interface{}) (*cache.Entry, error) {
+func (c *Cache) Get(ctx context.Context, SQL string, args []interface{}, options ...interface{}) (result *cache.Entry, readErr error) {
+	var stats *cache.Stats
+	for _, option := range options {
+		if value, ok := option.(*cache.Stats); ok && value != nil {
+			stats = value
+			*stats = cache.Stats{}
+		}
+	}
+	defer func() { c.observeEntry(stats, result, readErr) }()
 	var refresh bool
 	for _, option := range options {
 		if requested, ok := option.(cache.Refresh); ok {
@@ -88,7 +96,7 @@ func (c *Cache) Get(ctx context.Context, SQL string, args []interface{}, options
 	if refresh {
 		for _, option := range options {
 			if matcher, ok := option.(*cache.ParmetrizedQuery); ok && matcher != nil {
-				if err := c.refreshWarmup(ctx, matcher); err != nil {
+				if err := c.refreshWarmup(ctx, matcher, stats); err != nil {
 					return nil, err
 				}
 			}
@@ -102,12 +110,23 @@ func (c *Cache) Get(ctx context.Context, SQL string, args []interface{}, options
 		if matcher, ok := option.(*cache.ParmetrizedQuery); ok && matcher != nil && matcher.IdentitySQL != "" && matcher.By == "" && len(matcher.ByColumns) == 0 {
 			entry, err := c.queryEntry(ctx, matcher)
 			if err != nil || entry != nil {
+				if stats != nil && entry != nil && entry.Has() {
+					stats.Type = cache.TypeReadMulti
+					stats.FoundWarmup = true
+					stats.WarmupKey = entry.Meta.URL
+				}
 				return entry, err
 			}
 		}
 		if matcher, ok := option.(*cache.ParmetrizedQuery); ok && matcher != nil && (matcher.By != "" && len(matcher.In) > 0 || len(matcher.ByColumns) > 0 && len(matcher.InTuples) > 0) {
 			entry, err := c.indexedEntry(ctx, matcher)
 			if err != nil || entry != nil {
+				if stats != nil && entry != nil && entry.Has() {
+					stats.Type = cache.TypeReadMulti
+					stats.FoundWarmup = true
+					stats.WarmupKey = entry.Meta.URL
+					stats.MarkerKey = entry.Meta.URL
+				}
 				return entry, err
 			}
 		}
@@ -115,6 +134,9 @@ func (c *Cache) Get(ctx context.Context, SQL string, args []interface{}, options
 	URL, err := hash.GenerateURL(SQL, c.storage, c.extension, args)
 	if err != nil {
 		return nil, err
+	}
+	if stats != nil {
+		stats.Key = URL
 	}
 	// Published entries are immutable; cache readers must not compete for the
 	// exclusive lease used while creating a missing entry.
