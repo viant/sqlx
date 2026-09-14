@@ -100,7 +100,13 @@ func (a *Cache) IndexByWithResult(ctx context.Context, db *sql.DB, column, SQL s
 	if err != nil {
 		return nil, err
 	}
-	identitySQL, argsMarshal, canonicalization := canonicalWarmupIdentity(identitySQL, argsMarshal)
+	canonicalization := "exact_query"
+	// A non-indexed warmup populates the ordinary query cache, whose metadata
+	// is matched against the original SQL. Indexed warmup has its own canonical
+	// identity shared by index writes and indexed lookups.
+	if column != "" {
+		identitySQL, argsMarshal, canonicalization = canonicalWarmupIdentity(identitySQL, argsMarshal)
+	}
 	URL, err := a.identityURL(identitySQL, identityArgs, argsMarshal)
 	if err != nil {
 		return nil, err
