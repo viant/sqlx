@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"strings"
 
 	"github.com/viant/sqlx/io/read/cache"
 )
@@ -16,11 +15,7 @@ func (c *Cache) indexedEntry(ctx context.Context, matcher *cache.ParmetrizedQuer
 	if err != nil {
 		return nil, err
 	}
-	markerSQL := SQL + "\n-- sqlx-cache-index:" + strings.ToLower(matcher.By)
-	if len(matcher.ByColumns) > 0 {
-		encoded, _ := json.Marshal(matcher.ByColumns)
-		markerSQL = SQL + "\n-- sqlx-cache-columns:" + string(encoded)
-	}
+	markerSQL := indexSQL(SQL, matcher.By, matcher.ByColumns)
 	marker, err := c.Get(ctx, markerSQL, args)
 	if err != nil || marker == nil {
 		return nil, err

@@ -78,7 +78,27 @@ func NewCache(URL string, ttl time.Duration, signature string, stream *option.St
 }
 
 func (c *Cache) Get(ctx context.Context, SQL string, args []interface{}, options ...interface{}) (*cache.Entry, error) {
+	var refresh bool
 	for _, option := range options {
+		if requested, ok := option.(cache.Refresh); ok {
+			refresh = bool(requested)
+		}
+	}
+
+	if refresh {
+		for _, option := range options {
+			if matcher, ok := option.(*cache.ParmetrizedQuery); ok && matcher != nil {
+				if err := c.refreshWarmup(ctx, matcher); err != nil {
+					return nil, err
+				}
+			}
+		}
+	}
+
+	for _, option := range options {
+		if refresh {
+			break
+		}
 		if matcher, ok := option.(*cache.ParmetrizedQuery); ok && matcher != nil && matcher.IdentitySQL != "" && matcher.By == "" && len(matcher.ByColumns) == 0 {
 			entry, err := c.queryEntry(ctx, matcher)
 			if err != nil || entry != nil {
@@ -98,12 +118,27 @@ func (c *Cache) Get(ctx context.Context, SQL string, args []interface{}, options
 	}
 	// Published entries are immutable; cache readers must not compete for the
 	// exclusive lease used while creating a missing entry.
-	if entry, err := c.cachedEntry(ctx, SQL, args, URL); entry != nil || err != nil {
-		return entry, err
+	if !refresh {
+		if entry, err := c.cachedEntry(ctx, SQL, args, URL); entry != nil || err != nil {
+			return entry, err
+		}
 	}
 
 	if c.mark(URL) {
+		if refresh {
+			return nil, fmt.Errorf("cache refresh conflicts with an active query writer")
+		}
 		return nil, nil
+	}
+	if refresh {
+		exists, err := c.afs.Exists(ctx, URL)
+		if err == nil && exists {
+			err = c.afs.Delete(ctx, URL)
+		}
+		if err != nil {
+			c.unmark(URL)
+			return nil, err
+		}
 	}
 
 	entry, err := c.getEntry(ctx, SQL, args, err, URL)
