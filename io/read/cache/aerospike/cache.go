@@ -480,7 +480,10 @@ func (a *Cache) readRecords(SQL string, args []interface{}, query *cache.Parmetr
 			errors[1] = e
 			return
 		}
-		identitySQL, identityArgsMarshal, canonicalization := canonicalWarmupIdentity(identitySQL, identityArgsMarshal)
+		canonicalization := "exact_query"
+		if query.By != "" {
+			identitySQL, identityArgsMarshal, canonicalization = canonicalWarmupIdentity(identitySQL, identityArgsMarshal)
+		}
 		if warmupURL, urlErr := a.identityURL(identitySQL, identityArgs, identityArgsMarshal); urlErr == nil {
 			if stats != nil {
 				stats.WarmupKey = warmupURL
@@ -490,9 +493,13 @@ func (a *Cache) readRecords(SQL string, args []interface{}, query *cache.Parmetr
 			}
 			a.logWarmupIdentityResolved("read_lookup", query.By, warmupURL, identitySQL, identityArgsMarshal, canonicalization, meta)
 		}
-		warmupMatch, errors[1] = a.readRecord(identitySQL, identityArgs, identityArgsMarshal, func(aKey string) (string, error) {
-			return a.columnURL(aKey, query.By), nil
-		})
+		if query.By == "" {
+			warmupMatch, errors[1] = a.readRecord(identitySQL, identityArgs, identityArgsMarshal)
+		} else {
+			warmupMatch, errors[1] = a.readRecord(identitySQL, identityArgs, identityArgsMarshal, func(aKey string) (string, error) {
+				return a.columnURL(aKey, query.By), nil
+			})
+		}
 	}(query)
 	wg.Wait()
 	for i := range errors {
@@ -917,9 +924,6 @@ func (a *Cache) resolveIndexIdentity(SQL string, args []interface{}, options ...
 }
 
 func (a *Cache) storedFieldsMeta(column string, options ...interface{}) (string, error) {
-	if column == "" {
-		return "", nil
-	}
 	for _, option := range options {
 		matcher, ok := option.(*cache.ParmetrizedQuery)
 		if !ok || matcher == nil || matcher.StoredFields == nil {
@@ -1010,7 +1014,9 @@ func (a *Cache) updateColumnsInMatchEntry(entry *cache.Entry, match *RecordMatch
 	if err != nil {
 		return err
 	}
-	identitySQL, identityArgsMarshal, _ = canonicalWarmupIdentity(identitySQL, identityArgsMarshal)
+	if matcher.By != "" {
+		identitySQL, identityArgsMarshal, _ = canonicalWarmupIdentity(identitySQL, identityArgsMarshal)
+	}
 	warmupURL, markerKey := "", ""
 	if identityURL, err := a.identityURL(identitySQL, nil, identityArgsMarshal); err == nil {
 		warmupURL = identityURL
@@ -1032,6 +1038,19 @@ func (a *Cache) updateColumnsInMatchEntry(entry *cache.Entry, match *RecordMatch
 	}
 
 	multiReader := NewMultiReader(matcher)
+
+	if matcher.By == "" {
+		reader, err := a.reader(match.key, match.record)
+		if err != nil {
+			return err
+		}
+		multiReader.AddReader(reader)
+		entry.SetReader(multiReader, multiReader)
+		stats.Type = cache.TypeReadMulti
+		stats.RecordsCounter = 1
+		stats.Key = match.keyValue
+		return nil
+	}
 
 	// IN is a membership predicate: duplicate keys must not duplicate rows.
 	// Fetch concurrently, but assemble in the same first-key order as AFS.
