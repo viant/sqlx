@@ -95,8 +95,8 @@ func (n *numericSequencer) prepare(_ context.Context, options []option.Option, s
 }
 
 func (n *numericSequencer) nextSequence(ctx context.Context, sess *session, record interface{}, batchRecordBuffer []interface{}, recordCount int, options []option.Option) (*sink.Sequence, error) {
-	options = append(n.options, options...)
-	options = append(options, option.SequenceTable(sess.TableName))
+	opts := append([]option.Option{option.SequenceTable(sess.TableName)}, n.options...)
+	options = append(opts, options...)
 	presetIDStrategy := option.Options(options).PresetIDStrategy()
 	if presetIDStrategy == dialect.PresetIDStrategyUndefined {
 		presetIDStrategy = sess.Dialect.DefaultPresetIDStrategy
@@ -116,7 +116,7 @@ func (n *numericSequencer) nextSequence(ctx context.Context, sess *session, reco
 	case dialect.PresetIDWithMax:
 		options = append(options, n.maxIDSQLBuilder(sess))
 	case dialect.PresetIDWithTransientTransaction:
-		options = append(options, dialect.PresetIDWithTransientTransaction, n.transientDMLBuilder(sess, record, batchRecordBuffer, int64(recordCount)))
+		options = append(options, dialect.PresetIDWithTransientTransaction, n.transientDMLBuilder(sess, record, batchRecordBuffer, int64(recordCount)), n.maxIDSQLBuilder(sess))
 	}
 	sequenceName := n.getSequenceName(sess)
 	options = append(options, option.NewArgs(sess.info.Catalog, sess.info.Schema, sequenceName), option.RecordCount(recordCount))

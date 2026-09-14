@@ -128,7 +128,7 @@ FROM SQLITE_SEQUENCE`,
 			info.NewCriterion(info.Catalog, ""),
 			info.NewCriterion(info.Schema, ""),
 			info.NewCriterion(info.Sequence, "name"),
-		),
+		).OnPre(&sequence.Metadata{}),
 
 		info.NewQuery(info.KindPrimaryKeys, `SELECT
 		m.name || '_pk' CONSTRAINT_NAME,

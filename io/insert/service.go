@@ -50,6 +50,9 @@ func New(ctx context.Context, db *sql.DB, tableName string, options ...option.Op
 
 // NextSequence resets next updateSequencer
 func (s *Service) NextSequence(ctx context.Context, any interface{}, recordCount int, options ...option.Option) (*sink.Sequence, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	valueAt, count, err := io.Values(any)
 	if err != nil {
 		return nil, err
