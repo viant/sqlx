@@ -13,6 +13,7 @@ import (
 type Option func(o *options)
 
 type options struct {
+	retry              RetryPolicy
 	cacheOnly          bool
 	queryScope         *QueryScope
 	getRowMapper       NewRowMapper
