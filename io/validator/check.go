@@ -173,5 +173,5 @@ func schema(db string) string {
 	if db == "" {
 		return db
 	}
-	return "." + db
+	return db + "."
 }
