@@ -20,7 +20,7 @@ require (
 	github.com/viant/assertly v0.9.1-0.20220620174148-bab013f93a60
 	github.com/viant/bigquery v0.5.2-0.20260803163621-2873b21b58e5
 	github.com/viant/parsly v0.3.3
-	github.com/viant/sqlparser v0.12.1-0.20260914020630-6fa55a0d6b32
+	github.com/viant/sqlparser v0.13.0
 	github.com/viant/structology v0.5.6-0.20240802174922-5eb157550455
 	github.com/viant/tagly v0.3.1-0.20260914020630-eadee36c3630
 	github.com/viant/toolbox v0.36.0
