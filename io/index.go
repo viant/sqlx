@@ -1,36 +1,32 @@
 package io
 
-//index stores the map between struct field and column position
-type index map[string]uint16
+// index keeps native matching tiers separate. An inferred spelling cannot
+// occupy an authored exact tag or its case-insensitive lookup entry.
+type index map[indexKey]uint16
+
+type indexKey struct {
+	name string
+	tier uint8
+}
 
 func (i *index) match(name string) int {
-	key := name
-	if _, ok := (*i)[key]; ok {
-		return int((*i)[key])
-	}
-	key = byLowerCase(key)
-	if _, ok := (*i)[key]; ok {
-		return int((*i)[key])
-	}
-	key = fuzzyKey(key)
-	if _, ok := (*i)[key]; ok {
-		return int((*i)[key])
+	for tier, key := range []string{name, byLowerCase(name), fuzzyKey(name)} {
+		if position, ok := (*i)[indexKey{name: key, tier: uint8(tier)}]; ok {
+			return int(position)
+		}
 	}
 	return -1
 }
 
-func (i *index) add(name string, index int) {
-	val := uint16(index)
-	key := name
-	if _, ok := (*i)[key]; !ok {
-		(*i)[key] = val
+func (i *index) add(name string, position int, inferred bool) {
+	keys := []string{name, byLowerCase(name)}
+	if inferred {
+		keys = append(keys, fuzzyKey(name))
 	}
-	key = byLowerCase(name)
-	if _, ok := (*i)[key]; !ok {
-		(*i)[key] = val
-	}
-	key = fuzzyKey(name)
-	if _, ok := (*i)[key]; !ok {
-		(*i)[key] = val
+	for tier, key := range keys {
+		lookup := indexKey{name: key, tier: uint8(tier)}
+		if _, exists := (*i)[lookup]; !exists {
+			(*i)[lookup] = uint16(position)
+		}
 	}
 }
