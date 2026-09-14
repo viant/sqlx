@@ -19,10 +19,10 @@ require (
 	github.com/viant/afs v1.25.1-0.20231110184132-877ed98abca1
 	github.com/viant/assertly v0.9.1-0.20220620174148-bab013f93a60
 	github.com/viant/bigquery v0.5.2-0.20260803163621-2873b21b58e5
-	github.com/viant/parsly v0.3.3-0.20240717150634-e1afaedb691b
-	github.com/viant/sqlparser v0.12.1-0.20260913151017-e039f6a4aa95
+	github.com/viant/parsly v0.3.3
+	github.com/viant/sqlparser v0.12.1-0.20260914020630-6fa55a0d6b32
 	github.com/viant/structology v0.5.6-0.20240802174922-5eb157550455
-	github.com/viant/tagly v0.2.0
+	github.com/viant/tagly v0.3.1-0.20260914020630-eadee36c3630
 	github.com/viant/toolbox v0.36.0
 	github.com/viant/xreflect v0.6.2
 	github.com/viant/xunsafe v0.11.0

@@ -5,6 +5,7 @@ import (
 	"github.com/viant/tagly/format/text"
 	"github.com/viant/tagly/tags"
 	"reflect"
+	"strconv"
 	"strings"
 )
 
@@ -27,10 +28,10 @@ type Tag struct {
 	Generator        string
 	IsUnique         bool
 	UniqueDep        string
-	Db               string
-	Table            string
-	RefDb            string
-	RefTable         string
+	Db               string // authored SQL qualifier; SQL identifier quotes are retained
+	Table            string // authored SQL table identifier; quotes are retained
+	RefDb            string // authored SQL reference qualifier; not a connector lookup name
+	RefTable         string // authored SQL reference table identifier; quotes are retained
 	RefColumn        string
 	Required         bool
 	OmitEmpty        bool
@@ -84,7 +85,17 @@ func ParseTag(structTag reflect.StructTag) *Tag {
 	values := tags.Values(tagString)
 	name, values := values.Name()
 	tag.Column = name
-	_ = values.MatchPairs(tag.updateTagKey)
+	_ = values.MatchRawPairs(func(key, value string) error {
+		switch strings.ToLower(strings.TrimSpace(key)) {
+		case "table", "reftable", "db", "refdb":
+			// These are executable SQL identifiers, not Go string values.
+		default:
+			if decoded, err := strconv.Unquote(value); err == nil {
+				value = decoded
+			}
+		}
+		return tag.updateTagKey(key, value)
+	})
 	tag.PrimaryKey = tag.PrimaryKey || tag.Autoincrement
 	return tag
 }
