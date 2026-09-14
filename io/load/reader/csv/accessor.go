@@ -54,24 +54,24 @@ func (a *Accessor) prepare() bool {
 		return false
 	}
 
-	parent, childIndex := sliceParentOf(accessor)
-	for i := 0; i < childIndex; i++ {
-		parent.children[i].Set(parent.ptr)
-	}
-
-	return true
-}
-
-func sliceParentOf(accessor *Accessor) (*Accessor, int) {
-	for accessor != nil {
-		if accessor._parent != nil && accessor._parent.slice != nil {
-			return accessor._parent, accessor.parentAccessorIndex
+	// The rightmost advancing slice resets earlier siblings at each owner,
+	// producing the typed relation product without treating parent memory as a child.
+	for accessor._parent != nil {
+		parent := accessor._parent
+		for i := 0; i < accessor.parentAccessorIndex; i++ {
+			child := parent.children[i]
+			if parent.ptr == nil {
+				child.Set(nil)
+			} else {
+				pointer, slice := parent.getChildValue(parent.ptr, child)
+				child.slicePtr = slice
+				child.Set(pointer)
+			}
+			child.currSliceIndex = 0
 		}
-
-		accessor = accessor._parent
+		accessor = parent
 	}
-
-	return nil, -1
+	return true
 }
 
 func (a *Accessor) Set(pointer unsafe.Pointer) {
@@ -171,7 +171,7 @@ func (a *Accessor) stringifyFields(writer *writer) ([]string, []bool) {
 	return result, wasStrings
 }
 
-//next returns true if record was not exhausted and first not ehausted Accessor
+// next returns true if record was not exhausted and first not ehausted Accessor
 func (a *Accessor) next() (*Accessor, bool) {
 	for _, child := range a.children {
 		if child.config != nil {

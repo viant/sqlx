@@ -1,7 +1,6 @@
 package csv
 
 import (
-	"bytes"
 	io2 "github.com/viant/sqlx/io"
 	"github.com/viant/xunsafe"
 	"reflect"
@@ -10,6 +9,7 @@ import (
 type writer struct {
 	beforeFirst   string
 	writtenObject bool
+	rowFields     int
 	dereferencer  *xunsafe.Type
 	buffer        *Buffer
 	config        *Config
@@ -79,14 +79,19 @@ func (w *writer) writeObject(data []string, wasStrings []bool) {
 
 	WriteObject(w.buffer, w.config, data, wasStrings)
 	w.writtenObject = true
+	w.rowFields = len(data)
 }
 
 func (w *writer) appendObject(data []string, wasStrings []bool) {
-	if !bytes.HasSuffix(w.buffer.buffer, []byte(w.config.ObjectSeparator)) {
+	if len(data) == 0 {
+		return
+	}
+	if w.rowFields > 0 {
 		w.buffer.writeString(w.config.FieldSeparator)
 	}
 
 	WriteObject(w.buffer, w.config, data, wasStrings)
+	w.rowFields += len(data)
 }
 
 func (w *writer) writeObjectSeparator() {

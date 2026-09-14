@@ -18,7 +18,7 @@ type UnmarshalSession struct {
 	destPtr    unsafe.Pointer
 }
 
-func (s *UnmarshalSession) init(fields []*Field, refs map[string][]string, accessors map[string]*xunsafe.Field, stringifiers map[reflect.Type]*io.ObjectStringifier) error {
+func (s *UnmarshalSession) init(fields []*Field, refs map[string][]string, accessors map[string]*xunsafe.Field, stringifiers map[reflect.Type]*io.ObjectStringifier, pathTypes map[string]reflect.Type) error {
 	s.destPtr = xunsafe.AsPointer(s.dest)
 	s.buffer = make([]string, len(fields))
 	for i, field := range fields {
@@ -26,6 +26,23 @@ func (s *UnmarshalSession) init(fields []*Field, refs map[string][]string, acces
 		object.AddHolder(field, &s.buffer[i])
 	}
 
+	// Assembled typed output does not need public scalar fields on every
+	// holder. Reuse the mapper's path metadata to retain empty ancestors.
+	if s.dest == nil {
+		for _, field := range fields {
+			path := field.path
+			for path != "" {
+				if index := strings.LastIndexByte(path, '.'); index >= 0 {
+					path = path[:index]
+				} else {
+					path = ""
+				}
+				if typ := pathTypes[path]; typ != nil {
+					s.getOrCreateObject(&Field{path: path, parentType: typ}, refs, accessors, stringifiers)
+				}
+			}
+		}
+	}
 	parentNode, ok := s.buildParentNode()
 	if !ok {
 		return fmt.Errorf("none of the parent fields were specified")
