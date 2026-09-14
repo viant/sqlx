@@ -40,6 +40,9 @@ type (
 )
 
 func (c *Cache) Rollback(ctx context.Context, entry *cache.Entry) error {
+	if entry != nil && entry.ReadOnly {
+		return entry.Close()
+	}
 	if entry == nil {
 		return nil
 	}
@@ -87,7 +90,11 @@ func (c *Cache) Get(ctx context.Context, SQL string, args []interface{}, options
 	}
 	defer func() { c.observeEntry(stats, result, readErr) }()
 	var refresh bool
+	var readOnly bool
 	for _, option := range options {
+		if only, ok := option.(lookupOnly); ok {
+			readOnly = bool(only)
+		}
 		if requested, ok := option.(cache.Refresh); ok {
 			refresh = bool(requested)
 		}
@@ -146,6 +153,9 @@ func (c *Cache) Get(ctx context.Context, SQL string, args []interface{}, options
 		}
 	}
 
+	if readOnly {
+		return nil, nil
+	}
 	if c.mark(URL) {
 		if refresh {
 			return nil, fmt.Errorf("cache refresh conflicts with an active query writer")
@@ -369,6 +379,9 @@ func (c *Cache) UpdateType(ctx context.Context, entry *cache.Entry, values []int
 }
 
 func (c *Cache) Delete(ctx context.Context, entry *cache.Entry) error {
+	if entry.ReadOnly {
+		return entry.Close()
+	}
 	return c.afs.Delete(ctx, entry.Meta.URL)
 }
 
@@ -394,6 +407,9 @@ func (c *Cache) scanner(e *cache.Entry) cache.ScannerFn {
 }
 
 func (c *Cache) Close(ctx context.Context, e *cache.Entry) error {
+	if e.ReadOnly {
+		return e.Close()
+	}
 	actualURL := strings.ReplaceAll(e.Meta.URL, ".json"+e.Id, ".json")
 	if !e.Has() {
 		defer c.unmark(actualURL)

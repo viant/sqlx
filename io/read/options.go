@@ -13,6 +13,8 @@ import (
 type Option func(o *options)
 
 type options struct {
+	cacheOnly          bool
+	queryScope         *QueryScope
 	getRowMapper       NewRowMapper
 	columnsObserver    func([]io.Column) error
 	unmappedFn         io.Resolve
@@ -168,3 +170,7 @@ func newOptions(opts []Option) *options {
 	o.apply(opts)
 	return o
 }
+
+// WithCacheOnly prohibits database fallback and requires cache.Lookup support.
+func WithCacheOnly(only bool) Option          { return func(o *options) { o.cacheOnly = only } }
+func WithQueryScope(scope *QueryScope) Option { return func(o *options) { o.queryScope = scope } }

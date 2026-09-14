@@ -33,6 +33,12 @@ type (
 
 // QuerySingle returns single row
 func (r *Reader) QuerySingle(ctx context.Context, emit func(row interface{}) error, args ...interface{}) error {
+	if r.cacheOnly {
+		return fmt.Errorf("cache-only reading requires QueryAll")
+	}
+	if err := r.queryScope.Validate(r.query, args); err != nil {
+		return err
+	}
 	if err := r.ensureStmt(ctx); err != nil {
 		return err
 	}
@@ -59,6 +65,12 @@ func (r *Reader) QuerySingle(ctx context.Context, emit func(row interface{}) err
 
 // QueryAll query all
 func (r *Reader) QueryAll(ctx context.Context, emit func(row interface{}) error, args ...interface{}) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := r.queryScope.Validate(r.query, args); err != nil {
+		return err
+	}
 	entry, err := r.cacheEntry(ctx, r.query, args)
 	if err != nil {
 		return fmt.Errorf("failed to cache entry: %w", err)
@@ -92,6 +104,9 @@ func (r *Reader) QueryAll(ctx context.Context, emit func(row interface{}) error,
 
 func (r *Reader) createSource(ctx context.Context, entry *cache.Entry, args []interface{}, matcher *cache.ParmetrizedQuery) (*sql.Rows, cache.Source, error) {
 	if entry == nil || !entry.Has() || len(entry.Meta.Fields) == 0 {
+		if r.cacheOnly {
+			return nil, nil, cache.ErrMiss
+		}
 		if err := r.ensureStmt(ctx); err != nil {
 			return nil, nil, err
 		}
@@ -137,6 +152,9 @@ func (r *Reader) readAll(ctx context.Context, emit func(row interface{}) error, 
 	var mapper RowMapper
 
 	for source.Next() && err == nil {
+		if err = ctx.Err(); err != nil {
+			break
+		}
 		err = r.read(ctx, source, &mapper, emit, cacheEntry)
 		if err != nil && !errors.Is(err, sql.ErrNoRows) && !errors.Is(err, goIo.EOF) {
 			err = fmt.Errorf("failed to read row: %w", err)
@@ -144,6 +162,9 @@ func (r *Reader) readAll(ctx context.Context, emit func(row interface{}) error, 
 	}
 	if r.row != nil && r.inMatcher != nil && r.inMatcher.OnSkip != nil {
 		_ = r.inMatcher.OnSkip(*r.row.values)
+	}
+	if err == nil {
+		err = ctx.Err()
 	}
 	if err == nil && source.Err() != nil {
 		err = fmt.Errorf("source err: %w", source.Err())
@@ -341,6 +362,16 @@ func (r *Reader) Stmt() *sql.Stmt {
 }
 
 func (r *Reader) cacheEntry(ctx context.Context, sql string, args []interface{}) (*cache.Entry, error) {
+	if r.cacheOnly {
+		if r.cache == nil {
+			return nil, cache.ErrMiss
+		}
+		lookup, ok := r.cache.(cache.Lookup)
+		if !ok {
+			return nil, cache.ErrLookupUnsupported
+		}
+		return lookup.Lookup(ctx, sql, args, r.inMatcher, r.cacheStats, r.cacheRefresh)
+	}
 	if r.cache != nil {
 		entry, err := r.cache.Get(ctx, sql, args, r.inMatcher, r.cacheStats, r.cacheRefresh)
 		return entry, err

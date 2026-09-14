@@ -7,6 +7,7 @@ import (
 )
 
 type Entry struct {
+	ReadOnly    bool // invocation-only lookup mode, never persisted
 	Meta        Meta
 	Data        []byte // Entry is used as Iterator, Data is last streamed line.
 	Id          string
