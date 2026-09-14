@@ -44,7 +44,7 @@ var cachedBins = []string{typesBin, argsBin, sqlBin, dataBin, fieldsBin, storedF
 type (
 	Cache struct {
 		recorder        cache.Recorder
-		typeHolder      *cache.ScanTypeHolder
+		identityPrefix  string
 		client          *as.Client
 		getRecordFn     func(key *as.Key, bins ...string) (*as.Record, error)
 		putFn           func(key *as.Key, binMap as.BinMap) error
@@ -290,7 +290,6 @@ func (a *Cache) get(ctx context.Context, SQL string, args []interface{}, columns
 	a.updateCacheStats(lazyMatch, warmupMatch, cacheStats)
 	cacheStats.ErrorType, cacheStats.ErrorCode, err = a.findActualError(err)
 	if cacheStats.ErrorCode != types.OK && !cacheStats.FoundAny() || err != nil {
-		a.handleResponseFailure(cacheStats.ErrorCode)
 		return nil, err
 	}
 
@@ -334,6 +333,9 @@ func (a *Cache) applyWarmupProjection(entry *cache.Entry, matcher *cache.Parmetr
 	}
 	exactMismatchIndex, exactMismatchStored, exactMismatchRequested := exactProjectionMismatch(entry.Meta.StoredFields, matcher.RequestedFields)
 	indexes, ok, reason, err := warmupProjectionIndexes(entry.Meta.StoredFields, matcher.RequestedFields)
+	if len(entry.Meta.StoredFields) == 0 && entry.Meta.ApplyProjection(matcher.RequestedFields) {
+		indexes, ok, reason, err = entry.Meta.ProjectedIndexes, true, "", nil
+	}
 	if err != nil {
 		return err
 	}
@@ -556,6 +558,9 @@ func (a *Cache) newBasePolicy(idempotent bool) *as.BasePolicy {
 		if a.timeoutConfig.MaxRetries != 0 && idempotent {
 			policy.SleepBetweenRetries = time.Millisecond * time.Duration(a.timeoutConfig.SleepBetweenRetriesMs)
 		}
+		if a.timeoutConfig.SocketTimeoutMs != 0 {
+			policy.SocketTimeout = time.Millisecond * time.Duration(a.timeoutConfig.SocketTimeoutMs)
+		}
 		if a.timeoutConfig.TotalTimeoutMs != 0 {
 			policy.TotalTimeout = time.Millisecond * time.Duration(a.timeoutConfig.TotalTimeoutMs)
 		}
@@ -568,9 +573,12 @@ func (a *Cache) AssignRows(entry *cache.Entry, rows *sql.Rows) error {
 }
 
 func (a *Cache) UpdateType(ctx context.Context, entry *cache.Entry, args []interface{}) (bool, error) {
-	a.ensureTypeHolder(args)
+	if entry.ScanTypes == nil {
+		entry.ScanTypes = &cache.ScanTypeHolder{}
+		entry.ScanTypes.InitType(args)
+	}
 
-	if !a.typeHolder.Match(entry) {
+	if !entry.ScanTypes.Match(entry) {
 		return false, a.Delete(ctx, entry)
 	}
 
@@ -660,17 +668,6 @@ func (a *Cache) reader(key *as.Key, record *as.Record) (*Reader, error) {
 		record:    record,
 		set:       a.set,
 	}, nil
-}
-
-func (a *Cache) ensureTypeHolder(values []interface{}) {
-	if a.typeHolder != nil {
-		return
-	}
-
-	a.mux.Lock()
-	a.typeHolder = &cache.ScanTypeHolder{}
-	a.typeHolder.InitType(values)
-	a.mux.Unlock()
 }
 
 func (a *Cache) updateEntry(record *as.Record, entry *cache.Entry) error {
@@ -764,9 +761,9 @@ func (a *Cache) columnURL(URL string, column string) string {
 
 func (a *Cache) identityURL(SQL string, args []interface{}, argsMarshal []byte) (string, error) {
 	if argsMarshal == nil {
-		return hash.GenerateURL(SQL, "", "", args)
+		return hash.GenerateURL(SQL, a.identityPrefix, "", args)
 	}
-	return hash.GenerateWithMarshal(SQL, "", "", argsMarshal)
+	return hash.GenerateWithMarshal(SQL, a.identityPrefix, "", argsMarshal)
 }
 
 func canonicalWarmupIdentity(SQL string, argsMarshal []byte) (string, []byte, string) {
@@ -1036,33 +1033,41 @@ func (a *Cache) updateColumnsInMatchEntry(entry *cache.Entry, match *RecordMatch
 
 	multiReader := NewMultiReader(matcher)
 
-	chanSize := len(matcher.In)
-
-	readerChan := make(chan *readerWrapper, chanSize)
-	if chanSize == 0 {
-		close(readerChan)
+	// IN is a membership predicate: duplicate keys must not duplicate rows.
+	// Fetch concurrently, but assemble in the same first-key order as AFS.
+	values := make([]interface{}, 0, len(matcher.In))
+	seen := make(map[string]bool, len(matcher.In))
+	for _, value := range matcher.In {
+		encoded, err := json.Marshal(value)
+		if err != nil {
+			return err
+		}
+		key := string(encoded)
+		if !seen[key] {
+			seen[key] = true
+			values = append(values, value)
+		}
 	}
-
-	for i := range matcher.In {
-		a.readChan(readerChan, matcher, warmupURL, matcher.In[i])
+	readers := make([]readerWrapper, len(values))
+	var pending sync.WaitGroup
+	pending.Add(len(values))
+	for i, value := range values {
+		go func(index int, value interface{}) {
+			defer pending.Done()
+			readers[index].reader, readers[index].err = a.newReader(matcher, warmupURL, value)
+		}(i, value)
 	}
-
-	counter := 0
+	pending.Wait()
+	counter := len(readers)
 	childRowMiss := false
-	for reader := range readerChan {
+	for _, reader := range readers {
 		if reader.err != nil {
 			return reader.err
 		}
-
 		if reader.reader != nil {
 			multiReader.AddReader(reader.reader)
 		} else {
 			childRowMiss = true
-		}
-
-		counter++
-		if counter == chanSize {
-			close(readerChan)
 		}
 	}
 	if childRowMiss {
@@ -1097,16 +1102,6 @@ func (a *Cache) updateWriter(anEntry *cache.Entry, fullMatch *RecordMatched, SQL
 		stats.ExpiryTime = &expiresAt
 	}
 	return nil
-}
-
-func (a *Cache) readChan(readerChan chan *readerWrapper, matcher *cache.ParmetrizedQuery, warmupURL string, columnValue interface{}) {
-	go func(matcher *cache.ParmetrizedQuery, warmupURL string, columnValue interface{}) {
-		reader, err := a.newReader(matcher, warmupURL, columnValue)
-		readerChan <- &readerWrapper{
-			err:    err,
-			reader: reader,
-		}
-	}(matcher, warmupURL, columnValue)
 }
 
 func (a *Cache) newReader(matcher *cache.ParmetrizedQuery, warmupURL string, columnValue interface{}) (*Reader, error) {
@@ -1308,7 +1303,7 @@ func (a *Cache) handleResponseFailure(code types.ResultCode) {
 		return
 	}
 
-	if code == types.OK {
+	if code == types.OK || code == types.KEY_NOT_FOUND_ERROR {
 		a.failureHandler.HandleSuccess()
 	} else {
 		a.failureHandler.HandleFailure()
@@ -1316,10 +1311,13 @@ func (a *Cache) handleResponseFailure(code types.ResultCode) {
 }
 
 func (a *Cache) getRecord(key *as.Key, bins ...string) (*as.Record, error) {
+	var record *as.Record
+	var err error
 	if a.getRecordFn != nil {
-		return a.getRecordFn(key, bins...)
+		record, err = a.getRecordFn(key, bins...)
+	} else {
+		record, err = a.client.Get(a.newBasePolicy(true), key, bins...)
 	}
-	record, err := a.client.Get(a.newBasePolicy(true), key, bins...)
 	if err != nil {
 		aerospikeErr, ok := asAerospikeErr(err)
 		if ok {
@@ -1329,6 +1327,7 @@ func (a *Cache) getRecord(key *as.Key, bins ...string) (*as.Record, error) {
 		return nil, err
 	}
 
+	a.handleResponseFailure(types.OK)
 	return record, nil
 }
 
@@ -1338,6 +1337,9 @@ func (a *Cache) put(key *as.Key, binMap as.BinMap) error {
 	}
 	policy := a.writePolicy()
 	err := a.client.Put(policy, key, binMap)
+	if err == nil {
+		a.handleResponseFailure(types.OK)
+	}
 	aerospikeErr, ok := asAerospikeErr(err)
 	if ok {
 		a.handleResponseFailure(aerospikeErr.ResultCode())
