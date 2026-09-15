@@ -4,6 +4,7 @@ import (
 	"github.com/viant/sqlx/metadata/database"
 	"github.com/viant/sqlx/metadata/info"
 	"github.com/viant/sqlx/metadata/info/dialect"
+	"github.com/viant/sqlx/metadata/product/pg/sequence"
 	"github.com/viant/sqlx/metadata/registry"
 	"log"
 )
@@ -16,6 +17,8 @@ var pgSQL9 = database.Product{
 	Major:     9,
 }
 
+var pgSQL10 = database.Product{Name: product, DriverPkg: "pq", Major: 10}
+
 // PqSQL9 return PostgreSQL 9.x product
 func PqSQL9() *database.Product {
 	return &pgSQL9
@@ -23,10 +26,13 @@ func PqSQL9() *database.Product {
 
 func init() {
 	err := registry.Register(
+		info.NewQuery(info.KindSequenceLock, "", pgSQL10).OnPre(&sequence.Lock{}),
+		info.NewQuery(info.KindSequenceReservation, "", pgSQL10).OnPre(&sequence.Reserve{}),
+		info.NewQuery(info.KindSequenceNextValue, "", pgSQL10, info.NewCriterion(info.Catalog, ""), info.NewCriterion(info.Schema, ""), info.NewCriterion(info.Object, ""), info.NewCriterion(info.SequenceNewCurrentValue, "")).OnPre(&sequence.RangeError{}),
 		info.NewQuery(info.KindVersion, "SELECT version()", pgSQL9),
 
-		info.NewQuery(info.KindSchemas, `SELECT 
-CATALOG_NAME, 
+		info.NewQuery(info.KindSchemas, `SELECT
+CATALOG_NAME,
 SCHEMA_NAME,
 COALESCE(SQL_PATH,'') AS SQL_PATH,
 DEFAULT_CHARACTER_SET_NAME,
@@ -35,8 +41,8 @@ FROM information_schema.schemata
 `, pgSQL9,
 			info.NewCriterion(info.Catalog, "CATALOG_NAME"),
 		),
-		info.NewQuery(info.KindSchema, `SELECT 
-CATALOG_NAME, 
+		info.NewQuery(info.KindSchema, `SELECT
+CATALOG_NAME,
 SCHEMA_NAME,
 COALESCE(SQL_PATH,'') AS SQL_PATH,
 DEFAULT_CHARACTER_SET_NAME,
@@ -47,8 +53,8 @@ FROM information_schema.schemata
 			info.NewCriterion(info.Schema, "SCHEMA_NAME"),
 		),
 
-		info.NewQuery(info.KindSchema, `SELECT 
-CATALOG_NAME, 
+		info.NewQuery(info.KindSchema, `SELECT
+CATALOG_NAME,
 SCHEMA_NAME,
 COALESCE(SQL_PATH,'') AS SQL_PATH,
 DEFAULT_CHARACTER_SET_NAME,
@@ -58,7 +64,7 @@ FROM information_schema.schemata
 			info.NewCriterion(info.Catalog, "CATALOG_NAME"),
 			info.NewCriterion(info.Schema, "SCHEMA_NAME"),
 		),
-		info.NewQuery(info.KindTables, `SELECT 
+		info.NewQuery(info.KindTables, `SELECT
 TABLE_CATALOG,
 TABLE_SCHEMA,
 TABLE_TYPE,
@@ -75,7 +81,7 @@ FROM INFORMATION_SCHEMA.TABLES`,
 			info.NewCriterion(info.Schema, "SCHEMA_NAME"),
 		),
 
-		info.NewQuery(info.KindTables, `SELECT 
+		info.NewQuery(info.KindTables, `SELECT
 TABLE_CATALOG,
 TABLE_SCHEMA,
 TABLE_NAME,
@@ -92,7 +98,7 @@ FROM INFORMATION_SCHEMA.TABLES`,
 			info.NewCriterion(info.Schema, "TABLE_SCHEMA"),
 		),
 
-		info.NewQuery(info.KindTable, `SELECT 
+		info.NewQuery(info.KindTable, `SELECT
 TABLE_CATALOG AS TABLE_CATALOG,
 TABLE_SCHEMA AS TABLE_SCHEMA,
 TABLE_NAME AS TABLE_NAME,
@@ -111,19 +117,19 @@ FROM INFORMATION_SCHEMA.COLUMNS`,
 			info.NewCriterion(info.Table, "TABLE_NAME"),
 		),
 
-		info.NewQuery(info.KindSequences, `SELECT 
+		info.NewQuery(info.KindSequences, `SELECT
   t.TABLE_CATALOG AS SEQUENCE_CATALOG,
-  t.TABLE_SCHEMA AS SEQUENCE_SCHEMA, 
+  t.TABLE_SCHEMA AS SEQUENCE_SCHEMA,
   c.TABLE_NAME AS SEQUENCE_NAME,
   c.COLUMN_TYPE AS DATA_TYPE,
   c.MAX_VALUE,
   t.AUTO_INCREMENT AS "SEQUENCE_VALUE"
-FROM 
-  (SELECT 
+FROM
+  (SELECT
      TABLE_SCHEMA,
      TABLE_NAME,
      COLUMN_TYPE,
-     CASE 
+     CASE
         WHEN COLUMN_TYPE LIKE 'tinyint(1)' THEN 127
         WHEN COLUMN_TYPE LIKE 'tinyint(1) unsigned' THEN 255
         WHEN COLUMN_TYPE LIKE 'smallint(%)' THEN 32767
@@ -135,8 +141,8 @@ FROM
         WHEN COLUMN_TYPE LIKE 'bigint(%)' THEN 9223372036854775807
         WHEN COLUMN_TYPE LIKE 'bigint(%) unsigned' THEN 0
         ELSE 0
-     END AS "MAX_VALUE" 
-   FROM 
+     END AS "MAX_VALUE"
+   FROM
      INFORMATION_SCHEMA.COLUMNS
      WHERE EXTRA LIKE '%auto_increment%'
    ) c
@@ -148,7 +154,12 @@ FROM
 			info.NewCriterion(info.Sequence, "t.TABLE_NAME"),
 		),
 
-		info.NewQuery(info.KindIndexes, `SELECT 
+		info.NewQuery(info.KindSequences, `SELECT current_database() AS SEQUENCE_CATALOG,n.nspname AS SEQUENCE_SCHEMA,c.relname AS SEQUENCE_NAME,
+ s.seqstart AS START_VALUE,s.seqincrement AS INCREMENT_BY,s.seqmax AS MAX_VALUE,0 AS SEQUENCE_VALUE,pg_catalog.format_type(s.seqtypid,NULL) AS DATA_TYPE
+ FROM pg_catalog.pg_sequence s JOIN pg_catalog.pg_class c ON c.oid=s.seqrelid JOIN pg_catalog.pg_namespace n ON n.oid=c.relnamespace`, pgSQL10,
+			info.NewCriterion(info.Catalog, ""), info.NewCriterion(info.Schema, "n.nspname"), info.NewCriterion(info.Sequence, "c.relname")).OnPre(&sequence.Metadata{}),
+
+		info.NewQuery(info.KindIndexes, `SELECT
 		TABLE_CATALOG,
 		TABLE_SCHEMA,
 		TABLE_NAME,
@@ -166,7 +177,7 @@ GROUP BY 1, 2, 3, 4, 5, 6, 7
 			info.NewCriterion(info.Table, "TABLE_NAME"),
 		),
 
-		info.NewQuery(info.KindIndex, `SELECT 
+		info.NewQuery(info.KindIndex, `SELECT
 		TABLE_CATALOG,
 		TABLE_SCHEMA,
 		TABLE_NAME,
@@ -182,20 +193,20 @@ FROM INFORMATION_SCHEMA.STATISTICS
 			info.NewCriterion(info.Index, "INDEX_NAME"),
 		),
 
-		info.NewQuery(info.KindPrimaryKeys, `SELECT 
-c.CONSTRAINT_NAME,  
+		info.NewQuery(info.KindPrimaryKeys, `SELECT
+c.CONSTRAINT_NAME,
 s.CONSTRAINT_TYPE,
 s.CONSTRAINT_CATALOG,
 s.CONSTRAINT_SCHEMA,
 c.TABLE_NAME,
-c.COLUMN_NAME, 
+c.COLUMN_NAME,
 COALESCE(c.REFERENCED_TABLE_NAME, '') AS REFERENCED_TABLE_NAME,
 COALESCE(c.REFERENCED_COLUMN_NAME, '')REFERENCED_COLUMN_NAME,
 CASE WHEN c.REFERENCED_TABLE_NAME IS NOT NULL THEN s.CONSTRAINT_SCHEMA ELSE '' END AS REFERENCED_TABLE_SCHEMA
 FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS s
 JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE c ON c.CONSTRAINT_NAME = s.CONSTRAINT_NAME
 	 AND c.CONSTRAINT_CATALOG = s.CONSTRAINT_CATALOG
-	 AND c.CONSTRAINT_SCHEMA = s.CONSTRAINT_SCHEMA	 
+	 AND c.CONSTRAINT_SCHEMA = s.CONSTRAINT_SCHEMA
 	 AND c.TABLE_NAME = s.TABLE_NAME
 WHERE  s.CONSTRAINT_TYPE = 'PRIMARY KEY'
 `, pgSQL9,
@@ -204,20 +215,20 @@ WHERE  s.CONSTRAINT_TYPE = 'PRIMARY KEY'
 			info.NewCriterion(info.Table, "c.TABLE_NAME"),
 		),
 
-		info.NewQuery(info.KindForeignKeys, `SELECT 
-c.CONSTRAINT_NAME,  
+		info.NewQuery(info.KindForeignKeys, `SELECT
+c.CONSTRAINT_NAME,
 s.CONSTRAINT_TYPE,
 s.CONSTRAINT_CATALOG,
 s.CONSTRAINT_SCHEMA,
 c.TABLE_NAME,
-c.COLUMN_NAME, 
+c.COLUMN_NAME,
 c.REFERENCED_TABLE_NAME,
 c.REFERENCED_COLUMN_NAME,
 s.CONSTRAINT_SCHEMA AS REFERENCED_TABLE_SCHEMA
 FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS s
 JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE c ON c.CONSTRAINT_NAME = s.CONSTRAINT_NAME
 	 AND c.CONSTRAINT_CATALOG = s.CONSTRAINT_CATALOG
-	 AND c.CONSTRAINT_SCHEMA = s.CONSTRAINT_SCHEMA	 
+	 AND c.CONSTRAINT_SCHEMA = s.CONSTRAINT_SCHEMA
 	 AND c.TABLE_NAME = s.TABLE_NAME
 WHERE s.CONSTRAINT_TYPE = 'FOREIGN KEY'
 `, pgSQL9,
@@ -226,10 +237,10 @@ WHERE s.CONSTRAINT_TYPE = 'FOREIGN KEY'
 			info.NewCriterion(info.Table, "c.TABLE_NAME"),
 		),
 
-		info.NewQuery(info.KindSession, `SELECT 
+		info.NewQuery(info.KindSession, `SELECT
     CAST(pid AS varchar) AS PID,
 	datname AS CATALOG_NAME,
-	usename AS USER_NAME, 
+	usename AS USER_NAME,
 	application_name AS APP_NAME,
 	'' AS SCHEMA_NAME
 FROM pg_stat_activity
@@ -254,7 +265,7 @@ WHERE pid=pg_backend_pid() LIMIT 1;
 		log.Printf("failed to register queries: %v", err)
 	}
 
-	registry.RegisterDialect(&info.Dialect{
+	baseDialect := &info.Dialect{
 		Product:                 pgSQL9,
 		Placeholder:             "$",
 		Transactional:           true,
@@ -269,6 +280,12 @@ WHERE pid=pg_backend_pid() LIMIT 1;
 		PlaceholderResolver:     &PlaceholderGenerator{},
 		AutoincrementFunc:       "nextval",
 		DefaultPresetIDStrategy: dialect.PresetIDStrategyUndefined,
-	})
+	}
+	registry.RegisterDialect(baseDialect)
+	reservationDialect := *baseDialect
+	reservationDialect.Product = pgSQL10
+	reservationDialect.InsertIdentityOverride = "OVERRIDING SYSTEM VALUE"
+	reservationDialect.DefaultPresetIDStrategy = dialect.PresetIDWithReservation
+	registry.RegisterDialect(&reservationDialect)
 
 }

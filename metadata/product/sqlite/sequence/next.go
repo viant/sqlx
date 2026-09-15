@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"strings"
 	"time"
 
 	"github.com/viant/sqlx/metadata/sink"
@@ -42,6 +41,11 @@ func (n *Next) Handle(ctx context.Context, db *sql.DB, target interface{}, opts 
 		defer connection.Close()
 		queryer = connection
 	}
+	if !owned {
+		if _, err := (&Lock{}).Handle(ctx, db, nil, opts...); err != nil {
+			return false, err
+		}
+	}
 	identity, err := n.identity(ctx, queryer, options)
 	if err != nil {
 		return false, err
@@ -55,19 +59,10 @@ func (n *Next) Handle(ctx context.Context, db *sql.DB, target interface{}, opts 
 		}
 		defer tx.Rollback()
 	}
-	ledger := `"` + strings.ReplaceAll(identity.Schema, `"`, `""`) + `".sqlite_sequence`
-	// Take the database write lock before reading its counter. This also
-	// serializes the missing-entry case across independent services.
-	locked, err := tx.ExecContext(ctx, "UPDATE "+ledger+" SET seq=seq WHERE name=?", identity.Name)
-	if err != nil {
+
+	lockOptions := []interface{}{tx, option.SequenceTable(quoteIdentifier(identity.Schema) + "." + quoteIdentifier(identity.Name))}
+	if _, err := (&Lock{}).Handle(ctx, db, nil, lockOptions...); err != nil {
 		return false, err
-	}
-	matched, err := locked.RowsAffected()
-	if err != nil {
-		return false, err
-	}
-	if matched < 0 || matched > 1 {
-		return false, fmt.Errorf("SQLite sequence %s has %d counter rows", identity.Name, matched)
 	}
 	verified, err := n.identity(ctx, tx, options)
 	if err != nil {
@@ -76,11 +71,22 @@ func (n *Next) Handle(ctx context.Context, db *sql.DB, target interface{}, opts 
 	if verified.Catalog != identity.Catalog || verified.Schema != identity.Schema || verified.Name != identity.Name {
 		return false, fmt.Errorf("SQLite sequence identity changed before reservation")
 	}
+	ledger := quoteIdentifier(identity.Schema) + "." + quoteIdentifier(reservationTable)
 	var current int64
-	if matched == 1 {
-		if err := tx.QueryRowContext(ctx, "SELECT seq FROM "+ledger+" WHERE name=?", identity.Name).Scan(&current); err != nil {
-			return false, err
-		}
+	err = tx.QueryRowContext(ctx, "SELECT value FROM "+ledger+" WHERE table_name=?", identity.Name).Scan(&current)
+	missing := errors.Is(err, sql.ErrNoRows)
+	if err != nil && !missing {
+		return false, err
+	}
+	engineValue, hasEngineCounter, err := n.engineCounter(ctx, tx, identity)
+	if err != nil {
+		return false, err
+	}
+	if engineValue > current {
+		current = engineValue
+	}
+	if !hasEngineCounter && options.MaxIDSQLBuilder() == nil {
+		return false, fmt.Errorf("SQLite numeric reservation requires the insert mapper's maximum-value query")
 	}
 	if builder := options.MaxIDSQLBuilder(); builder != nil {
 		query := builder()
@@ -102,9 +108,9 @@ func (n *Next) Handle(ctx context.Context, db *sql.DB, target interface{}, opts 
 		return false, fmt.Errorf("sequence range overflows int64")
 	}
 	last := current + count
-	query := "UPDATE " + ledger + " SET seq=? WHERE name=?"
-	if matched == 0 {
-		query = "INSERT INTO " + ledger + " (seq,name) VALUES (?,?)"
+	query := "UPDATE " + ledger + " SET value=? WHERE table_name=?"
+	if missing {
+		query = "INSERT INTO " + ledger + " (value,table_name) VALUES (?,?)"
 	}
 	written, err := tx.ExecContext(ctx, query, last, identity.Name)
 	if err != nil {
@@ -118,11 +124,33 @@ func (n *Next) Handle(ctx context.Context, db *sql.DB, target interface{}, opts 
 		return false, fmt.Errorf("SQLite sequence reservation affected %d rows, expected 1", affected)
 	}
 	var stored int64
-	if err := tx.QueryRowContext(ctx, "SELECT seq FROM "+ledger+" WHERE name=?", identity.Name).Scan(&stored); err != nil {
+	if err := tx.QueryRowContext(ctx, "SELECT value FROM "+ledger+" WHERE table_name=?", identity.Name).Scan(&stored); err != nil {
 		return false, err
 	}
 	if stored != last {
 		return false, fmt.Errorf("SQLite sequence reservation did not persist its counter")
+	}
+
+	if hasEngineCounter {
+		engineLedger := quoteIdentifier(identity.Schema) + ".sqlite_sequence"
+		updated, err := tx.ExecContext(ctx, "UPDATE "+engineLedger+" SET seq=? WHERE name=?", last, identity.Name)
+		if err != nil {
+			return false, err
+		}
+		count, err := updated.RowsAffected()
+		if err != nil {
+			return false, err
+		}
+		if count != 1 {
+			return false, fmt.Errorf("SQLite engine counter update affected %d rows", count)
+		}
+		var stored int64
+		if err := tx.QueryRowContext(ctx, "SELECT seq FROM "+engineLedger+" WHERE name=?", identity.Name).Scan(&stored); err != nil {
+			return false, err
+		}
+		if stored != last {
+			return false, fmt.Errorf("SQLite engine counter update did not persist")
+		}
 	}
 	if err := ctx.Err(); err != nil {
 		return false, err
@@ -161,6 +189,9 @@ func (n *Next) identity(ctx context.Context, queryer sequenceQueryer, options op
 		if err := metadata.resolveIdentity(ctx, queryer, &identity, identity.Schema); err != nil {
 			return identity, err
 		}
+	}
+	if identity.Name == reservationTable {
+		return identity, fmt.Errorf("SQLite allocator metadata cannot allocate itself")
 	}
 	if identity.Name == "" || identity.Schema == "" {
 		return identity, fmt.Errorf("native SQLite reservation identity is unresolved")

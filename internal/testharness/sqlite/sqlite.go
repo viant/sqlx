@@ -21,7 +21,12 @@ type Harness struct {
 
 func New(t testing.TB, statements ...string) *Harness {
 	t.Helper()
-	dsn := filepath.Join(t.TempDir(), "data.db")
+	return NewWithDSN(t, filepath.Join(t.TempDir(), "data.db"), statements...)
+}
+
+// NewWithDSN supports tests of connection-local pragmas and separate pools.
+func NewWithDSN(t testing.TB, dsn string, statements ...string) *Harness {
+	t.Helper()
 	db, err := sql.Open("sqlite3", dsn)
 	if err != nil {
 		t.Fatal(err)

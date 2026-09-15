@@ -10,6 +10,7 @@ import (
 	"github.com/viant/sqlx/io"
 	"github.com/viant/sqlx/io/config"
 	"github.com/viant/sqlx/io/insert/generator"
+	"github.com/viant/sqlx/metadata/info/dialect"
 	"github.com/viant/sqlx/metadata/sink"
 	"github.com/viant/sqlx/option"
 )
@@ -50,8 +51,14 @@ func New(ctx context.Context, db *sql.DB, tableName string, options ...option.Op
 
 // NextSequence resets next updateSequencer
 func (s *Service) NextSequence(ctx context.Context, any interface{}, recordCount int, options ...option.Option) (*sink.Sequence, error) {
+	options = append(append([]option.Option(nil), options...), s.options...)
 	if err := ctx.Err(); err != nil {
 		return nil, err
+	}
+	if option.Options(options).PresetIDStrategy() == dialect.PresetIDWithReservation {
+		if err := s.prepareSequenceReservation(ctx, options); err != nil {
+			return nil, err
+		}
 	}
 	valueAt, count, err := io.Values(any)
 	if err != nil {
@@ -75,18 +82,16 @@ func (s *Service) NextSequence(ctx context.Context, any interface{}, recordCount
 	}
 	options = append(options, sess.Dialect)
 
-	for _, updater := range sess.recordUpdaters {
-		asNumeric, ok := updater.(*numericSequencer)
-		if ok {
-			return asNumeric.nextSequence(ctx, sess, record, batchRecordBuffer, recordCount, options)
-		}
+	numeric, err := sess.sequenceUpdater(options)
+	if err != nil {
+		return nil, err
 	}
-
-	return nil, fmt.Errorf("not found column with sequence")
+	return numeric.nextSequence(ctx, sess, record, batchRecordBuffer, recordCount, options)
 }
 
 // Exec runs insertService SQL
 func (s *Service) Exec(ctx context.Context, any interface{}, options ...option.Option) (rowsAffected int64, lastInsertedID int64, err error) {
+	options = append(append([]option.Option(nil), options...), s.options...)
 	if options == nil {
 		options = make(option.Options, 0)
 	}

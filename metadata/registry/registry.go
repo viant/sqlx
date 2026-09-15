@@ -88,22 +88,14 @@ func (r *registry) LookupDialect(product *database.Product) *info.Dialect {
 	}
 	var result *info.Dialect
 	for _, candidate := range dialects {
-		if product.Equal(&candidate.Product) {
-			return candidate
+		if candidate.Major > product.Major || candidate.Major == product.Major && candidate.Minor > product.Minor {
+			continue
 		}
-		if candidate.Major <= product.Major {
-			if result == nil { // TODO IF WE DON'T HAVE THE SAME MAJOR VERSION, WE DON'T GET MAX(candidate.Major)
-				result = candidate
-			}
-			if candidate.Major == product.Major {
-				if candidate.Minor <= product.Minor {
-					result = candidate
-					continue
-				}
-				break
-			}
+		if result == nil || candidate.Major > result.Major || candidate.Major == result.Major && candidate.Minor > result.Minor {
+			result = candidate
 		}
 	}
+
 	if result == nil {
 		return dialects[0]
 	}

@@ -26,3 +26,28 @@ func (o Options) SequenceTable() string {
 	}
 	return ""
 }
+
+// SequenceColumn is the numeric column selected by the native insert mapper.
+type SequenceColumn string
+
+func (o Options) SequenceColumn() string {
+	for _, candidate := range o {
+		if value, ok := candidate.(SequenceColumn); ok {
+			return string(value)
+		}
+	}
+	return ""
+}
+
+// SequenceField selects a Go field through the native insert mapper, without
+// asking an application to parse sqlx tags or infer a physical column name.
+type SequenceField string
+
+func (o Options) SequenceField() string {
+	for _, candidate := range o {
+		if value, ok := candidate.(SequenceField); ok {
+			return string(value)
+		}
+	}
+	return ""
+}

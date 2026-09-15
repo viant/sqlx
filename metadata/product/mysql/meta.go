@@ -31,6 +31,8 @@ func MySQL5() *database.Product {
 
 func init() {
 	err := registry.Register(
+		info.NewQuery(info.KindSequenceLock, "", mySQL5).OnPre(&sequence.ReservationLock{}),
+		info.NewQuery(info.KindSequenceReservation, "", mySQL5).OnPre(&sequence.Reserve{}),
 		info.NewQuery(info.KindVersion, "SELECT CONCAT('MySQL - ', VERSION())", mySQL5),
 
 		info.NewQuery(info.KindSchemas, `SELECT 
@@ -107,7 +109,7 @@ FROM INFORMATION_SCHEMA.COLUMNS`,
 			info.NewCriterion(info.Catalog, ""),
 			info.NewCriterion(info.Schema, ""),
 			info.NewCriterion(info.Sequence, ""),
-		).OnPost(info.NewHandler(sequence.UpdateMySQLSequence)),
+		).OnPre(&sequence.ReservationMetadata{}).OnPost(info.NewHandler(sequence.UpdateMySQLSequence)),
 
 		info.NewQuery(info.KindIndexes, `SELECT 
 		'' TABLE_CATALOG,
@@ -217,7 +219,7 @@ where ID=CONNECTION_ID() LIMIT 1;
 			info.NewCriterion(info.Schema, ""),
 			info.NewCriterion(info.Object, ""),
 			info.NewCriterion(info.SequenceNewCurrentValue, ""),
-		).OnPre(&sequence.Transient{}, &sequence.Udf{}),
+		).OnPre(&sequence.ReservationRange{}, &sequence.Transient{}, &sequence.Udf{}, &sequence.StrategyError{}),
 
 		info.NewQuery(info.KindLockGet, `SELECT '$Args[0]' AS LOCK_CATALOG,
 '$Args[1]' AS LOCK_SCHEMA,
@@ -260,7 +262,7 @@ RELEASE_LOCK('$Args[0].$Args[1].$Args[2]')  AS SUCCESS`,
 		MaxPlaceholders:           65530,
 		// TODO: provide real autoincrement function
 		AutoincrementFunc:       "autoincrement",
-		DefaultPresetIDStrategy: dialect.PresetIDWithTransientTransaction,
+		DefaultPresetIDStrategy: dialect.PresetIDWithReservation,
 	})
 
 }

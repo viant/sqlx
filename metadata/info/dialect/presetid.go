@@ -11,3 +11,7 @@ const (
 	PresetIDWithUDFSequence          = PresetIDStrategy("udf")
 	PresetIDWithMax                  = PresetIDStrategy("maxid")
 )
+
+// PresetIDWithReservation requires native atomic reservation support. It never
+// falls back to MAX or transient business-row insertion.
+const PresetIDWithReservation PresetIDStrategy = "reservation"
