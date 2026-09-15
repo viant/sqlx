@@ -6,11 +6,59 @@ import (
 	"database/sql/driver"
 	"io"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 
-	_ "github.com/mattn/go-sqlite3"
+	"github.com/mattn/go-sqlite3"
 )
+
+func TestColumnDetectorUnmappedSQLite(t *testing.T) {
+	db, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err = db.Exec(`CREATE TABLE detector (id INTEGER, unknown)`); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name, query, failure string
+		unmapped             []string
+	}{
+		{"strict literal", `SELECT '' AS pseudo FROM detector WHERE 1=0`, "pseudo", nil},
+		{"unmapped literal", `SELECT id, '' AS pseudo FROM detector WHERE 1=0`, "", []string{"pseudo"}},
+		{"unmapped retains physical metadata", `SELECT id, '' AS pseudo FROM detector WHERE 1=0`, "", []string{"id", "pseudo"}},
+		{"unmapped null", `SELECT id, NULL AS pseudo FROM detector WHERE 1=0`, "", []string{"PSEUDO"}},
+		{"unknown physical", `SELECT unknown FROM detector WHERE 1=0`, "unknown", nil},
+		{"unrelated unknown", `SELECT id, '' AS pseudo, unknown FROM detector WHERE 1=0`, "unknown", []string{"pseudo"}},
+		{"wrong alias", `SELECT '' AS authored FROM detector WHERE 1=0`, "authored", []string{"pseudo"}},
+		{"missing physical", `SELECT absent FROM detector WHERE 1=0`, "absent", []string{"absent"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			columns, err := (ColumnDetector{UnmappedColumns: tc.unmapped}).Detect(context.Background(), db, tc.query)
+			if tc.failure != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.failure) {
+					t.Fatalf("expected failure for %s, got %v", tc.failure, err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(columns) != 2 || columns[0].Name != "id" || columns[0].Type != "INTEGER" || columns[1].Name != "pseudo" || columns[1].Type != "" {
+				t.Fatalf("unexpected metadata: %+v", columns)
+			}
+			scanType := columns[1].ScanType()
+			if scanType != nil && scanType.Kind() == reflect.Pointer {
+				scanType = scanType.Elem()
+			}
+			if scanType != nil && scanType.Kind() != reflect.Interface {
+				t.Fatalf("invented pseudo scan type: %v", scanType)
+			}
+		})
+	}
+}
 
 func TestDetectColumnsSQLite(t *testing.T) {
 	db, err := sql.Open("sqlite3", ":memory:")
@@ -131,3 +179,88 @@ func (*detectorRows) ColumnTypeScanType(int) reflect.Type { return reflect.TypeO
 func (*detectorRows) ColumnTypeNullable(int) (bool, bool) { return true, true }
 
 func (*detectorRows) ColumnTypeLength(int) (int64, bool) { return 8, true }
+
+func TestColumnDetectorDeclaredAndHintedSQLite(t *testing.T) {
+	db, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err = db.Exec(`CREATE TABLE declared(id INTEGER,value)`); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name, query string
+		declared    []string
+		hint        bool
+		fail        bool
+	}{
+		{"undeclared physical", `SELECT value FROM declared`, nil, false, true},
+		{"declared physical", `SELECT value FROM declared`, []string{"value"}, false, false},
+		{"declared computed", `WITH c AS (SELECT coalesce(value,7) AS value FROM declared) SELECT value FROM c`, []string{"value"}, false, false},
+		{"hints", `SELECT '' AS text,0 AS number FROM declared`, nil, true, false},
+		{"hint cannot cover unrelated", `SELECT '' AS text,0 AS number,value FROM declared`, nil, true, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			detector := ColumnDetector{DeclaredColumns: tc.declared}
+			if tc.hint {
+				detector.ResolveTypes = func(columns []Column) map[int]reflect.Type {
+					if columns[0].Name() != "text" || columns[1].Name() != "number" {
+						t.Fatal("metadata labels changed")
+					}
+					return map[int]reflect.Type{0: reflect.TypeOf(""), 1: reflect.TypeOf(0)}
+				}
+			}
+			columns, err := detector.Detect(context.Background(), db, tc.query)
+			if tc.fail {
+				if err == nil {
+					t.Fatal("unknown output accepted")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, column := range columns {
+				if column.Type != "" {
+					t.Fatalf("invented database type: %+v", column)
+				}
+			}
+			if tc.hint {
+				if columns[0].ScanType() != reflect.TypeOf("") || columns[1].ScanType() != reflect.TypeOf(0) || columns[0].IsNullable() || columns[1].IsNullable() {
+					t.Fatal("exact literal hints lost")
+				}
+			}
+		})
+	}
+}
+
+func TestColumnDetectorDoesNotSampleValues(t *testing.T) {
+	ctx := context.Background()
+	db, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	calls := 0
+	err = conn.Raw(func(raw any) error {
+		return raw.(*sqlite3.SQLiteConn).RegisterFunc("metadata_probe", func() int { calls++; return 7 }, false)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = conn.Close(); err != nil {
+		t.Fatal(err)
+	}
+	columns, err := (ColumnDetector{DeclaredColumns: []string{"value"}}).Detect(ctx, db, `SELECT metadata_probe() AS value`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(columns) != 1 || columns[0].Name != "value" || calls != 0 {
+		t.Fatalf("metadata sampled data: columns=%v calls=%d", columns, calls)
+	}
+}
