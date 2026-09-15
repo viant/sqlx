@@ -262,7 +262,7 @@ RELEASE_LOCK('$Args[0].$Args[1].$Args[2]')  AS SUCCESS`,
 		MaxPlaceholders:           65530,
 		// TODO: provide real autoincrement function
 		AutoincrementFunc:       "autoincrement",
-		DefaultPresetIDStrategy: dialect.PresetIDWithReservation,
+		DefaultPresetIDStrategy: dialect.PresetIDWithTransientTransaction,
 	})
 
 }

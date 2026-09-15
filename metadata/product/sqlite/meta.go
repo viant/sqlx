@@ -230,5 +230,6 @@ FROM pragma_database_list
 		CanLastInsertID:         true,
 		MaxPlaceholders:         maxPlaceholders,
 		DefaultPresetIDStrategy: dialect.PresetIDStrategyUndefined,
+		DefaultSequenceStrategy: dialect.PresetIDWithReservation,
 	})
 }

@@ -34,7 +34,7 @@ func TestReservationLivePositive(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer tx.Rollback()
-			service, err := insert.New(ctx, h.DB, h.Table("records"))
+			service, err := explicitReservationInserter(ctx, h.DB, h.Table("records"))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -104,7 +104,7 @@ func TestReservationLiveNativeAssignment(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer tx.Rollback()
-			service, _ := insert.New(ctx, h.DB, h.Table("records"))
+			service, _ := explicitReservationInserter(ctx, h.DB, h.Table("records"))
 			rows := []*liveReservationRow{{Name: "first"}, {Name: "second"}}
 			affected, _, err := service.Exec(ctx, rows, tx, option.BatchSize(2), dialect.PresetIDWithReservation)
 			if err != nil || affected != 2 || rows[0].ID == 0 || rows[0].ID == rows[1].ID {
@@ -137,7 +137,7 @@ func TestReservationLiveMySQLCallerWriteAndSettings(t *testing.T) {
 	if _, err = tx.ExecContext(ctx, "SET SESSION auto_increment_increment=3,auto_increment_offset=2"); err != nil {
 		t.Fatal(err)
 	}
-	service, _ := insert.New(ctx, h.DB, h.Table("records"))
+	service, _ := explicitReservationInserter(ctx, h.DB, h.Table("records"))
 	result, err := service.ReserveSequence(ctx, &liveReservationRow{}, 3, tx)
 	if err != nil {
 		t.Fatal(err)
@@ -189,7 +189,7 @@ func TestReservationLivePostgresExactCachedValues(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			service, _ := insert.New(ctx, h.DB, h.Table("records"))
+			service, _ := explicitReservationInserter(ctx, h.DB, h.Table("records"))
 			result, err := service.ReserveSequence(ctx, &liveReservationRow{}, 3, a)
 			if err != nil {
 				t.Fatal(err)
@@ -218,7 +218,7 @@ func TestReservationLiveShapeDiagnostics(t *testing.T) {
 			h := reservationdb.Open(t, driver)
 			h.Exec(t, "CREATE TABLE "+h.Table("plain")+"(id BIGINT PRIMARY KEY)", "CREATE TABLE "+h.Table("textual")+"(id VARCHAR(30) PRIMARY KEY)")
 			for _, name := range []string{"plain", "textual"} {
-				s, _ := insert.New(context.Background(), h.DB, h.Table(name))
+				s, _ := explicitReservationInserter(context.Background(), h.DB, h.Table(name))
 				r, err := s.ReserveSequence(context.Background(), &liveReservationRow{}, 1)
 				if err == nil || r != nil {
 					t.Fatalf("accepted nongenerated shape %s: %+v %v", name, r, err)
@@ -230,7 +230,7 @@ func TestReservationLiveShapeDiagnostics(t *testing.T) {
 			}
 			if driver == "postgres" {
 				h.Exec(t, "CREATE SEQUENCE "+h.Table("cycling")+" CYCLE MAXVALUE 3", "CREATE TABLE "+h.Table("cycle_rows")+"(id BIGINT DEFAULT nextval('"+h.Table("cycling")+"'::regclass))")
-				s, _ := insert.New(context.Background(), h.DB, h.Table("cycle_rows"))
+				s, _ := explicitReservationInserter(context.Background(), h.DB, h.Table("cycle_rows"))
 				r, err := s.ReserveSequence(context.Background(), &liveReservationRow{}, 1)
 				if r != nil || err == nil || !strings.Contains(err.Error(), "cycles") {
 					t.Fatalf("cycling sequence diagnostic: %+v %v", r, err)
@@ -253,7 +253,7 @@ func TestReservationLiveCancellation(t *testing.T) {
 			defer tx.Rollback()
 			ctx, cancel := context.WithCancel(context.Background())
 			cancel()
-			s, _ := insert.New(context.Background(), h.DB, h.Table("records"))
+			s, _ := explicitReservationInserter(context.Background(), h.DB, h.Table("records"))
 			r, err := s.ReserveSequence(ctx, &liveReservationRow{}, 2, tx)
 			if r != nil || !errors.Is(err, context.Canceled) {
 				t.Fatalf("cancelled allocation: %+v %v", r, err)
@@ -296,7 +296,7 @@ func TestReservationLivePostgresAuthorities(t *testing.T) {
 			if kind == "explicit" {
 				record = &named{}
 			}
-			service, _ := insert.New(ctx, h.DB, h.Table("records"))
+			service, _ := explicitReservationInserter(ctx, h.DB, h.Table("records"))
 			result, err := service.ReserveSequence(ctx, record, 2, tx)
 			if err != nil {
 				t.Fatal(err)
@@ -346,7 +346,7 @@ func TestReservationLiveNoSourceSideEffects(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			service, _ := insert.New(ctx, h.DB, h.Table("records"))
+			service, _ := explicitReservationInserter(ctx, h.DB, h.Table("records"))
 			if _, err = service.ReserveSequence(ctx, &liveReservationRow{}, 4, tx); err != nil {
 				t.Fatal(err)
 			}
@@ -382,7 +382,7 @@ func TestReservationLiveBlockedCancellation(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer blocker.Rollback()
-			service, _ := insert.New(ctx, h.DB, h.Table("records"))
+			service, _ := explicitReservationInserter(ctx, h.DB, h.Table("records"))
 			if driver == "mysql" {
 				if _, err = service.ReserveSequence(ctx, &liveReservationRow{}, 1, blocker); err != nil {
 					t.Fatal(err)
@@ -408,7 +408,7 @@ func TestReservationLiveBlockedCancellation(t *testing.T) {
 			}
 			callCtx, stop := context.WithTimeout(ctx, 150*time.Millisecond)
 			defer stop()
-			caller, _ := insert.New(ctx, callerDB, h.Table("records"))
+			caller, _ := explicitReservationInserter(ctx, callerDB, h.Table("records"))
 			row := &liveReservationRow{}
 			result, err := caller.ReserveSequence(callCtx, row, 2, tx)
 			if result != nil || err == nil || row.ID != 0 || callCtx.Err() == nil {
@@ -424,7 +424,7 @@ func TestReservationLiveBlockedCancellation(t *testing.T) {
 	}
 }
 
-func TestReservationLiveDefaultAssignmentOwner(t *testing.T) {
+func TestReservationLiveExplicitAssignmentOwner(t *testing.T) {
 	for _, driver := range []string{"mysql", "postgres"} {
 		t.Run(driver, func(t *testing.T) {
 			h := reservationdb.Open(t, driver)
@@ -436,9 +436,9 @@ func TestReservationLiveDefaultAssignmentOwner(t *testing.T) {
 			h.DB.SetMaxOpenConns(1)
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
-			service, _ := insert.New(ctx, h.DB, h.Table("records"))
+			service, _ := explicitReservationInserter(ctx, h.DB, h.Table("records"))
 			rows := []*liveReservationRow{{Name: "one"}, {Name: "two"}}
-			// No explicit strategy or transaction: the native insert transaction must
+			// Explicit strategy configured on the service, no transaction: the insert transaction must
 			// own allocation, without trying to borrow a second connection.
 			count, _, err := service.Exec(ctx, rows, option.BatchSize(2))
 			if err != nil || count != 2 || rows[0].ID == 0 || rows[0].ID == rows[1].ID {
@@ -449,7 +449,7 @@ func TestReservationLiveDefaultAssignmentOwner(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer tx.Rollback()
-			bound, _ := insert.New(ctx, h.DB, h.Table("records"), tx)
+			bound, _ := explicitReservationInserter(ctx, h.DB, h.Table("records"), tx)
 			result, err := bound.ReserveSequence(ctx, &liveReservationRow{}, 1)
 			if err != nil {
 				t.Fatal("constructor transaction lost:", err)
@@ -487,7 +487,7 @@ func TestReservationLiveMySQLCurrentRead(t *testing.T) {
 	if _, err = h.Other(t).ExecContext(ctx, h.SeedIDSQL(50)); err != nil {
 		t.Fatal(err)
 	}
-	s, _ := insert.New(ctx, h.DB, h.Table("records"))
+	s, _ := explicitReservationInserter(ctx, h.DB, h.Table("records"))
 	r, err := s.ReserveSequence(ctx, &liveReservationRow{}, 1, tx)
 	if err != nil || r.Values[0] <= 50 {
 		t.Fatalf("used stale snapshot maximum: %+v %v", r, err)
@@ -500,7 +500,7 @@ func TestReservationLivePostgresDefaultAndColumnLimits(t *testing.T) {
 		"CREATE TABLE "+h.Table("narrow")+"(id SMALLINT DEFAULT nextval('"+h.Table("numbers")+"'::regclass))",
 		"CREATE TABLE "+h.Table("transformed")+"(id BIGINT DEFAULT (nextval('"+h.Table("numbers")+"'::regclass)*10))")
 	for _, table := range []string{"narrow", "transformed"} {
-		s, _ := insert.New(context.Background(), h.DB, h.Table(table))
+		s, _ := explicitReservationInserter(context.Background(), h.DB, h.Table(table))
 		r, err := s.ReserveSequence(context.Background(), &liveReservationRow{}, 1)
 		if r != nil || err == nil {
 			t.Fatalf("accepted unsupported column/default shape: %+v %v", r, err)
@@ -515,10 +515,10 @@ func TestReservationLivePostgresDefaultAndColumnLimits(t *testing.T) {
 	}
 }
 
-func TestReservationLiveMySQLScalarDefault(t *testing.T) {
+func TestReservationLiveMySQLExplicitScalar(t *testing.T) {
 	h := reservationdb.Open(t, "mysql")
 	h.CreateRecords(t)
-	s, _ := insert.New(context.Background(), h.DB, h.Table("records"))
+	s, _ := explicitReservationInserter(context.Background(), h.DB, h.Table("records"))
 	result, err := s.NextSequence(context.Background(), &liveReservationRow{}, 2)
 	if err != nil || result == nil || result.Name == "" || result.MinValue(2) != 1 {
 		t.Fatalf("default scalar API did not use a real native allocator: %+v %v", result, err)
@@ -538,9 +538,13 @@ func TestReservationLiveMySQLUncachedAutoStart(t *testing.T) {
 		t.Fatal(err)
 	}
 	h.Exec(t, "ALTER TABLE "+h.Table("records")+" AUTO_INCREMENT=1000")
-	s, _ := insert.New(context.Background(), h.DB, h.Table("records"))
+	s, _ := explicitReservationInserter(context.Background(), h.DB, h.Table("records"))
 	r, err := s.ReserveSequence(context.Background(), &liveReservationRow{}, 1)
 	if err != nil || r.Values[0] != 1000 {
 		t.Fatalf("lost configured auto-increment start: %+v %v", r, err)
 	}
+}
+
+func explicitReservationInserter(ctx context.Context, db *sql.DB, table string, options ...option.Option) (*insert.Service, error) {
+	return insert.New(ctx, db, table, append(options, dialect.PresetIDWithReservation)...)
 }

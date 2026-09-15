@@ -9,11 +9,13 @@ import (
 	"github.com/viant/sqlx/io"
 	"github.com/viant/sqlx/metadata"
 	"github.com/viant/sqlx/metadata/info"
+	"github.com/viant/sqlx/metadata/info/dialect"
 	"github.com/viant/sqlx/metadata/sink"
 	"github.com/viant/sqlx/option"
 )
 
-// ReserveSequence allocates exact numeric values without executing entity DML.
+// ReserveSequence allocates exact numeric values using the selected native
+// strategy. Transient strategies may execute source DML and roll it back.
 // A supplied transaction retains ownership. Products choose their native
 // reservation semantics; no contiguous range is inferred from sequence outputs.
 func (s *Service) ReserveSequence(ctx context.Context, records any, count int, options ...option.Option) (result *sink.Reservation, err error) {
@@ -47,11 +49,27 @@ func (s *Service) ReserveSequence(ctx context.Context, records any, count int, o
 	if err != nil {
 		return nil, err
 	}
-	return numeric.reserveSequence(ctx, sess, count, options)
+	strategy := sess.reservationStrategy(options)
+	options = append([]option.Option{strategy}, options...)
+	switch strategy {
+	case dialect.PresetIDWithTransientTransaction, dialect.PresetIDWithUDFSequence:
+		result, err := s.reserveFromNextSequence(ctx, records, count, options)
+		if err != nil {
+			return nil, err
+		}
+		if err = numeric.validateReservationValues(result); err != nil {
+			return nil, err
+		}
+		return result, nil
+	case "", dialect.PresetIDStrategyUndefined, dialect.PresetIDWithReservation:
+		return numeric.reserveSequence(ctx, sess, count, options)
+	default:
+		return nil, fmt.Errorf("strategy %q does not provide allocated sequence values", strategy)
+	}
 }
 
 func (n *numericSequencer) reserveSequence(ctx context.Context, sess *session, count int, options []option.Option) (*sink.Reservation, error) {
-	valueType, err := n.reservationValueType()
+	_, err := n.reservationValueType()
 	if err != nil {
 		return nil, err
 	}
@@ -69,18 +87,29 @@ func (n *numericSequencer) reserveSequence(ctx context.Context, sess *session, c
 	if err := result.Validate(count); err != nil {
 		return nil, err
 	}
+	if err := n.validateReservationValues(result); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+func (n *numericSequencer) validateReservationValues(result *sink.Reservation) error {
+	valueType, err := n.reservationValueType()
+	if err != nil {
+		return err
+	}
 	target := reflect.New(valueType).Elem()
 	for _, value := range result.Values {
 		switch valueType.Kind() {
 		case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 			if target.OverflowInt(value) {
-				return nil, fmt.Errorf("native sequence value %d overflows mapped Go type %s", value, valueType)
+				return fmt.Errorf("native sequence value %d overflows mapped Go type %s", value, valueType)
 			}
 		default:
 			if value < 0 || target.OverflowUint(uint64(value)) {
-				return nil, fmt.Errorf("native sequence value %d overflows mapped Go type %s", value, valueType)
+				return fmt.Errorf("native sequence value %d overflows mapped Go type %s", value, valueType)
 			}
 		}
 	}
-	return result, nil
+	return nil
 }

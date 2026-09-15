@@ -51,3 +51,16 @@ func (o Options) SequenceField() string {
 	}
 	return ""
 }
+
+// SequenceReservationIntent requests the product's allocation preparation before
+// reading identity metadata, without selecting or overriding its preset strategy.
+type SequenceReservationIntent bool
+
+func (o Options) SequenceReservationIntent() bool {
+	for _, candidate := range o {
+		if value, ok := candidate.(SequenceReservationIntent); ok {
+			return bool(value)
+		}
+	}
+	return false
+}

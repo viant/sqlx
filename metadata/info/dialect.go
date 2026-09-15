@@ -33,6 +33,7 @@ type Dialect struct {
 	// i.e. normalized column on the dialect
 	Keywords                  map[string]bool
 	DefaultPresetIDStrategy   dialect.PresetIDStrategy
+	DefaultSequenceStrategy   dialect.PresetIDStrategy
 	SpecialKeywordEscapeQuote byte
 }
 

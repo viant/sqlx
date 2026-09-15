@@ -24,7 +24,12 @@ type Database struct {
 	Driver, DSN, Schema string
 }
 
-func Open(t testing.TB, driver string) *Database {
+func Open(t testing.TB, driver string) *Database { return open(t, driver, true) }
+
+// OpenTransient creates source fixtures without provisioning an allocator table.
+func OpenTransient(t testing.TB) *Database { return open(t, "mysql", false) }
+
+func open(t testing.TB, driver string, provision bool) *Database {
 	t.Helper()
 	env := "F1_MYSQL_DSN"
 	if driver == "postgres" {
@@ -53,9 +58,11 @@ func Open(t testing.TB, driver string) *Database {
 	}
 	h := &Database{DB: db, Driver: driver, DSN: dsn, Schema: "f1_" + hex.EncodeToString(token[:])}
 	if driver == "mysql" {
-		if err = (&mysqlsequence.Store{}).Install(ctx, db); err != nil {
-			db.Close()
-			t.Fatal(err)
+		if provision {
+			if err = (&mysqlsequence.Store{}).Install(ctx, db); err != nil {
+				db.Close()
+				t.Fatal(err)
+			}
 		}
 		_, err = db.ExecContext(ctx, "CREATE DATABASE "+h.Quote(h.Schema))
 	} else {

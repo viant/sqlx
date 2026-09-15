@@ -1,33 +1,40 @@
-# MySQL native reservations
+# MySQL sequencing
 
-MySQL's default numeric preset strategy uses `ReserveSequence` and an InnoDB
-counter in `sqlx_allocator.sequence_reservations`. `Store.Install(ctx, db)` must
-run once, outside writer transactions, using deployment credentials. Runtime
-credentials need SELECT/INSERT/UPDATE on that table and normal source-table
-read/write permissions. Allocation never runs DDL or opens a second transaction
-when supplied a caller transaction.
+## Default: original transient transaction
 
-The source column must be an integer AUTO_INCREMENT column in an InnoDB table.
-The native mapper selects it; `SequenceField` can select a Go field explicitly
-when the mapping contains more than one identity. Session increment/offset and
-signed/unsigned column limits are respected, within the int64 value contract.
+`PresetIDWithTransientTransaction` is the default, preserving original Datly and
+SQLX selection. `transient.go`, `handler.go` and `udf.go` remain byte-for-byte
+unchanged from `24e180f`. The generic exact-value API invokes the original
+NextSequence path and adapts its returned range without changing its SQL,
+transaction, session, locking, cleanup or retry semantics.
 
-First use and later calls lock the same metadata row. A current `FOR UPDATE`
-read observes the largest source ID even under REPEATABLE READ. The counter is
-then advanced and verified under the same transaction. No transient source row,
-source ALTER, FK toggle, application trigger or second-connection lock is used.
-Caller completion is never taken over. Standalone insertion shares its own
-native insert transaction with allocation, including one-connection pools.
+No allocator table is needed. Source AUTO_INCREMENT is advanced by transient
+source INSERTs in a separate transaction which SQLX rolls back. A caller's
+transaction is not completed by this operation.
 
-This is a transactional SQLX allocator. Rollback can release a reservation if
-normal entity insertion has not already advanced the source AUTO_INCREMENT
-counter. SQLX default mapped-ID inserts and Datly allocation use the same owner.
-Raw SQL or inserts omitting the mapped identity bypass the owner; source-table
-AUTO_INCREMENT cannot see outstanding SQLX reservations without source DML or
-DDL, both forbidden during reservation. Such unmanaged generators must not be
-mixed with outstanding preallocated IDs. Ordinary explicit supplied IDs still
-remain subject to database uniqueness checks.
+The mechanism needs a spare connection when a caller already holds a transaction,
+and may wait on source locks held by that caller. Source defaults/triggers and
+applicable constraints execute. Transactional rows roll back; nontransactional
+or external effects need not. Original FK toggling/restoration, advisory lock
+names, timeout/retries and the last-bound-argument identity assumption remain
+unchanged. These limits are documented and tested, not repaired by this patch.
+go-sql-driver/mysql can invalidate the caller connection/transaction when a
+blocked allocation context is cancelled. SQLX does not commit or roll back that
+caller transaction, but it cannot promise the driver-cancelled handle remains
+usable. Cancellation tests therefore require an error, no committed source rows
+and no silent allocator-table fallback; noncancelled caller ownership has a
+separate positive test.
 
-The old transient strategy remains explicitly selectable for callers that
-understand its source INSERT/trigger and transaction limitations. It is no longer
-the default and is not used by Datly's sequencer.
+## Explicit `reservation` option
+
+The native InnoDB table allocator is opt-in. Provision with
+`Store.Install(ctx, db)` outside writer transactions, then pass
+`dialect.PresetIDWithReservation` to the insert/sequence service. It uses
+`sqlx_allocator.sequence_reservations`, caller-transaction row locking and no
+transient source INSERTs. It can operate with a single caller connection.
+
+Runtime credentials need SELECT/INSERT/UPDATE on native metadata and source
+access. It honors native field mapping, increment/offset and integer bounds.
+Rollback can release its reservation. Unmanaged source AUTO_INCREMENT inserts
+do not see outstanding metadata reservations; do not mix generators. The default
+never switches to this optional owner when the transient mechanism fails.

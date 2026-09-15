@@ -23,7 +23,7 @@ func (s *Service) SequenceInfo(ctx context.Context, records interface{}, options
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if option.Options(options).PresetIDStrategy() == dialect.PresetIDWithReservation {
+	if option.Options(options).SequenceReservationIntent() || option.Options(options).PresetIDStrategy() == dialect.PresetIDWithReservation {
 		if err := s.prepareSequenceReservation(ctx, options); err != nil {
 			return nil, err
 		}
