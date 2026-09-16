@@ -3,6 +3,7 @@ package info_test
 import (
 	"testing"
 
+	"github.com/viant/sqlx"
 	"github.com/viant/sqlx/metadata/database"
 	"github.com/viant/sqlx/metadata/info"
 	"github.com/viant/sqlx/metadata/product/bigquery"
@@ -72,5 +73,17 @@ func TestDialectCompositeInEnsurePlaceholders(t *testing.T) {
 	want := "(t.id, t.version) IN (($1, $2), ($3, $4))"
 	if actual != want {
 		t.Fatalf("expected %q, got %q", want, actual)
+	}
+}
+
+func TestDialectCompositeInParseParameters(t *testing.T) {
+	dialect := registry.LookupDialect(bigquery.BigQuery())
+	if dialect == nil {
+		t.Fatal("missing dialect")
+	}
+	SQL := dialect.CompositeIn([]string{"FeatureType", "Value"}, 2)
+	parameters := sqlx.ParseParameters(SQL)
+	if parameters.PositionalCount() != 4 {
+		t.Fatalf("positional=%d want=4 for SQL %q", parameters.PositionalCount(), SQL)
 	}
 }
