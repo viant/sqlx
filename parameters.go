@@ -85,7 +85,7 @@ func (p *Parameters) questionOperator(position, previous int, quoted bool) bool 
 		start--
 	}
 	switch strings.ToLower(SQL[start : previous+1]) {
-	case "select", "where", "and", "or", "not", "like", "ilike", "in", "between", "when", "then", "else", "on", "having", "as", "set", "values", "returning", "is", "by", "offset", "limit", "case", "from", "join", "update", "insert", "into", "delete", "distinct", "all", "exists", "union", "except", "intersect":
+	case "select", "where", "and", "or", "not", "like", "ilike", "in", "between", "when", "then", "else", "on", "having", "as", "set", "values", "returning", "is", "by", "offset", "limit", "case", "from", "join", "update", "insert", "into", "delete", "distinct", "all", "exists", "union", "except", "intersect", "struct":
 		return false
 	}
 	return true
