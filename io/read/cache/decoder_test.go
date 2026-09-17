@@ -100,6 +100,62 @@ func TestDecoder_BoolNullToNonPointerFails(t *testing.T) {
 	assert.EqualError(t, err, "Cannot unmarshal JSON to type 'bool'")
 }
 
+func TestDecoder_EscapedStringPreservesLaterNulls(t *testing.T) {
+	marshaled := `["FoxNews:US\u0026WorldHeadlines",null,null,null,null]`
+	scanTypes := []reflect.Type{
+		reflect.TypeOf(""),
+		reflect.TypeOf((*int)(nil)),
+		reflect.TypeOf((*float64)(nil)),
+		reflect.TypeOf((*string)(nil)),
+		reflect.TypeOf((*bool)(nil)),
+	}
+
+	decoder := NewDecoder(scanTypes, []byte(marshaled))
+	err := gojay.UnmarshalJSONArray([]byte(marshaled), decoder)
+	assert.NoError(t, err)
+	assert.EqualValues(t, stringPtr("FoxNews:US&WorldHeadlines"), decoder.values[0])
+	assert.Nil(t, decoder.values[1])
+	assert.Nil(t, decoder.values[2])
+	assert.Nil(t, decoder.values[3])
+	assert.Nil(t, decoder.values[4])
+}
+
+func TestDecoder_EscapedQuotePreservesLaterNulls(t *testing.T) {
+	marshaled := `["prefix\"quoted\"",null,null]`
+	scanTypes := []reflect.Type{
+		reflect.TypeOf(""),
+		reflect.TypeOf((*int)(nil)),
+		reflect.TypeOf((*string)(nil)),
+	}
+
+	decoder := NewDecoder(scanTypes, []byte(marshaled))
+	err := gojay.UnmarshalJSONArray([]byte(marshaled), decoder)
+	assert.NoError(t, err)
+	assert.EqualValues(t, stringPtr(`prefix"quoted"`), decoder.values[0])
+	assert.Nil(t, decoder.values[1])
+	assert.Nil(t, decoder.values[2])
+}
+
+func TestDecoder_EscapedStringKeepsLegitimateZeroValues(t *testing.T) {
+	marshaled := `["prefix\\suffix",0,0.0,"",false]`
+	scanTypes := []reflect.Type{
+		reflect.TypeOf(""),
+		reflect.TypeOf((*int)(nil)),
+		reflect.TypeOf((*float64)(nil)),
+		reflect.TypeOf((*string)(nil)),
+		reflect.TypeOf((*bool)(nil)),
+	}
+
+	decoder := NewDecoder(scanTypes, []byte(marshaled))
+	err := gojay.UnmarshalJSONArray([]byte(marshaled), decoder)
+	assert.NoError(t, err)
+	assert.EqualValues(t, stringPtr(`prefix\suffix`), decoder.values[0])
+	assert.EqualValues(t, intDoublePtr(0), decoder.values[1])
+	assert.EqualValues(t, float64DoublePtr(0), decoder.values[2])
+	assert.EqualValues(t, stringDoublePtr(""), decoder.values[3])
+	assert.EqualValues(t, boolDoublePtr(false), decoder.values[4])
+}
+
 func boolPtr(b bool) *bool {
 	return &b
 }
@@ -117,6 +173,25 @@ func stringPtr(s string) *string {
 
 func intPtr(value int) *int {
 	return &value
+}
+
+func intDoublePtr(value int) **int {
+	ptr := intPtr(value)
+	return &ptr
+}
+
+func float64Ptr(value float64) *float64 {
+	return &value
+}
+
+func float64DoublePtr(value float64) **float64 {
+	ptr := float64Ptr(value)
+	return &ptr
+}
+
+func stringDoublePtr(value string) **string {
+	ptr := stringPtr(value)
+	return &ptr
 }
 
 func asTimePtr(value string) *time.Time {

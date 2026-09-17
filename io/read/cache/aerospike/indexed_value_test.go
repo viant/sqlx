@@ -75,7 +75,7 @@ func TestIndexedValueCompressedChunks_ReadAcrossChildChain(t *testing.T) {
 	records := map[string]*as.Record{}
 	aCache := &Cache{
 		namespace: "ns_memory",
-		set:       "steward_test",
+		set:       "sqlx_test",
 		putFn: func(key *as.Key, binMap as.BinMap) error {
 			records[key.String()] = &as.Record{Key: key, Bins: cloneBinMap(binMap)}
 			return nil
@@ -169,7 +169,7 @@ func TestIndexedValueIndexedRootDoesNotCopyMetaBins(t *testing.T) {
 	records := map[string]as.BinMap{}
 	aCache := &Cache{
 		namespace: "ns_memory",
-		set:       "steward_test",
+		set:       "sqlx_test",
 		putFn: func(key *as.Key, binMap as.BinMap) error {
 			records[key.String()] = cloneBinMap(binMap)
 			return nil
@@ -219,7 +219,7 @@ func TestIndexedValueSingleRootKeepsMetaBins(t *testing.T) {
 	records := map[string]as.BinMap{}
 	aCache := &Cache{
 		namespace: "ns_memory",
-		set:       "steward_test",
+		set:       "sqlx_test",
 		putFn: func(key *as.Key, binMap as.BinMap) error {
 			records[key.String()] = cloneBinMap(binMap)
 			return nil
@@ -266,7 +266,7 @@ func TestSingleSourceClose_WritesEmptyRootWhenNoRowsSeen(t *testing.T) {
 	records := map[string]as.BinMap{}
 	aCache := &Cache{
 		namespace: "ns_memory",
-		set:       "steward_test",
+		set:       "sqlx_test",
 		putFn: func(key *as.Key, binMap as.BinMap) error {
 			records[key.String()] = cloneBinMap(binMap)
 			return nil

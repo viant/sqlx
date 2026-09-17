@@ -45,10 +45,11 @@ func (c *Scanner) New(e *Entry) ScannerFn {
 				continue
 			}
 			if cachedValue == nil {
-				// Rows.Scan clears nullable pointers even when the target is reused.
-				if c.typeHolder.scanTypes[i].Kind() == reflect.Ptr {
-					zeroScanDestination(values[i])
+				if !supportsNullDestination(c.typeHolder.scanTypes[i]) {
+					return unsupportedNullScanError(c.typeHolder.scanTypes[i])
 				}
+				// Clear reused nullable destinations so cached NULL does not leave stale values behind.
+				zeroScanDestination(values[i])
 				continue
 			}
 
@@ -103,6 +104,9 @@ func NewProjectedScanner(entry *Entry, indexes []int, typeHolder *ScanTypeHolder
 				continue
 			}
 			if cachedValue == nil {
+				if !supportsNullDestination(scanTypes[storedIndex]) {
+					return unsupportedNullScanError(scanTypes[storedIndex])
+				}
 				zeroScanDestination(values[destIndex])
 				continue
 			}
@@ -156,4 +160,24 @@ func zeroScanDestination(value interface{}) {
 		return
 	}
 	rValue.Elem().Set(reflect.Zero(rValue.Elem().Type()))
+}
+
+func unsupportedNullScanError(scanType reflect.Type) error {
+	scanType = normalizeCompatType(scanType)
+	if scanType == nil {
+		return fmt.Errorf("converting NULL is unsupported")
+	}
+	return fmt.Errorf("converting NULL to %s is unsupported", scanType.String())
+}
+
+func supportsNullDestination(scanType reflect.Type) bool {
+	if scanType == nil {
+		return false
+	}
+	switch scanType.Kind() {
+	case reflect.Ptr, reflect.Interface:
+		return true
+	default:
+		return isByteSliceType(scanType)
+	}
 }

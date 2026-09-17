@@ -1,7 +1,8 @@
 package cache
 
 import (
-	"bytes"
+	"database/sql"
+	"encoding/base64"
 	"fmt"
 	"github.com/francoispqt/gojay"
 	"github.com/viant/xunsafe"
@@ -11,9 +12,9 @@ import (
 )
 
 var timeType = reflect.TypeOf(time.Time{})
+var rawBytesType = reflect.TypeOf(sql.RawBytes(nil))
 var curOffset uintptr
-
-var nullBytes = []byte("null")
+var dataOffset uintptr
 
 func init() {
 	cur, ok := reflect.TypeOf(gojay.Decoder{}).FieldByName("cursor")
@@ -21,10 +22,19 @@ func init() {
 		panic("failed to get Decoder.cursor field")
 	}
 	curOffset = cur.Offset
+	data, ok := reflect.TypeOf(gojay.Decoder{}).FieldByName("data")
+	if !ok {
+		panic("failed to get Decoder.data field")
+	}
+	dataOffset = data.Offset
 }
 
 func cursor(dec *gojay.Decoder) int {
 	return *(*int)(unsafe.Pointer(uintptr(unsafe.Pointer(dec)) + curOffset))
+}
+
+func data(dec *gojay.Decoder) []byte {
+	return *(*[]byte)(unsafe.Pointer(uintptr(unsafe.Pointer(dec)) + dataOffset))
 }
 
 type (
@@ -66,14 +76,12 @@ func (d *Decoder) UnmarshalJSONArray(decoder *gojay.Decoder) error {
 		decoderFn = d.sliceDecoder
 	}
 
-	beforePos := cursor(decoder)
+	wasNull := nextTokenNull(decoder)
 	value, err := decoderFn(decoder)
 	if err != nil {
 		return err
 	}
-	after := cursor(decoder)
-
-	if bytes.Equal(bytes.TrimSpace(d.Data[beforePos:after]), nullBytes) {
+	if wasNull {
 		value = nil
 	}
 
@@ -83,6 +91,34 @@ func (d *Decoder) UnmarshalJSONArray(decoder *gojay.Decoder) error {
 		d.values = append(d.values, value)
 	}
 	return nil
+}
+
+func nextTokenNull(decoder *gojay.Decoder) bool {
+	buffer := data(decoder)
+	position := cursor(decoder)
+	for position < len(buffer) {
+		switch buffer[position] {
+		case ' ', '\n', '\t', '\r', ',':
+			position++
+			continue
+		}
+		break
+	}
+	if position+4 > len(buffer) {
+		return false
+	}
+	if buffer[position] != 'n' || buffer[position+1] != 'u' || buffer[position+2] != 'l' || buffer[position+3] != 'l' {
+		return false
+	}
+	if position+4 == len(buffer) {
+		return true
+	}
+	switch buffer[position+4] {
+	case ' ', '\n', '\t', '\r', ',', ']', '}':
+		return true
+	default:
+		return false
+	}
 }
 
 func (d *Decoder) buildDecoders() {
@@ -138,6 +174,9 @@ func newDecoderFn(dataType reflect.Type, data []byte) DecoderFn {
 	case reflect.String:
 		return stringDecoder(wasPtr)
 	case reflect.Slice:
+		if isByteSliceType(dataType) {
+			return bytesDecoder(actualDataType)
+		}
 		sliceItemType := dataType.Elem()
 		xType := xunsafe.NewType(sliceItemType)
 		return func(decoder *gojay.Decoder) (interface{}, error) {
@@ -169,6 +208,25 @@ func newDecoderFn(dataType reflect.Type, data []byte) DecoderFn {
 	return interfaceDecoder(actualDataType)
 }
 
+func bytesDecoder(actualDataType reflect.Type) DecoderFn {
+	return func(decoder *gojay.Decoder) (interface{}, error) {
+		encoded := ""
+		if err := decoder.String(&encoded); err != nil {
+			return nil, err
+		}
+		decoded, err := base64.StdEncoding.DecodeString(encoded)
+		if err != nil {
+			return nil, err
+		}
+		if actualDataType == rawBytesType {
+			value := sql.RawBytes(decoded)
+			return &value, nil
+		}
+		value := []byte(decoded)
+		return &value, nil
+	}
+}
+
 func timeDecoder(ptr bool, actualDataType reflect.Type) DecoderFn {
 	if !ptr {
 		return func(decoder *gojay.Decoder) (interface{}, error) {
@@ -187,6 +245,10 @@ func interfaceDecoder(actualDataType reflect.Type) DecoderFn {
 
 		return asInterface, decoder.Interface(&asInterface)
 	}
+}
+
+func isByteSliceType(rType reflect.Type) bool {
+	return rType != nil && rType.Kind() == reflect.Slice && rType.Elem().Kind() == reflect.Uint8
 }
 
 func boolDecoder(ptr bool) DecoderFn {
