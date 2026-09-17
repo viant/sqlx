@@ -18,7 +18,7 @@ type UnmarshalSession struct {
 	destPtr    unsafe.Pointer
 }
 
-func (s *UnmarshalSession) init(fields []*Field, refs map[string][]string, accessors map[string]*xunsafe.Field, stringifiers map[reflect.Type]*io.ObjectStringifier) error {
+func (s *UnmarshalSession) init(fields []*Field, refs map[string][]string, accessors map[string]*xunsafe.Field, stringifiers map[reflect.Type]*io.ObjectStringifier, pathTypes map[string]reflect.Type) error {
 	s.destPtr = xunsafe.AsPointer(s.dest)
 	s.buffer = make([]string, len(fields))
 	for i, field := range fields {
@@ -26,6 +26,23 @@ func (s *UnmarshalSession) init(fields []*Field, refs map[string][]string, acces
 		object.AddHolder(field, &s.buffer[i])
 	}
 
+	// Assembled typed output does not need public scalar fields on every
+	// holder. Reuse the mapper's path metadata to retain empty ancestors.
+	if s.dest == nil {
+		for _, field := range fields {
+			path := field.path
+			for path != "" {
+				if index := strings.LastIndexByte(path, '.'); index >= 0 {
+					path = path[:index]
+				} else {
+					path = ""
+				}
+				if typ := pathTypes[path]; typ != nil {
+					s.getOrCreateObject(&Field{path: path, parentType: typ}, refs, accessors, stringifiers)
+				}
+			}
+		}
+	}
 	parentNode, ok := s.buildParentNode()
 	if !ok {
 		return fmt.Errorf("none of the parent fields were specified")
@@ -120,6 +137,10 @@ func (s *UnmarshalSession) buildParentNode() (Node, bool) {
 }
 
 func (s *UnmarshalSession) destWithAppender(field *Field) (interface{}, *xunsafe.Appender) {
+	// Marshal constructs the field tree without an unmarshal destination.
+	if s.dest == nil {
+		return nil, nil
+	}
 	if field.path == "" {
 		dest := s.dest
 		var appender *xunsafe.Appender
@@ -135,6 +156,6 @@ func (s *UnmarshalSession) destWithAppender(field *Field) (interface{}, *xunsafe
 		parentType = reflect.SliceOf(parentType)
 	}
 
-	dest := reflect.New(field.parentType).Interface()
+	dest := reflect.New(parentType).Interface()
 	return dest, xunsafe.NewSlice(parentType).Appender(xunsafe.AsPointer(dest))
 }

@@ -26,8 +26,6 @@ const (
 
 type (
 	Cache struct {
-		typeHolder *cache.ScanTypeHolder
-
 		storage   string
 		afs       afs.Service
 		ttl       time.Duration
@@ -41,11 +39,17 @@ type (
 	}
 )
 
-func (c *Cache) IndexBy(ctx context.Context, db *sql.DB, column, SQL string, args []interface{}, options ...interface{}) (int, error) {
-	return 0, nil
-}
-
 func (c *Cache) Rollback(ctx context.Context, entry *cache.Entry) error {
+	if entry != nil && entry.ReadOnly {
+		return entry.Close()
+	}
+	if entry == nil {
+		return nil
+	}
+	if !entry.Has() {
+		defer c.unmark(strings.ReplaceAll(entry.Meta.URL, ".json"+entry.Id, ".json"))
+	}
+	_ = entry.Close()
 	return c.Delete(ctx, entry)
 }
 
@@ -76,14 +80,97 @@ func NewCache(URL string, ttl time.Duration, signature string, stream *option.St
 	return cache, nil
 }
 
-func (c *Cache) Get(ctx context.Context, SQL string, args []interface{}, options ...interface{}) (*cache.Entry, error) {
+func (c *Cache) Get(ctx context.Context, SQL string, args []interface{}, options ...interface{}) (result *cache.Entry, readErr error) {
+	var stats *cache.Stats
+	for _, option := range options {
+		if value, ok := option.(*cache.Stats); ok && value != nil {
+			stats = value
+			*stats = cache.Stats{}
+		}
+	}
+	defer func() { c.observeEntry(stats, result, readErr) }()
+	var refresh bool
+	var readOnly bool
+	for _, option := range options {
+		if only, ok := option.(lookupOnly); ok {
+			readOnly = bool(only)
+		}
+		if requested, ok := option.(cache.Refresh); ok {
+			refresh = bool(requested)
+		}
+	}
+
+	if refresh {
+		for _, option := range options {
+			if matcher, ok := option.(*cache.ParmetrizedQuery); ok && matcher != nil {
+				if err := c.refreshWarmup(ctx, matcher, stats); err != nil {
+					return nil, err
+				}
+			}
+		}
+	}
+
+	for _, option := range options {
+		if refresh {
+			break
+		}
+		if matcher, ok := option.(*cache.ParmetrizedQuery); ok && matcher != nil && matcher.IdentitySQL != "" && matcher.By == "" && len(matcher.ByColumns) == 0 {
+			entry, err := c.queryEntry(ctx, matcher)
+			if err != nil || entry != nil {
+				if stats != nil && entry != nil && entry.Has() {
+					stats.Type = cache.TypeReadMulti
+					stats.FoundWarmup = true
+					stats.WarmupKey = entry.Meta.URL
+				}
+				return entry, err
+			}
+		}
+		if matcher, ok := option.(*cache.ParmetrizedQuery); ok && matcher != nil && (matcher.By != "" && len(matcher.In) > 0 || len(matcher.ByColumns) > 0 && len(matcher.InTuples) > 0) {
+			entry, err := c.indexedEntry(ctx, matcher)
+			if err != nil || entry != nil {
+				if stats != nil && entry != nil && entry.Has() {
+					stats.Type = cache.TypeReadMulti
+					stats.FoundWarmup = true
+					stats.WarmupKey = entry.Meta.URL
+					stats.MarkerKey = entry.Meta.URL
+				}
+				return entry, err
+			}
+		}
+	}
 	URL, err := hash.GenerateURL(SQL, c.storage, c.extension, args)
 	if err != nil {
 		return nil, err
 	}
+	if stats != nil {
+		stats.Key = URL
+	}
+	// Published entries are immutable; cache readers must not compete for the
+	// exclusive lease used while creating a missing entry.
+	if !refresh {
+		if entry, err := c.cachedEntry(ctx, SQL, args, URL); entry != nil || err != nil {
+			return entry, err
+		}
+	}
 
-	if c.mark(URL) {
+	if readOnly {
 		return nil, nil
+	}
+	if c.mark(URL) {
+		if refresh {
+			return nil, fmt.Errorf("cache refresh conflicts with an active query writer")
+		}
+		return nil, nil
+	}
+	if refresh {
+		exists, err := c.afs.Exists(ctx, URL)
+		if err == nil && exists {
+			err = c.afs.Delete(ctx, URL)
+		}
+		if err != nil {
+			c.unmark(URL)
+			return nil, err
+		}
 	}
 
 	entry, err := c.getEntry(ctx, SQL, args, err, URL)
@@ -100,6 +187,24 @@ func (c *Cache) Get(ctx context.Context, SQL string, args []interface{}, options
 }
 
 func (c *Cache) getEntry(ctx context.Context, SQL string, args []interface{}, err error, URL string) (*cache.Entry, error) {
+	entry, err := c.newEntry(SQL, args, URL)
+	if err != nil {
+		return nil, err
+	}
+	status, err := c.updateEntry(ctx, err, URL, entry)
+	if err != nil {
+		return nil, err
+	}
+	switch status {
+	case InUseStatus:
+		return nil, nil
+	case ErrorStatus:
+		return nil, err
+	}
+	return entry, nil
+}
+
+func (c *Cache) newEntry(SQL string, args []interface{}, URL string) (*cache.Entry, error) {
 	argsMarshal, err := json.Marshal(args)
 	if err != nil {
 		return nil, err
@@ -114,18 +219,23 @@ func (c *Cache) getEntry(ctx context.Context, SQL string, args []interface{}, er
 		},
 	}
 
-	status, err := c.updateEntry(ctx, err, URL, entry)
+	return entry, nil
+}
+
+func (c *Cache) cachedEntry(ctx context.Context, SQL string, args []interface{}, URL string) (*cache.Entry, error) {
+	entry, err := c.newEntry(SQL, args, URL)
 	if err != nil {
 		return nil, err
 	}
-
-	switch status {
-	case InUseStatus:
-		return nil, nil
-	case ErrorStatus:
+	status, err := c.readData(ctx, entry)
+	if err != nil || status != ExistsStatus {
 		return nil, err
 	}
-
+	valid, err := c.checkMeta(entry.ReadCloser, &entry.Meta)
+	if err != nil || !valid {
+		_ = entry.Close()
+		return nil, err
+	}
 	return entry, nil
 }
 
@@ -139,9 +249,9 @@ func (c *Cache) updateEntry(ctx context.Context, err error, URL string, entry *c
 		}
 
 		if err == nil {
-			c.mux.RLock()
+			c.mux.Lock()
 			c.canWrite[URL] = false
-			c.mux.RUnlock()
+			c.mux.Unlock()
 		}
 
 		return status, err
@@ -149,7 +259,17 @@ func (c *Cache) updateEntry(ctx context.Context, err error, URL string, entry *c
 
 	metaCorrect, err := c.checkMeta(entry.ReadCloser, &entry.Meta)
 	if !metaCorrect || err != nil {
-		return status, c.afs.Delete(ctx, URL)
+		_ = entry.ReadCloser.Close()
+		entry.ReadCloser = nil
+		if err != nil {
+			return ErrorStatus, err
+		}
+		if err := c.afs.Delete(ctx, URL); err != nil {
+			return ErrorStatus, err
+		}
+		entry.Id = strings.ReplaceAll(uuid.New().String(), "-", "")
+		entry.Meta.URL += entry.Id
+		return NotExistStatus, nil
 	}
 
 	return status, nil
@@ -168,6 +288,9 @@ func (c *Cache) checkMeta(dataReader cache.LineReader, entryMeta *cache.Meta) (b
 
 	entryMeta.Type = meta.Type
 	entryMeta.Fields = meta.Fields
+	entryMeta.StoredFields = meta.StoredFields
+	entryMeta.Partial = meta.Partial
+	entryMeta.Generation = meta.Generation
 
 	for _, field := range entryMeta.Fields {
 		if err = field.Init(); err != nil {
@@ -243,9 +366,12 @@ func (c *Cache) writeMeta(ctx context.Context, m *cache.Entry) error {
 }
 
 func (c *Cache) UpdateType(ctx context.Context, entry *cache.Entry, values []interface{}) (bool, error) {
-	c.initializeCacheType(values)
+	if entry.ScanTypes == nil {
+		entry.ScanTypes = &cache.ScanTypeHolder{}
+		entry.ScanTypes.InitType(values)
+	}
 
-	if !c.typeHolder.Match(entry) {
+	if !entry.ScanTypes.Match(entry) {
 		return false, c.Delete(ctx, entry)
 	}
 
@@ -253,30 +379,46 @@ func (c *Cache) UpdateType(ctx context.Context, entry *cache.Entry, values []int
 }
 
 func (c *Cache) Delete(ctx context.Context, entry *cache.Entry) error {
+	if entry.ReadOnly {
+		return entry.Close()
+	}
 	return c.afs.Delete(ctx, entry.Meta.URL)
 }
 
 func (c *Cache) mark(URL string) bool {
-	c.mux.RLock()
+	c.mux.Lock()
 	_, isInMap := c.canWrite[URL]
 	c.canWrite[URL] = false
-	c.mux.RUnlock()
+	c.mux.Unlock()
 	return isInMap
 }
 
 func (c *Cache) unmark(url string) {
-	c.mux.RLock()
+	c.mux.Lock()
 	delete(c.canWrite, url)
-	c.mux.RUnlock()
+	c.mux.Unlock()
 }
 
 func (c *Cache) scanner(e *cache.Entry) cache.ScannerFn {
-	return cache.NewScanner(c.typeHolder, c.recorder).New(e)
+	if e.Meta.Projected() {
+		return cache.NewProjectedScanner(e, e.Meta.ProjectedIndexes, e.ScanTypes, c.recorder)
+	}
+	return cache.NewScanner(e.ScanTypes, c.recorder).New(e)
 }
 
 func (c *Cache) Close(ctx context.Context, e *cache.Entry) error {
+	if e.ReadOnly {
+		return e.Close()
+	}
 	actualURL := strings.ReplaceAll(e.Meta.URL, ".json"+e.Id, ".json")
-	defer c.unmark(actualURL)
+	if !e.Has() {
+		defer c.unmark(actualURL)
+	}
+	if !e.Has() && !e.RowAdded && len(e.Meta.Fields) > 0 {
+		if err := c.writeMetaIfNeeded(ctx, e); err != nil {
+			return err
+		}
+	}
 	err := c.close(e)
 	if err != nil {
 		_ = c.Delete(ctx, e)
@@ -320,17 +462,6 @@ func (c *Cache) AddValues(ctx context.Context, e *cache.Entry, values []interfac
 
 func (c *Cache) AssignRows(entry *cache.Entry, rows *sql.Rows) error {
 	return entry.AssignRows(rows)
-}
-
-func (c *Cache) initializeCacheType(values []interface{}) {
-	if c.typeHolder != nil {
-		return
-	}
-
-	c.mux.Lock()
-	c.typeHolder = &cache.ScanTypeHolder{}
-	c.typeHolder.InitType(values)
-	c.mux.Unlock()
 }
 
 func (c *Cache) writeMetaIfNeeded(ctx context.Context, e *cache.Entry) error {

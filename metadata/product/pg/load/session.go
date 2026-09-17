@@ -35,9 +35,9 @@ func (s *Session) Exec(ctx context.Context, data interface{}, db *sql.DB, tableN
 	}
 
 	loadOpts := loption.NewOptions(options...)
-	var opts []option.Option = loadOpts.GetCommonOptions()
+	var opts option.Options = loadOpts.GetCommonOptions()
 
-	mapper, err := read.NewSQLStructMapper(columns, actualStructType, columnResolver, opts...)
+	mapper, err := read.NewSQLStructMapper(columns, actualStructType, columnResolver, read.WithOptions(opts...))
 	if err != nil {
 		return nil, err
 	}

@@ -46,6 +46,8 @@ func registerProduct(product database.Product, schemaTable string) {
 		maxPlaceholders = 32761
 	}
 	err := registry.Register(
+		info.NewQuery(info.KindSequenceReservation, "", product).OnPre(&sequence.Reserve{}),
+		info.NewQuery(info.KindSequenceLock, "", product).OnPre(&sequence.Lock{}),
 		info.NewQuery(info.KindVersion, "SELECT 'SQLite - ' || sqlite_version()", product),
 		info.NewQuery(info.KindSchemas, `SELECT 
 	name AS SCHEMA_NAME,
@@ -62,7 +64,7 @@ FROM pragma_database_list`, product,
 type AS TABLE_TYPE,
 name AS TABLE_NAME,
 sql 
-FROM `+schemaTable+` WHERE type='table' AND name NOT IN('sqlite_sequence')`, product,
+FROM `+schemaTable+` WHERE type='table' AND name NOT IN('sqlite_sequence', 'sqlx_sequence_reservations')`, product,
 			info.NewCriterion(info.Catalog, ""),
 			info.NewCriterion(info.Schema, ""),
 		),
@@ -72,7 +74,7 @@ FROM `+schemaTable+` WHERE type='table' AND name NOT IN('sqlite_sequence')`, pro
   t.cid AS ORDINAL_POSITION, 
   t.type AS DATA_TYPE, 
   COALESCE(t.dflt_value,'') AS COLUMN_DEFAULT, 
-  CASE WHEN t.pk = 1 THEN 'PRI' ELSE '' END AS COLUMN_KEY
+  CASE WHEN t.pk > 0 THEN 'PRI' ELSE '' END AS COLUMN_KEY
 FROM `+schemaTable+` AS m,
 pragma_table_info(m.name) AS t
 `, product,
@@ -128,17 +130,18 @@ FROM SQLITE_SEQUENCE`,
 			info.NewCriterion(info.Catalog, ""),
 			info.NewCriterion(info.Schema, ""),
 			info.NewCriterion(info.Sequence, "name"),
-		),
+		).OnPre(&sequence.Metadata{}),
 
 		info.NewQuery(info.KindPrimaryKeys, `SELECT
 		m.name || '_pk' CONSTRAINT_NAME,
 		'PRIMARY KEY' AS CONSTRAINT_TYPE,
 		m.name AS TABLE_NAME,
 		t.name AS COLUMN_NAME,
-		t.cid AS ORDINAL_POSITION
-	FROM `+schemaTable+` AS m,
-	pragma_table_info(m.name) AS t
-	WHERE t.pk = 1 `,
+		t.pk - 1 AS ORDINAL_POSITION
+	FROM `+schemaTable+` AS m
+	JOIN pragma_table_info(m.name) AS t ON t.pk > 0
+	$WHERE
+	ORDER BY m.name, t.pk `,
 			product,
 			info.NewCriterion(info.Catalog, ""),
 			info.NewCriterion(info.Schema, ""),
@@ -227,5 +230,6 @@ FROM pragma_database_list
 		CanLastInsertID:         true,
 		MaxPlaceholders:         maxPlaceholders,
 		DefaultPresetIDStrategy: dialect.PresetIDStrategyUndefined,
+		DefaultSequenceStrategy: dialect.PresetIDWithReservation,
 	})
 }

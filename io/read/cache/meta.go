@@ -8,6 +8,8 @@ type Meta struct {
 	ExpiryTimeMs int
 	Fields       []*Field
 	StoredFields []ProjectionField
+	Partial      bool   // bounded indexed warmup cannot prove missing groups are empty
+	Generation   string // atomically published indexed dataset generation
 	// ProjectedIndexes maps requested result columns to stored cached row ordinals.
 	// It is runtime-only metadata used when reading a warmup superset as a subset.
 	ProjectedIndexes []int `json:"-" yaml:"-"`

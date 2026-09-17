@@ -2,6 +2,7 @@ package aerospike
 
 type TimeoutConfig struct {
 	MaxRetries            int
+	SocketTimeoutMs       int
 	TotalTimeoutMs        int
 	SleepBetweenRetriesMs int
 }

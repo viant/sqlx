@@ -31,11 +31,11 @@ func (s *Source) Scanner(ctx context.Context) cache.ScannerFn {
 	}
 
 	if s.entry.Meta.Projected() {
-		s.scanner = cache.NewProjectedScanner(s.entry, s.entry.Meta.ProjectedIndexes, s.cache.typeHolder, s.cache.recorder)
+		s.scanner = cache.NewProjectedScanner(s.entry, s.entry.Meta.ProjectedIndexes, s.entry.ScanTypes, s.cache.recorder)
 		return s.scanner
 	}
 
-	s.scanner = cache.NewScanner(s.cache.typeHolder, s.cache.recorder).New(s.entry)
+	s.scanner = cache.NewScanner(s.entry.ScanTypes, s.cache.recorder).New(s.entry)
 	return s.scanner
 }
 
@@ -48,7 +48,7 @@ func (s *Source) XTypes() []*xunsafe.Type {
 func (s *Source) CheckType(ctx context.Context, values []interface{}) (bool, error) {
 	ok, err := s.cache.UpdateType(ctx, s.entry, values)
 	if !ok || err != nil {
-		mismatch := typeMismatch(s.cache, s.entry)
+		mismatch := typeMismatch(s.entry)
 		s.cache.logWarmupf("aerospike cache check_type_failure set=%s projected=%t projected_indexes=%v fields=%s stored_fields=%s meta_type=%v effective_type=%v dest_type=%v mismatch_index=%d mismatch_field=%q mismatch_stored_field=%q mismatch_dest_type=%q mismatch_dest_type_normalized=%q mismatch_cached_type=%q mismatch_cached_type_normalized=%q mismatch_reason=%q err=%v\n",
 			s.cache.set,
 			s.entry != nil && s.entry.Meta.Projected(),
@@ -147,11 +147,11 @@ func effectiveTypes(entry *cache.Entry) []string {
 	return entry.Meta.EffectiveType()
 }
 
-func typeMismatch(c *Cache, entry *cache.Entry) *cache.TypeMismatch {
-	if c == nil || c.typeHolder == nil || entry == nil {
+func typeMismatch(entry *cache.Entry) *cache.TypeMismatch {
+	if entry == nil || entry.ScanTypes == nil {
 		return nil
 	}
-	return c.typeHolder.Mismatch(entry)
+	return entry.ScanTypes.Mismatch(entry)
 }
 
 func mismatchIndex(mismatch *cache.TypeMismatch) int {

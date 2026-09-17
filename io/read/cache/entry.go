@@ -7,6 +7,7 @@ import (
 )
 
 type Entry struct {
+	ReadOnly    bool // invocation-only lookup mode, never persisted
 	Meta        Meta
 	Data        []byte // Entry is used as Iterator, Data is last streamed line.
 	Id          string
@@ -15,6 +16,8 @@ type Entry struct {
 	Refresh     bool
 	index       int
 	RowAdded    bool
+	ScanTypes   *ScanTypeHolder // invocation-local destination types, never persisted
+	Windowed    bool            // native indexed source already applied the matcher window
 }
 
 func (e *Entry) Next() bool {

@@ -5,11 +5,13 @@ import (
 	"github.com/viant/tagly/format/text"
 	"github.com/viant/tagly/tags"
 	"reflect"
+	"strconv"
 	"strings"
 )
 
 const (
 	EncodingJSON = "JSON"
+	EncodingCSV  = "CSV"
 	//TagSqlx defines sqlx annotation
 
 	TagSqlx = "sqlx"
@@ -26,10 +28,10 @@ type Tag struct {
 	Generator        string
 	IsUnique         bool
 	UniqueDep        string
-	Db               string
-	Table            string
-	RefDb            string
-	RefTable         string
+	Db               string // authored SQL qualifier; SQL identifier quotes are retained
+	Table            string // authored SQL table identifier; quotes are retained
+	RefDb            string // authored SQL reference qualifier; not a connector lookup name
+	RefTable         string // authored SQL reference table identifier; quotes are retained
 	RefColumn        string
 	Required         bool
 	OmitEmpty        bool
@@ -83,7 +85,17 @@ func ParseTag(structTag reflect.StructTag) *Tag {
 	values := tags.Values(tagString)
 	name, values := values.Name()
 	tag.Column = name
-	_ = values.MatchPairs(tag.updateTagKey)
+	_ = values.MatchRawPairs(func(key, value string) error {
+		switch strings.ToLower(strings.TrimSpace(key)) {
+		case "table", "reftable", "db", "refdb":
+			// These are executable SQL identifiers, not Go string values.
+		default:
+			if decoded, err := strconv.Unquote(value); err == nil {
+				value = decoded
+			}
+		}
+		return tag.updateTagKey(key, value)
+	})
 	tag.PrimaryKey = tag.PrimaryKey || tag.Autoincrement
 	return tag
 }
@@ -178,6 +190,12 @@ func (t *Tag) Name() string {
 
 func (t *Tag) isIdentity(name string) bool {
 	return t.Autoincrement || t.PrimaryKey || strings.ToLower(t.Column) == "id" || strings.ToLower(name) == "id"
+}
+
+// HasDefaultGenerator reports whether this field activates native database
+// default generation. Identity allocation is a separate producer.
+func (t *Tag) HasDefaultGenerator() bool {
+	return t != nil && t.Generator != "" && !(t.PrimaryKey && t.Autoincrement)
 }
 
 func (t *Tag) validateWithField(field reflect.StructField) error {

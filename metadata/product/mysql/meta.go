@@ -31,6 +31,8 @@ func MySQL5() *database.Product {
 
 func init() {
 	err := registry.Register(
+		info.NewQuery(info.KindSequenceLock, "", mySQL5).OnPre(&sequence.ReservationLock{}),
+		info.NewQuery(info.KindSequenceReservation, "", mySQL5).OnPre(&sequence.Reserve{}),
 		info.NewQuery(info.KindVersion, "SELECT CONCAT('MySQL - ', VERSION())", mySQL5),
 
 		info.NewQuery(info.KindSchemas, `SELECT 
@@ -41,7 +43,7 @@ DEFAULT_CHARACTER_SET_NAME,
 DEFAULT_COLLATION_NAME AS DEFAULT_COLLATION_NAME
 FROM information_schema.schemata
 `, mySQL5,
-			info.NewCriterion(info.Catalog, "CATALOG_NAME"),
+			info.NewCriterion(info.Catalog, ""),
 		),
 		info.NewQuery(info.KindSchema, `SELECT 
 '' CATALOG_NAME, 
@@ -51,7 +53,7 @@ DEFAULT_CHARACTER_SET_NAME,
 DEFAULT_COLLATION_NAME AS DEFAULT_COLLATION_NAME
 FROM information_schema.schemata
 `, mySQL5,
-			info.NewCriterion(info.Catalog, "CATALOG_NAME"),
+			info.NewCriterion(info.Catalog, ""),
 			info.NewCriterion(info.Schema, "SCHEMA_NAME"),
 		),
 		info.NewQuery(info.KindTables, `SELECT 
@@ -67,7 +69,7 @@ VERSION,
 ENGINE
 FROM INFORMATION_SCHEMA.TABLES`,
 			mySQL5,
-			info.NewCriterion(info.Catalog, "TABLE_CATALOG"),
+			info.NewCriterion(info.Catalog, ""),
 			info.NewCriterion(info.Schema, "TABLE_SCHEMA"),
 		),
 
@@ -88,7 +90,7 @@ COLUMN_KEY,
 CASE WHEN COALESCE(EXTRA, "") LIKE '%auto_increment%' THEN 1 ELSE NULL END IS_AUTOINCREMENT
 FROM INFORMATION_SCHEMA.COLUMNS`,
 			mySQL5,
-			info.NewCriterion(info.Catalog, "TABLE_CATALOG"),
+			info.NewCriterion(info.Catalog, ""),
 			info.NewCriterion(info.Schema, "TABLE_SCHEMA"),
 			info.NewCriterion(info.Table, "TABLE_NAME"),
 		),
@@ -107,7 +109,7 @@ FROM INFORMATION_SCHEMA.COLUMNS`,
 			info.NewCriterion(info.Catalog, ""),
 			info.NewCriterion(info.Schema, ""),
 			info.NewCriterion(info.Sequence, ""),
-		).OnPost(info.NewHandler(sequence.UpdateMySQLSequence)),
+		).OnPre(&sequence.ReservationMetadata{}).OnPost(info.NewHandler(sequence.UpdateMySQLSequence)),
 
 		info.NewQuery(info.KindIndexes, `SELECT 
 		'' TABLE_CATALOG,
@@ -122,7 +124,7 @@ FROM INFORMATION_SCHEMA.STATISTICS
 $WHERE
 GROUP BY 1, 2, 3, 4, 5, 6, 7
 `, mySQL5,
-			info.NewCriterion(info.Catalog, "TABLE_CATALOG"),
+			info.NewCriterion(info.Catalog, ""),
 			info.NewCriterion(info.Schema, "TABLE_SCHEMA"),
 			info.NewCriterion(info.Table, "TABLE_NAME"),
 		),
@@ -137,7 +139,7 @@ GROUP BY 1, 2, 3, 4, 5, 6, 7
 		SEQ_IN_INDEX INDEX_POSITION
 FROM INFORMATION_SCHEMA.STATISTICS
 `, mySQL5,
-			info.NewCriterion(info.Catalog, "TABLE_CATALOG"),
+			info.NewCriterion(info.Catalog, ""),
 			info.NewCriterion(info.Schema, "TABLE_SCHEMA"),
 			info.NewCriterion(info.Table, "TABLE_NAME"),
 			info.NewCriterion(info.Index, "INDEX_NAME"),
@@ -217,7 +219,7 @@ where ID=CONNECTION_ID() LIMIT 1;
 			info.NewCriterion(info.Schema, ""),
 			info.NewCriterion(info.Object, ""),
 			info.NewCriterion(info.SequenceNewCurrentValue, ""),
-		).OnPre(&sequence.Transient{}, &sequence.Udf{}),
+		).OnPre(&sequence.ReservationRange{}, &sequence.Transient{}, &sequence.Udf{}, &sequence.StrategyError{}),
 
 		info.NewQuery(info.KindLockGet, `SELECT '$Args[0]' AS LOCK_CATALOG,
 '$Args[1]' AS LOCK_SCHEMA,

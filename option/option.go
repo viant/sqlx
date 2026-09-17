@@ -2,13 +2,15 @@ package option
 
 import (
 	"database/sql"
+	"strings"
+	"sync"
+	"unsafe"
+
 	"github.com/viant/sqlx"
 	"github.com/viant/sqlx/metadata/database"
 	"github.com/viant/sqlx/metadata/info"
 	"github.com/viant/sqlx/metadata/info/dialect"
 	"github.com/viant/sqlx/metadata/sink"
-	"strings"
-	"unsafe"
 )
 
 // Identity represents identity option
@@ -34,6 +36,32 @@ type LoadHint string
 
 // OnDuplicateKeySql represents SQL suffix
 type OnDuplicateKeySql string
+
+type MetaSessionCacheKey string
+
+// MetaSessionCache wraps a sync.Map used for caching metadata sessions
+type MetaSessionCache struct {
+	Map *sync.Map
+}
+
+// MetaSessionCache returns the provided metadata session cache or nil
+func (o Options) MetaSessionCache() *sync.Map {
+	if len(o) == 0 {
+		return nil
+	}
+	for _, candidate := range o {
+		switch actual := candidate.(type) {
+		case MetaSessionCache:
+			return actual.Map
+		}
+	}
+	return nil
+}
+
+// WithMetaSessionCache creates an option carrying a metadata session cache
+func WithMetaSessionCache(cache *sync.Map) Option {
+	return MetaSessionCache{Map: cache}
+}
 
 // Dialect returns dialect
 func (o Options) Dialect() *info.Dialect {
@@ -234,12 +262,12 @@ func (o Options) SQL() *sqlx.SQL {
 }
 
 // SequenceSQLBuilder returns sqlx.SQL
-func (o Options) SequenceSQLBuilder() func(*sink.Sequence) (*sqlx.SQL, error) {
+func (o Options) SequenceSQLBuilder() func(*sink.Sequence) (*sqlx.SQL, int64, error) {
 	if len(o) == 0 {
 		return nil
 	}
 	for _, candidate := range o {
-		if fn, ok := candidate.(func(*sink.Sequence) (*sqlx.SQL, error)); ok {
+		if fn, ok := candidate.(func(*sink.Sequence) (*sqlx.SQL, int64, error)); ok {
 			return fn
 		}
 	}

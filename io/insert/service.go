@@ -4,22 +4,26 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"reflect"
+	"sync"
+
 	"github.com/viant/sqlx/io"
 	"github.com/viant/sqlx/io/config"
 	"github.com/viant/sqlx/io/insert/generator"
+	"github.com/viant/sqlx/metadata/info/dialect"
 	"github.com/viant/sqlx/metadata/sink"
 	"github.com/viant/sqlx/option"
-	"reflect"
-	"sync"
 )
 
 // Service represents generic db writer
 type Service struct {
-	tableName     string
-	options       []option.Option
-	cachedSession *session // The session is for caching only, never use it directly
-	mux           sync.Mutex
-	db            *sql.DB
+	tableName           string
+	options             []option.Option
+	cachedSession       *session // The session is for caching only, never use it directly
+	mux                 sync.Mutex
+	db                  *sql.DB
+	metaSessionCacheKey string
+	metaSessionCache    *sync.Map
 }
 
 // New creates an inserter service
@@ -28,16 +32,34 @@ func New(ctx context.Context, db *sql.DB, tableName string, options ...option.Op
 	if !option.Assign(options, &columnMapper) {
 		columnMapper = io.StructColumnMapper
 	}
+
+	var cacheKey option.MetaSessionCacheKey
+	_ = option.Assign(options, &cacheKey)
+
+	// optional external meta session cache passed via options
+	cache := option.Options(options).MetaSessionCache()
+
 	inserter := &Service{
-		tableName: tableName,
-		options:   options,
-		db:        db,
+		tableName:           tableName,
+		options:             options,
+		db:                  db,
+		metaSessionCacheKey: string(cacheKey),
+		metaSessionCache:    cache,
 	}
 	return inserter, nil
 }
 
-// NextSequence resets next updateSequence
+// NextSequence resets next updateSequencer
 func (s *Service) NextSequence(ctx context.Context, any interface{}, recordCount int, options ...option.Option) (*sink.Sequence, error) {
+	options = append(append([]option.Option(nil), options...), s.options...)
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if option.Options(options).PresetIDStrategy() == dialect.PresetIDWithReservation {
+		if err := s.prepareSequenceReservation(ctx, options); err != nil {
+			return nil, err
+		}
+	}
 	valueAt, count, err := io.Values(any)
 	if err != nil {
 		return nil, err
@@ -49,7 +71,7 @@ func (s *Service) NextSequence(ctx context.Context, any interface{}, recordCount
 	batchSize := option.Options(options).BatchSize()
 	record := valueAt(0)
 	db := option.Options(options).Db()
-	sess, err := s.NewSession(ctx, record, db, batchSize)
+	sess, err := s.NewSession(ctx, record, db, batchSize, options...)
 	if err != nil {
 		return nil, err
 	}
@@ -60,18 +82,16 @@ func (s *Service) NextSequence(ctx context.Context, any interface{}, recordCount
 	}
 	options = append(options, sess.Dialect)
 
-	for _, updater := range sess.recordUpdaters {
-		asNumeric, ok := updater.(*numericSequencer)
-		if ok {
-			return asNumeric.nextSequence(ctx, sess, record, batchRecordBuffer, recordCount, options)
-		}
+	numeric, err := sess.sequenceUpdater(options)
+	if err != nil {
+		return nil, err
 	}
-
-	return nil, fmt.Errorf("not found column with sequence")
+	return numeric.nextSequence(ctx, sess, record, batchRecordBuffer, recordCount, options)
 }
 
 // Exec runs insertService SQL
-func (s *Service) Exec(ctx context.Context, any interface{}, options ...option.Option) (int64, int64, error) {
+func (s *Service) Exec(ctx context.Context, any interface{}, options ...option.Option) (rowsAffected int64, lastInsertedID int64, err error) {
+	options = append(append([]option.Option(nil), options...), s.options...)
 	if options == nil {
 		options = make(option.Options, 0)
 	}
@@ -94,7 +114,7 @@ func (s *Service) Exec(ctx context.Context, any interface{}, options ...option.O
 		db = s.db
 	}
 
-	sess, err := s.NewSession(ctx, record, db, batchSize)
+	sess, err := s.NewSession(ctx, record, db, batchSize, options...)
 	if err != nil {
 		return 0, 0, err
 	}
@@ -111,8 +131,8 @@ func (s *Service) Exec(ctx context.Context, any interface{}, options ...option.O
 	options = append(options, sess.Dialect)
 
 	var batchRecordBuffer = make([]interface{}, batchSize*len(sess.columns))
-	var identities = make([]interface{}, batchSize)
-	defGenerator, err := generator.NewDefault(ctx, sess.Dialect, sess.db, sess.info)
+	var identities = make([]interface{}, batchSize*len(sess.recordUpdaters))
+	defGenerator, err := generator.NewDefault(ctx, sess.Dialect, sess.db, sess.info, s.metaSessionCacheKey, s.metaSessionCache)
 	if err != nil {
 		return 0, 0, err
 	}
@@ -125,43 +145,73 @@ func (s *Service) Exec(ctx context.Context, any interface{}, options ...option.O
 		return 0, 0, err
 	}
 
-	if err = sess.prepare(ctx, record, batchSize); err != nil {
+	// Ensure stmt/transaction are released even if sess.insert panics.
+	defer func() {
 		err = sess.end(err)
+	}()
+
+	if err = sess.prepare(ctx, record, batchSize); err != nil {
 		return 0, 0, err
 	}
 
-	rowsAffected, lastInsertedID, err := sess.insert(ctx, batchRecordBuffer, valueAt, recordCount, identities)
-	err = sess.end(err)
+	rowsAffected, lastInsertedID, err = sess.insert(ctx, batchRecordBuffer, valueAt, recordCount, identities)
 	return rowsAffected, lastInsertedID, err
 }
 
 // NewSession creates a new session
-func (s *Service) NewSession(ctx context.Context, record interface{}, db *sql.DB, batchSize int) (*session, error) {
+func (s *Service) NewSession(ctx context.Context, record interface{}, db *sql.DB, batchSize int, options ...option.Option) (*session, error) {
 	s.mux.Lock()
 	defer s.mux.Unlock()
+	if db == nil {
+		db = s.db
+	}
 	rType := reflect.TypeOf(record)
-	if sess := s.cachedSession; sess != nil && sess.rType == rType && sess.batchSize == batchSize {
+	if sess := s.cachedSession; sess != nil && sess.rType == rType && sess.batchSize == batchSize && sess.db == db {
 		if db == nil {
 			db = sess.db
 		}
-		return &session{
-			recordUpdaters: s.cachedSession.recordUpdaters,
-			rType:          rType,
-			Config:         sess.Config,
-			binder:         sess.binder,
-			columns:        sess.columns,
-			db:             db,
-			batchSize:      sess.batchSize,
-			info:           sess.info,
-		}, nil
+		newSess := &session{
+			rType:     rType,
+			Config:    sess.Config,
+			binder:    sess.binder,
+			columns:   sess.columns,
+			db:        db,
+			batchSize: sess.batchSize,
+			info:      sess.info,
+			setMarker: sess.setMarker,
+		}
+		// Build fresh recordUpdaters bound to newSess so per-call state
+		// (sequence, sequenceValue, detectedPreset, ...) is not shared
+		// across concurrent Exec calls.
+		newSess.recordUpdaters = make([]recordUpdater, 0, len(sess.recordUpdaters))
+		for _, ru := range sess.recordUpdaters {
+			if asNumeric, ok := ru.(*numericSequencer); ok {
+				newSess.recordUpdaters = append(newSess.recordUpdaters,
+					newNumericSequencer(newSess, asNumeric.getColumn(), asNumeric.columnPosition()))
+				continue
+			}
+			newSess.recordUpdaters = append(newSess.recordUpdaters, ru)
+		}
+		return newSess, nil
 	}
 
-	aDialect, err := config.Dialect(ctx, s.db)
+	// Session/version discovery only needs the connection owner. Statement Args,
+	// columns and mapper options belong to the insert operation, not metadata SQL.
+	var metadataOptions []option.Option
+	if tx := option.Options(append(append([]option.Option(nil), options...), s.options...)).Tx(); tx != nil {
+		metadataOptions = append(metadataOptions, tx)
+	}
+	aDialect, err := config.Dialect(ctx, db, metadataOptions...)
 	if err != nil {
 		return nil, err
 	}
+	var metaSession *sink.Session
+	if s.metaSessionCacheKey != "" {
+		metaSession, err = config.SessionCached(ctx, db, aDialect, s.metaSessionCacheKey, s.metaSessionCache, metadataOptions...)
+	} else {
+		metaSession, err = config.Session(ctx, db, append(metadataOptions, aDialect)...)
+	}
 
-	metaSession, err := config.Session(ctx, s.db, aDialect)
 	if err != nil {
 		return nil, err
 	}
@@ -174,9 +224,9 @@ func (s *Service) NewSession(ctx context.Context, record interface{}, db *sql.DB
 		batchSize: batchSize,
 		Config:    conf,
 		info:      metaSession,
-		db:        s.db,
+		db:        db,
 	}
-	if err = result.ApplyOption(ctx, s.db, s.options...); err != nil {
+	if err = result.ApplyOption(ctx, db, s.options...); err != nil {
 		return nil, err
 	}
 

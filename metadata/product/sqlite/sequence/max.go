@@ -7,6 +7,7 @@ import (
 	"github.com/viant/sqlx/metadata/info/dialect"
 	"github.com/viant/sqlx/metadata/sink"
 	"github.com/viant/sqlx/option"
+	"math"
 )
 
 // Max represents struct used to setting new autoincrement value
@@ -18,12 +19,12 @@ func (n *Max) Handle(ctx context.Context, db *sql.DB, target interface{}, iopts 
 	options := option.AsOptions(iopts)
 
 	recordCount := options.RecordCount()
-	if recordCount == 0 {
+	if recordCount <= 0 {
 		return false, fmt.Errorf("invalid recordCount option, expected > 0, but had: %d", recordCount)
 	}
 
 	targetSequence, ok := target.(*sink.Sequence)
-	if !ok {
+	if !ok || targetSequence == nil {
 		return false, fmt.Errorf("invalid target, expected :%T, but had: %T", targetSequence, target)
 	}
 
@@ -38,7 +39,18 @@ func (n *Max) Handle(ctx context.Context, db *sql.DB, target interface{}, iopts 
 	}
 
 	var maxID int64 = 0
-	row := db.QueryRowContext(ctx, maxIDSQL.Query, maxIDSQL.Args...)
+	var queryer sequenceQueryer = db
+	if tx := options.Tx(); tx != nil {
+		queryer = tx
+	} else {
+		connection, err := db.Conn(ctx)
+		if err != nil {
+			return false, err
+		}
+		defer connection.Close()
+		queryer = connection
+	}
+	row := queryer.QueryRowContext(ctx, maxIDSQL.Query, maxIDSQL.Args...)
 	err = row.Scan(&maxID)
 	if err != nil {
 		return false, err
@@ -48,7 +60,16 @@ func (n *Max) Handle(ctx context.Context, db *sql.DB, target interface{}, iopts 
 		return false, err
 	}
 
-	sequence := sink.Sequence{}
+	sequence, err := (&Metadata{}).identity(ctx, queryer, options)
+	if err != nil {
+		return false, err
+	}
+	if maxID < 0 {
+		maxID = 0
+	}
+	if recordCount >= math.MaxInt64 || maxID > math.MaxInt64-recordCount-1 {
+		return false, fmt.Errorf("sequence range overflows int64")
+	}
 	sequence.StartValue = 1
 	sequence.IncrementBy = 1
 	sequence.Value = maxID + 1

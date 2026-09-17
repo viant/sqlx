@@ -3,6 +3,9 @@ package insert
 import (
 	"context"
 	"fmt"
+	"reflect"
+	"sync"
+
 	"github.com/viant/sqlx"
 	"github.com/viant/sqlx/io"
 	"github.com/viant/sqlx/metadata"
@@ -10,8 +13,6 @@ import (
 	"github.com/viant/sqlx/metadata/info/dialect"
 	"github.com/viant/sqlx/metadata/sink"
 	"github.com/viant/sqlx/option"
-	"reflect"
-	"sync"
 )
 
 type numericSequencer struct {
@@ -19,15 +20,27 @@ type numericSequencer struct {
 	column                io.Column
 	options               []option.Option
 	position              int
+	presetRecord          interface{}
+	presetRecordCount     int
 	sequence              *sink.Sequence
 	sequenceValue         *int64
+	reservation           *sink.Reservation
+	reservationIndex      int
 	detectedPreset        bool
 	shallPresetIdentities bool
 	muxPreset             sync.Mutex
 	muxSequenceValue      sync.Mutex
+	explicitIdentities    map[interface{}]bool
 }
 
 func (n *numericSequencer) updateRecord(ctx context.Context, sess *session, record interface{}, columnValue *interface{}, recordCount int, identitiesBatched []interface{}, options []option.Option) error {
+	if columnValue != nil && n.explicitIdentity(record, *columnValue) {
+		if n.explicitIdentities == nil {
+			n.explicitIdentities = map[interface{}]bool{}
+		}
+		n.explicitIdentities[*columnValue] = true
+		return nil
+	}
 	if err := n.prepareSequenceIfNeeded(ctx, sess, record, columnValue, recordCount, identitiesBatched, options); err != nil {
 		return err
 	}
@@ -39,26 +52,71 @@ func (n *numericSequencer) updateRecord(ctx context.Context, sess *session, reco
 		return nil
 	}
 
+	if !isZero(*columnValue) {
+		return nil
+	}
+
 	n.muxSequenceValue.Lock()
-	currentValue := *n.sequenceValue
-	*n.sequenceValue += n.sequence.IncrementBy
+	var currentValue int64
+	if n.reservation != nil {
+		if n.reservationIndex >= len(n.reservation.Values) {
+			n.muxSequenceValue.Unlock()
+			return fmt.Errorf("native reservation has no remaining value")
+		}
+		currentValue = n.reservation.Values[n.reservationIndex]
+		n.reservationIndex++
+	} else {
+		currentValue = *n.sequenceValue
+		*n.sequenceValue += n.sequence.IncrementBy
+	}
 	n.muxSequenceValue.Unlock()
 
 	return assign(*columnValue, currentValue)
 }
 
-func (n *numericSequencer) prepare(_ context.Context, options []option.Option, sess *session, _ io.ValueAccessor, _ int) ([]option.Option, error) {
+func (n *numericSequencer) prepare(_ context.Context, options []option.Option, sess *session, at io.ValueAccessor, count int) ([]option.Option, error) {
 	n.options = options
+	n.presetRecord = nil
+	n.presetRecordCount = 0
+	n.explicitIdentities = nil
+	n.reservation = nil
+	n.reservationIndex = 0
+	if at == nil || count <= 0 {
+		return nil, nil
+	}
+
+	buffer := make([]interface{}, len(sess.columns))
+	for i := 0; i < count; i++ {
+		record := at(i)
+		sess.binder(record, buffer, 0, len(sess.columns))
+		if n.explicitIdentity(record, buffer[n.position]) {
+			if n.explicitIdentities == nil {
+				n.explicitIdentities = map[interface{}]bool{}
+			}
+			n.explicitIdentities[buffer[n.position]] = true
+			continue
+		}
+		if !isZero(buffer[n.position]) {
+			continue
+		}
+
+		if n.presetRecord == nil {
+			n.presetRecord = record
+		}
+		n.presetRecordCount++
+	}
 	return nil, nil
 }
 
 func (n *numericSequencer) nextSequence(ctx context.Context, sess *session, record interface{}, batchRecordBuffer []interface{}, recordCount int, options []option.Option) (*sink.Sequence, error) {
-	options = append(n.options, options...)
+	opts := append([]option.Option{option.SequenceTable(sess.TableName), option.SequenceColumn(n.column.Name())}, n.options...)
+	options = append(opts, options...)
 	presetIDStrategy := option.Options(options).PresetIDStrategy()
 	if presetIDStrategy == dialect.PresetIDStrategyUndefined {
 		presetIDStrategy = sess.Dialect.DefaultPresetIDStrategy
 	}
 
+	options = append([]option.Option{presetIDStrategy}, options...)
 	if presetIDStrategy == "" {
 		return nil, fmt.Errorf("empty DefaultPresetIDStrategy")
 	}
@@ -68,16 +126,23 @@ func (n *numericSequencer) nextSequence(ctx context.Context, sess *session, reco
 		return nil, nil
 	case dialect.PresetIDStrategyUndefined:
 		n.shallPresetIdentities = false
-		n.updateSequence(ctx, n.getSequenceName(sess), recordCount)
+		n.updateSequencer(ctx, n.getSequenceName(sess), recordCount)
 		return nil, nil
-	case dialect.PresetIDWithMax:
+	case dialect.PresetIDWithMax, dialect.PresetIDWithReservation:
 		options = append(options, n.maxIDSQLBuilder(sess))
 	case dialect.PresetIDWithTransientTransaction:
-		options = append(options, dialect.PresetIDWithTransientTransaction, n.transientDMLBuilder(sess, record, batchRecordBuffer, int64(recordCount)))
+		options = append(options, dialect.PresetIDWithTransientTransaction, n.transientDMLBuilder(sess, record, batchRecordBuffer, int64(recordCount)), n.maxIDSQLBuilder(sess))
 	}
 	sequenceName := n.getSequenceName(sess)
 	options = append(options, option.NewArgs(sess.info.Catalog, sess.info.Schema, sequenceName), option.RecordCount(recordCount))
 	meta := metadata.New()
+	if presetIDStrategy == dialect.PresetIDWithReservation {
+		// Exec also reaches this seam, so unsupported products must never fall
+		// through to a placeholder metadata query.
+		if err := meta.Info(ctx, n.session.db, info.KindSequenceLock, nil, options...); err != nil {
+			return nil, err
+		}
+	}
 
 	n.sequence = &sink.Sequence{}
 
@@ -89,39 +154,28 @@ func (n *numericSequencer) nextSequence(ctx context.Context, sess *session, reco
 	return n.sequence, nil
 }
 
-func (n *numericSequencer) transientDMLBuilder(sess *session, record interface{}, batchRecordBuffer []interface{}, recordCount int64) func(*sink.Sequence) (*sqlx.SQL, error) {
-	return func(sequence *sink.Sequence) (*sqlx.SQL, error) {
+func (n *numericSequencer) transientDMLBuilder(sess *session, record interface{}, batchRecordBuffer []interface{}, recordCount int64) func(*sink.Sequence) (*sqlx.SQL, int64, error) {
+	return func(sequence *sink.Sequence) (*sqlx.SQL, int64, error) {
 		resetAutoincrementQuery := sess.Builder.Build(record, option.BatchSize(1))
 		resetAutoincrementQuery = sess.Dialect.EnsurePlaceholders(resetAutoincrementQuery)
 		sess.binder(record, batchRecordBuffer, 0, len(sess.columns))
 
 		values := make([]interface{}, len(sess.columns))
-		copy(values, batchRecordBuffer[0:len(sess.columns)-1]) // don't copy ID pointer (last position in slice)
+		copy(values, batchRecordBuffer[0:len(sess.columns)])
 
-		oldValue := sequence.Value
-		var passedValue int64
-
-		switch recordCount {
-		default:
-			sequence.Value = sequence.NextValue(recordCount)
-			if diff := sequence.Value - oldValue; diff < recordCount {
-				return nil, fmt.Errorf("new next value for sequenceName %d is too small, expected >= %d but had ", sequence.Value, oldValue+recordCount)
-			}
-			passedValue = sequence.Value - sequence.IncrementBy // decreasing is required for transient insert approach
-		}
-		values[len(sess.columns)-1] = &passedValue
+		values[n.position] = nil // set identity to nil for autoincrement
 		resetAutoincrementSQL := &sqlx.SQL{
 			Query: resetAutoincrementQuery,
 			Args:  values,
 		}
-		return resetAutoincrementSQL, nil
+		return resetAutoincrementSQL, recordCount, nil
 	}
 }
 
 func (n *numericSequencer) maxIDSQLBuilder(sess *session) func() *sqlx.SQL {
 	return func() *sqlx.SQL {
 		return &sqlx.SQL{
-			Query: "SELECT COALESCE(MAX(" + sess.Identity + "), 0) FROM " + n.session.TableName,
+			Query: "SELECT COALESCE(MAX(" + n.column.Name() + "), 0) FROM " + n.session.TableName,
 			Args:  nil,
 		}
 	}
@@ -149,50 +203,57 @@ func (n *numericSequencer) getColumn() io.Column {
 }
 
 func (n *numericSequencer) prepareSequenceIfNeeded(ctx context.Context, sess *session, record interface{}, columnValue *interface{}, recordCount int, identitiesBatched []interface{}, options []option.Option) error {
-	// presetting sequence only once reserves (if implemented) sequence values on db only one time
-	if n.detectedPreset {
-		return nil
-	}
-
-	if recordCount == 0 {
+	// presetting sequence only once reserves (if implemented) sequence values on db only one time per batch operation
+	if recordCount <= 0 {
 		return nil
 	}
 
 	n.muxPreset.Lock()
+	defer n.muxPreset.Unlock()
+
 	if n.detectedPreset {
-		n.muxPreset.Unlock()
 		return nil
 	}
 
-	isColumnZeroValue := isZero(*columnValue)
-	n.shallPresetIdentities = isColumnZeroValue
-
-	if isColumnZeroValue {
-		var err error
-		n.sequence, err = n.nextSequence(ctx, sess, record, identitiesBatched, recordCount, options)
-		if err != nil {
-			n.muxPreset.Unlock()
-			return err
-		}
-		//} else { // n.sequence should be nil (it's not in use), and it's important in afterFlush func
-		//	n.updateSequence(ctx, n.getSequenceName(sess), recordCount)
+	if columnValue == nil {
+		return fmt.Errorf("columnValue is nil")
 	}
 
-	if n.sequence != nil && n.shallPresetIdentities && n.sequenceValue == nil {
-		var seqValue int64
-
-		switch recordCount {
-		case 1: // TODO not proved that miss some edge cases, if does then only default case should be used
-			seqValue = n.sequence.Value - n.sequence.IncrementBy
-		default:
-			seqValue = n.sequence.MinValue(int64(recordCount))
+	n.shallPresetIdentities = n.presetRecordCount > 0
+	if n.shallPresetIdentities {
+		presetRecord := n.presetRecord
+		if presetRecord == nil {
+			presetRecord = record
 		}
 
+		strategy := option.Options(append(append([]option.Option(nil), n.options...), options...)).PresetIDStrategy()
+		if strategy == dialect.PresetIDStrategyUndefined {
+			strategy = sess.Dialect.DefaultPresetIDStrategy
+		}
+		if strategy == dialect.PresetIDWithReservation {
+			reservation, err := n.reserveSequence(ctx, sess, n.presetRecordCount, options)
+			if err != nil {
+				return err
+			}
+			n.reservation = reservation
+			n.sequence = &reservation.Sequence
+		} else {
+			seq, err := n.nextSequence(ctx, sess, presetRecord, identitiesBatched, n.presetRecordCount, options)
+			if err != nil {
+				return err
+			}
+			n.sequence = seq
+		}
+	}
+
+	if n.reservation == nil && n.sequence != nil && n.shallPresetIdentities && n.sequenceValue == nil {
+		seqValue := n.sequence.MinValue(int64(n.presetRecordCount))
 		n.sequenceValue = &seqValue
 	}
 
-	n.detectedPreset = true // detectPreset must be here to avoid sending 0 in preset mode to db
-	n.muxPreset.Unlock()
+	// detectPreset must be set at the end to avoid sending 0 in preset mode to db
+	n.detectedPreset = true
+
 	return nil
 }
 
@@ -201,7 +262,7 @@ func (n *numericSequencer) afterFlush(ctx context.Context, values []interface{},
 		return lastInsertedID, nil
 	}
 
-	if isZero(identities[0]) {
+	if !n.explicitIdentities[identities[0]] && isZero(identities[0]) {
 		if rowsAffected == 1 {
 			err := assign(identities[0], lastInsertedID)
 			if err != nil {
@@ -222,7 +283,7 @@ func (n *numericSequencer) afterFlush(ctx context.Context, values []interface{},
 	case 0: //no info about sequence
 		for i := 0; i < int(rowsAffected); i++ {
 			identityValue := identities[i]
-			if !isZero(identityValue) {
+			if n.explicitIdentities[identityValue] || !isZero(identityValue) {
 				continue
 			}
 
@@ -237,13 +298,16 @@ func (n *numericSequencer) afterFlush(ctx context.Context, values []interface{},
 		}
 		//in case there is a batch insert, we need to check if last inserted ID is the same as the sequence value
 		//if so we can safely update the identities with the new sequence value within the batch
-		n.updateSequence(ctx, n.sequence.Name, int(rowsAffected))
+		n.updateSequencer(ctx, n.sequence.Name, int(rowsAffected))
 		sequenceValue = n.sequence.Value
 		expectedNextInsertID := (1 + rowsAffected) * inceremntBy
 		if expectedNextInsertID != sequenceValue { //race condition during batch insert, skip updating IDs
 			return lastInsertedID, nil
 		}
 		for i := 0; i < int(rowsAffected); i++ {
+			if n.explicitIdentities[identities[i]] {
+				continue
+			}
 			if err := assign(identities[i], lastInsertedID); err != nil {
 				return 0, err
 			}
@@ -256,25 +320,25 @@ func (n *numericSequencer) afterFlush(ctx context.Context, values []interface{},
 func isZero(value interface{}) bool {
 	switch actual := value.(type) {
 	case **int:
-		return *actual == nil
+		return *actual == nil || **actual == 0
 	case *int:
 		return *actual == 0
 	case **int64:
-		return *actual == nil
+		return *actual == nil || **actual == 0
 	case *int64:
 		return *actual == 0
 	case *uint:
 		return *actual == 0
 	case **uint:
-		return *actual == nil
+		return *actual == nil || **actual == 0
 	default:
 		return reflect.ValueOf(actual).Elem().IsZero()
 	}
 }
 
-func (n *numericSequencer) updateSequence(ctx context.Context, sequenceName string, recordCount int) {
+func (n *numericSequencer) updateSequencer(ctx context.Context, sequenceName string, recordCount int) {
 	meta := metadata.New()
-	options := []option.Option{option.NewArgs(n.session.info.Catalog, n.session.info.Schema, sequenceName), n.session.Dialect}
+	options := append(append([]option.Option(nil), n.options...), option.NewArgs(n.session.info.Catalog, n.session.info.Schema, sequenceName), n.session.Dialect)
 
 	if n.sequence == nil {
 		n.sequence = &sink.Sequence{IncrementBy: 1}

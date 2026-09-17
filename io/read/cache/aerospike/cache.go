@@ -44,7 +44,7 @@ var cachedBins = []string{typesBin, argsBin, sqlBin, dataBin, fieldsBin, storedF
 type (
 	Cache struct {
 		recorder        cache.Recorder
-		typeHolder      *cache.ScanTypeHolder
+		identityPrefix  string
 		client          *as.Client
 		getRecordFn     func(key *as.Key, bins ...string) (*as.Record, error)
 		putFn           func(key *as.Key, binMap as.BinMap) error
@@ -100,7 +100,13 @@ func (a *Cache) IndexByWithResult(ctx context.Context, db *sql.DB, column, SQL s
 	if err != nil {
 		return nil, err
 	}
-	identitySQL, argsMarshal, canonicalization := canonicalWarmupIdentity(identitySQL, argsMarshal)
+	canonicalization := "exact_query"
+	// A non-indexed warmup populates the ordinary query cache, whose metadata
+	// is matched against the original SQL. Indexed warmup has its own canonical
+	// identity shared by index writes and indexed lookups.
+	if column != "" {
+		identitySQL, argsMarshal, canonicalization = canonicalWarmupIdentity(identitySQL, argsMarshal)
+	}
 	URL, err := a.identityURL(identitySQL, identityArgs, argsMarshal)
 	if err != nil {
 		return nil, err
@@ -284,7 +290,6 @@ func (a *Cache) get(ctx context.Context, SQL string, args []interface{}, columns
 	a.updateCacheStats(lazyMatch, warmupMatch, cacheStats)
 	cacheStats.ErrorType, cacheStats.ErrorCode, err = a.findActualError(err)
 	if cacheStats.ErrorCode != types.OK && !cacheStats.FoundAny() || err != nil {
-		a.handleResponseFailure(cacheStats.ErrorCode)
 		return nil, err
 	}
 
@@ -317,6 +322,7 @@ func (a *Cache) get(ctx context.Context, SQL string, args []interface{}, columns
 	if err = a.applyWarmupProjection(anEntry, columnsInMatcher, cacheStats); err != nil {
 		return nil, err
 	}
+	anEntry.Windowed = cacheStats.Type == cache.TypeReadMulti && (columnsInMatcher == nil || len(columnsInMatcher.ByColumns) == 0)
 
 	return anEntry, a.updateWriter(anEntry, lazyMatch, SQL, jsonEncodedArgs, cacheStats)
 }
@@ -327,6 +333,9 @@ func (a *Cache) applyWarmupProjection(entry *cache.Entry, matcher *cache.Parmetr
 	}
 	exactMismatchIndex, exactMismatchStored, exactMismatchRequested := exactProjectionMismatch(entry.Meta.StoredFields, matcher.RequestedFields)
 	indexes, ok, reason, err := warmupProjectionIndexes(entry.Meta.StoredFields, matcher.RequestedFields)
+	if len(entry.Meta.StoredFields) == 0 && entry.Meta.ApplyProjection(matcher.RequestedFields) {
+		indexes, ok, reason, err = entry.Meta.ProjectedIndexes, true, "", nil
+	}
 	if err != nil {
 		return err
 	}
@@ -406,289 +415,11 @@ func cacheFieldNames(fields []*cache.Field) []string {
 }
 
 func warmupProjectionIndexes(storedFields []cache.ProjectionField, requestedFields []cache.ProjectionField) ([]int, bool, string, error) {
-	if len(requestedFields) == 0 {
-		return nil, false, "requested_projection_empty", nil
-	}
-	if len(storedFields) == 0 {
-		return nil, false, "stored_projection_empty", nil
-	}
-	if hasGroupedProjectionFields(storedFields) || hasGroupedProjectionFields(requestedFields) {
-		return groupedWarmupProjectionIndexes(storedFields, requestedFields)
-	}
-	if indexes, ok := exactProjectionIndexes(storedFields, requestedFields); ok {
-		return indexes, true, "", nil
-	}
-	return nonGroupedWarmupProjectionIndexes(storedFields, requestedFields)
-}
-
-func hasGroupedProjectionFields(fields []cache.ProjectionField) bool {
-	for _, field := range fields {
-		if field.DimensionKey != "" || field.MeasureKey != "" {
-			return true
-		}
-	}
-	return false
-}
-
-func nonGroupedWarmupProjectionIndexes(storedFields []cache.ProjectionField, requestedFields []cache.ProjectionField) ([]int, bool, string, error) {
-	const ambiguousProjectionIndex = -2
-	storedByName := map[string]int{}
-	storedByWeak := map[string]int{}
-	for index, field := range storedFields {
-		for _, name := range projectionFieldStrongLookup(field) {
-			if existing, exists := storedByName[name]; !exists {
-				storedByName[name] = index
-			} else if existing != index {
-				storedByName[name] = ambiguousProjectionIndex
-			}
-		}
-		for _, name := range projectionFieldWeakLookup(field) {
-			if existing, exists := storedByWeak[name]; !exists {
-				storedByWeak[name] = index
-			} else if existing != index {
-				storedByWeak[name] = ambiguousProjectionIndex
-			}
-		}
-	}
-	indexes := make([]int, 0, len(requestedFields))
-	for _, field := range requestedFields {
-		index, ok, reason := resolveProjectionFieldIndex(field, storedByName, ambiguousProjectionIndex, projectionFieldStrongLookup)
-		if !ok && reason != "" {
-			return nil, false, reason, nil
-		}
-		if index == -1 {
-			index, ok, reason = resolveProjectionFieldIndex(field, storedByWeak, ambiguousProjectionIndex, projectionFieldWeakLookup)
-			if !ok && reason != "" {
-				return nil, false, reason, nil
-			}
-		}
-		if index == -1 {
-			return nil, false, "non_grouped_missing_field", nil
-		}
-		indexes = append(indexes, index)
-	}
-	return indexes, true, "", nil
-}
-
-func resolveProjectionFieldIndex(field cache.ProjectionField, stored map[string]int, ambiguousProjectionIndex int, lookup func(cache.ProjectionField) []string) (int, bool, string) {
-	index := -1
-	for _, name := range lookup(field) {
-		candidate, ok := stored[name]
-		if !ok {
-			continue
-		}
-		if candidate == ambiguousProjectionIndex {
-			return -1, false, "non_grouped_ambiguous_stored_alias"
-		}
-		if index == -1 {
-			index = candidate
-			continue
-		}
-		if index != candidate {
-			return -1, false, "non_grouped_requested_alias_conflict"
-		}
-	}
-	return index, true, ""
-}
-
-func exactProjectionIndexes(storedFields []cache.ProjectionField, requestedFields []cache.ProjectionField) ([]int, bool) {
-	index, _, _ := exactProjectionMismatch(storedFields, requestedFields)
-	if index != -1 {
-		return nil, false
-	}
-	indexes := make([]int, len(requestedFields))
-	for i := range requestedFields {
-		indexes[i] = i
-	}
-	return indexes, true
+	return (cache.Projection{Stored: storedFields}).Indexes(requestedFields)
 }
 
 func exactProjectionMismatch(storedFields []cache.ProjectionField, requestedFields []cache.ProjectionField) (int, string, string) {
-	if len(storedFields) != len(requestedFields) {
-		return minInt(len(storedFields), len(requestedFields)), "", ""
-	}
-	for i := range requestedFields {
-		if !projectionFieldStrongIdentityOverlap(storedFields[i], requestedFields[i]) {
-			return i, projectionFieldSummary(storedFields[i]), projectionFieldSummary(requestedFields[i])
-		}
-	}
-	return -1, "", ""
-}
-
-func groupedWarmupProjectionIndexes(storedFields []cache.ProjectionField, requestedFields []cache.ProjectionField) ([]int, bool, string, error) {
-	storedDimensions, storedMeasures, reason, ok := groupedProjectionPartitions(storedFields)
-	if !ok {
-		return nil, false, reason, nil
-	}
-	requestedDimensions, _, reason, ok := groupedProjectionPartitions(requestedFields)
-	if !ok {
-		return nil, false, reason, nil
-	}
-	if len(storedDimensions) != len(requestedDimensions) {
-		return nil, false, "grouped_dimension_mismatch", nil
-	}
-
-	storedDimensionSet := map[string]bool{}
-	for _, field := range storedDimensions {
-		if field.DimensionKey == "" || storedDimensionSet[field.DimensionKey] {
-			return nil, false, "grouped_duplicate_dimension", nil
-		}
-		storedDimensionSet[field.DimensionKey] = true
-	}
-	requestedDimensionSet := map[string]bool{}
-	for _, field := range requestedDimensions {
-		if field.DimensionKey == "" || requestedDimensionSet[field.DimensionKey] {
-			return nil, false, "grouped_duplicate_dimension", nil
-		}
-		requestedDimensionSet[field.DimensionKey] = true
-		if !storedDimensionSet[field.DimensionKey] {
-			return nil, false, "grouped_dimension_mismatch", nil
-		}
-	}
-
-	storedMeasureIndexes := map[string]int{}
-	for _, field := range storedMeasures {
-		if _, exists := storedMeasureIndexes[field.MeasureKey]; exists {
-			return nil, false, "grouped_duplicate_measure", nil
-		}
-		storedMeasureIndexes[field.MeasureKey] = indexOfProjectionField(storedFields, field)
-	}
-
-	indexes := make([]int, 0, len(requestedFields))
-	for _, requested := range requestedFields {
-		if requested.DimensionKey != "" {
-			index := indexOfProjectionFieldByDimensionKey(storedFields, requested.DimensionKey)
-			if index == -1 {
-				return nil, false, "grouped_dimension_mismatch", nil
-			}
-			indexes = append(indexes, index)
-			continue
-		}
-		if requested.MeasureKey == "" {
-			return nil, false, "grouped_invalid_metadata", nil
-		}
-		index, ok := storedMeasureIndexes[requested.MeasureKey]
-		if !ok {
-			return nil, false, "grouped_missing_measure", nil
-		}
-		indexes = append(indexes, index)
-	}
-
-	return indexes, true, "", nil
-}
-
-func groupedProjectionPartitions(fields []cache.ProjectionField) ([]cache.ProjectionField, []cache.ProjectionField, string, bool) {
-	dimensions := make([]cache.ProjectionField, 0)
-	measures := make([]cache.ProjectionField, 0)
-	for _, field := range fields {
-		switch {
-		case field.DimensionKey != "" && field.MeasureKey == "":
-			dimensions = append(dimensions, field)
-		case field.MeasureKey != "" && field.DimensionKey == "":
-			measures = append(measures, field)
-		default:
-			return nil, nil, "grouped_invalid_metadata", false
-		}
-	}
-	return dimensions, measures, "", true
-}
-
-func indexOfProjectionField(fields []cache.ProjectionField, target cache.ProjectionField) int {
-	for i, field := range fields {
-		if field.DimensionKey == target.DimensionKey && field.MeasureKey == target.MeasureKey {
-			return i
-		}
-	}
-	return -1
-}
-
-func indexOfProjectionFieldByDimensionKey(fields []cache.ProjectionField, dimensionKey string) int {
-	for i, field := range fields {
-		if field.DimensionKey == dimensionKey {
-			return i
-		}
-	}
-	return -1
-}
-
-func projectionFieldStrongLookup(field cache.ProjectionField) []string {
-	var result []string
-	add := func(value string) {
-		value = normalizeProjectionFieldName(value)
-		if value == "" {
-			return
-		}
-		result = append(result, value)
-	}
-	add(field.DimensionKey)
-	add(field.MeasureKey)
-	add(field.Name)
-	add(field.FieldName)
-	add(field.ColumnName)
-	return result
-}
-
-func projectionFieldWeakLookup(field cache.ProjectionField) []string {
-	var result []string
-	add := func(value string) {
-		value = normalizeProjectionFieldName(value)
-		if value == "" {
-			return
-		}
-		result = append(result, value)
-	}
-	add(field.Source)
-	return result
-}
-
-func projectionFieldStrongIdentityOverlap(stored cache.ProjectionField, requested cache.ProjectionField) bool {
-	storedValues := projectionFieldStrongLookup(stored)
-	requestedValues := projectionFieldStrongLookup(requested)
-	for _, storedValue := range storedValues {
-		for _, requestedValue := range requestedValues {
-			if storedValue == requestedValue {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-func projectionFieldSummary(field cache.ProjectionField) string {
-	return fmt.Sprintf("name=%q field=%q column=%q dim=%q measure=%q lookup=%v source=%q",
-		field.Name,
-		field.FieldName,
-		field.ColumnName,
-		field.DimensionKey,
-		field.MeasureKey,
-		field.Lookup,
-		field.Source,
-	)
-}
-
-func minInt(left, right int) int {
-	if left < right {
-		return left
-	}
-	return right
-}
-
-func projectionFieldLookup(field cache.ProjectionField) []string {
-	result := projectionFieldStrongLookup(field)
-	result = append(result, projectionFieldWeakLookup(field)...)
-	return result
-}
-
-func normalizeProjectionFieldName(value string) string {
-	value = strings.TrimSpace(strings.ToLower(value))
-	if index := strings.LastIndex(value, "."); index != -1 && index+1 < len(value) {
-		value = value[index+1:]
-	}
-	value = strings.Trim(value, "`\"")
-	value = strings.ReplaceAll(value, "_", "")
-	value = strings.ReplaceAll(value, "-", "")
-	value = strings.ReplaceAll(value, ".", "")
-	return value
+	return (cache.Projection{Stored: storedFields}).Mismatch(requestedFields)
 }
 
 func (a *Cache) updateCacheStats(fullMatch *RecordMatched, columnsInMatch *RecordMatched, cacheStats *cache.Stats) {
@@ -749,7 +480,10 @@ func (a *Cache) readRecords(SQL string, args []interface{}, query *cache.Parmetr
 			errors[1] = e
 			return
 		}
-		identitySQL, identityArgsMarshal, canonicalization := canonicalWarmupIdentity(identitySQL, identityArgsMarshal)
+		canonicalization := "exact_query"
+		if query.By != "" {
+			identitySQL, identityArgsMarshal, canonicalization = canonicalWarmupIdentity(identitySQL, identityArgsMarshal)
+		}
 		if warmupURL, urlErr := a.identityURL(identitySQL, identityArgs, identityArgsMarshal); urlErr == nil {
 			if stats != nil {
 				stats.WarmupKey = warmupURL
@@ -759,9 +493,13 @@ func (a *Cache) readRecords(SQL string, args []interface{}, query *cache.Parmetr
 			}
 			a.logWarmupIdentityResolved("read_lookup", query.By, warmupURL, identitySQL, identityArgsMarshal, canonicalization, meta)
 		}
-		warmupMatch, errors[1] = a.readRecord(identitySQL, identityArgs, identityArgsMarshal, func(aKey string) (string, error) {
-			return a.columnURL(aKey, query.By), nil
-		})
+		if query.By == "" {
+			warmupMatch, errors[1] = a.readRecord(identitySQL, identityArgs, identityArgsMarshal)
+		} else {
+			warmupMatch, errors[1] = a.readRecord(identitySQL, identityArgs, identityArgsMarshal, func(aKey string) (string, error) {
+				return a.columnURL(aKey, query.By), nil
+			})
+		}
 	}(query)
 	wg.Wait()
 	for i := range errors {
@@ -827,6 +565,9 @@ func (a *Cache) newBasePolicy(idempotent bool) *as.BasePolicy {
 		if a.timeoutConfig.MaxRetries != 0 && idempotent {
 			policy.SleepBetweenRetries = time.Millisecond * time.Duration(a.timeoutConfig.SleepBetweenRetriesMs)
 		}
+		if a.timeoutConfig.SocketTimeoutMs != 0 {
+			policy.SocketTimeout = time.Millisecond * time.Duration(a.timeoutConfig.SocketTimeoutMs)
+		}
 		if a.timeoutConfig.TotalTimeoutMs != 0 {
 			policy.TotalTimeout = time.Millisecond * time.Duration(a.timeoutConfig.TotalTimeoutMs)
 		}
@@ -839,9 +580,12 @@ func (a *Cache) AssignRows(entry *cache.Entry, rows *sql.Rows) error {
 }
 
 func (a *Cache) UpdateType(ctx context.Context, entry *cache.Entry, args []interface{}) (bool, error) {
-	a.ensureTypeHolder(args)
+	if entry.ScanTypes == nil {
+		entry.ScanTypes = &cache.ScanTypeHolder{}
+		entry.ScanTypes.InitType(args)
+	}
 
-	if !a.typeHolder.Match(entry) {
+	if !entry.ScanTypes.Match(entry) {
 		return false, a.Delete(ctx, entry)
 	}
 
@@ -931,17 +675,6 @@ func (a *Cache) reader(key *as.Key, record *as.Record) (*Reader, error) {
 		record:    record,
 		set:       a.set,
 	}, nil
-}
-
-func (a *Cache) ensureTypeHolder(values []interface{}) {
-	if a.typeHolder != nil {
-		return
-	}
-
-	a.mux.Lock()
-	a.typeHolder = &cache.ScanTypeHolder{}
-	a.typeHolder.InitType(values)
-	a.mux.Unlock()
 }
 
 func (a *Cache) updateEntry(record *as.Record, entry *cache.Entry) error {
@@ -1035,9 +768,9 @@ func (a *Cache) columnURL(URL string, column string) string {
 
 func (a *Cache) identityURL(SQL string, args []interface{}, argsMarshal []byte) (string, error) {
 	if argsMarshal == nil {
-		return hash.GenerateURL(SQL, "", "", args)
+		return hash.GenerateURL(SQL, a.identityPrefix, "", args)
 	}
-	return hash.GenerateWithMarshal(SQL, "", "", argsMarshal)
+	return hash.GenerateWithMarshal(SQL, a.identityPrefix, "", argsMarshal)
 }
 
 func canonicalWarmupIdentity(SQL string, argsMarshal []byte) (string, []byte, string) {
@@ -1191,9 +924,6 @@ func (a *Cache) resolveIndexIdentity(SQL string, args []interface{}, options ...
 }
 
 func (a *Cache) storedFieldsMeta(column string, options ...interface{}) (string, error) {
-	if column == "" {
-		return "", nil
-	}
 	for _, option := range options {
 		matcher, ok := option.(*cache.ParmetrizedQuery)
 		if !ok || matcher == nil || matcher.StoredFields == nil {
@@ -1284,7 +1014,9 @@ func (a *Cache) updateColumnsInMatchEntry(entry *cache.Entry, match *RecordMatch
 	if err != nil {
 		return err
 	}
-	identitySQL, identityArgsMarshal, _ = canonicalWarmupIdentity(identitySQL, identityArgsMarshal)
+	if matcher.By != "" {
+		identitySQL, identityArgsMarshal, _ = canonicalWarmupIdentity(identitySQL, identityArgsMarshal)
+	}
 	warmupURL, markerKey := "", ""
 	if identityURL, err := a.identityURL(identitySQL, nil, identityArgsMarshal); err == nil {
 		warmupURL = identityURL
@@ -1307,33 +1039,54 @@ func (a *Cache) updateColumnsInMatchEntry(entry *cache.Entry, match *RecordMatch
 
 	multiReader := NewMultiReader(matcher)
 
-	chanSize := len(matcher.In)
-
-	readerChan := make(chan *readerWrapper, chanSize)
-	if chanSize == 0 {
-		close(readerChan)
+	if matcher.By == "" {
+		reader, err := a.reader(match.key, match.record)
+		if err != nil {
+			return err
+		}
+		multiReader.AddReader(reader)
+		entry.SetReader(multiReader, multiReader)
+		stats.Type = cache.TypeReadMulti
+		stats.RecordsCounter = 1
+		stats.Key = match.keyValue
+		return nil
 	}
 
-	for i := range matcher.In {
-		a.readChan(readerChan, matcher, warmupURL, matcher.In[i])
+	// IN is a membership predicate: duplicate keys must not duplicate rows.
+	// Fetch concurrently, but assemble in the same first-key order as AFS.
+	values := make([]interface{}, 0, len(matcher.In))
+	seen := make(map[string]bool, len(matcher.In))
+	for _, value := range matcher.In {
+		encoded, err := json.Marshal(value)
+		if err != nil {
+			return err
+		}
+		key := string(encoded)
+		if !seen[key] {
+			seen[key] = true
+			values = append(values, value)
+		}
 	}
-
-	counter := 0
+	readers := make([]readerWrapper, len(values))
+	var pending sync.WaitGroup
+	pending.Add(len(values))
+	for i, value := range values {
+		go func(index int, value interface{}) {
+			defer pending.Done()
+			readers[index].reader, readers[index].err = a.newReader(matcher, warmupURL, value)
+		}(i, value)
+	}
+	pending.Wait()
+	counter := len(readers)
 	childRowMiss := false
-	for reader := range readerChan {
+	for _, reader := range readers {
 		if reader.err != nil {
 			return reader.err
 		}
-
 		if reader.reader != nil {
 			multiReader.AddReader(reader.reader)
 		} else {
 			childRowMiss = true
-		}
-
-		counter++
-		if counter == chanSize {
-			close(readerChan)
 		}
 	}
 	if childRowMiss {
@@ -1368,16 +1121,6 @@ func (a *Cache) updateWriter(anEntry *cache.Entry, fullMatch *RecordMatched, SQL
 		stats.ExpiryTime = &expiresAt
 	}
 	return nil
-}
-
-func (a *Cache) readChan(readerChan chan *readerWrapper, matcher *cache.ParmetrizedQuery, warmupURL string, columnValue interface{}) {
-	go func(matcher *cache.ParmetrizedQuery, warmupURL string, columnValue interface{}) {
-		reader, err := a.newReader(matcher, warmupURL, columnValue)
-		readerChan <- &readerWrapper{
-			err:    err,
-			reader: reader,
-		}
-	}(matcher, warmupURL, columnValue)
 }
 
 func (a *Cache) newReader(matcher *cache.ParmetrizedQuery, warmupURL string, columnValue interface{}) (*Reader, error) {
@@ -1579,7 +1322,7 @@ func (a *Cache) handleResponseFailure(code types.ResultCode) {
 		return
 	}
 
-	if code == types.OK {
+	if code == types.OK || code == types.KEY_NOT_FOUND_ERROR {
 		a.failureHandler.HandleSuccess()
 	} else {
 		a.failureHandler.HandleFailure()
@@ -1587,10 +1330,13 @@ func (a *Cache) handleResponseFailure(code types.ResultCode) {
 }
 
 func (a *Cache) getRecord(key *as.Key, bins ...string) (*as.Record, error) {
+	var record *as.Record
+	var err error
 	if a.getRecordFn != nil {
-		return a.getRecordFn(key, bins...)
+		record, err = a.getRecordFn(key, bins...)
+	} else {
+		record, err = a.client.Get(a.newBasePolicy(true), key, bins...)
 	}
-	record, err := a.client.Get(a.newBasePolicy(true), key, bins...)
 	if err != nil {
 		aerospikeErr, ok := asAerospikeErr(err)
 		if ok {
@@ -1600,6 +1346,7 @@ func (a *Cache) getRecord(key *as.Key, bins ...string) (*as.Record, error) {
 		return nil, err
 	}
 
+	a.handleResponseFailure(types.OK)
 	return record, nil
 }
 
@@ -1609,6 +1356,9 @@ func (a *Cache) put(key *as.Key, binMap as.BinMap) error {
 	}
 	policy := a.writePolicy()
 	err := a.client.Put(policy, key, binMap)
+	if err == nil {
+		a.handleResponseFailure(types.OK)
+	}
 	aerospikeErr, ok := asAerospikeErr(err)
 	if ok {
 		a.handleResponseFailure(aerospikeErr.ResultCode())

@@ -2,6 +2,7 @@ package io
 
 import (
 	"database/sql"
+	"encoding/json"
 	"github.com/viant/sqlx/option"
 	"github.com/viant/sqlx/types"
 	"github.com/viant/xreflect"
@@ -94,7 +95,7 @@ func ParseType(columnType string) (reflect.Type, bool) {
 	switch strings.ToLower(columnType) {
 	case "int", "integer", "bigint", "smallint", "unsiged tinyint", "tinyint", "int64", "int32", "int16", "int8", "uint", "uint8", "uint16", "uint32", "uint64", "binary":
 		return xreflect.IntType, true
-	case "float", "float64", "numeric", "decimal", "double":
+	case "float", "float64", "numeric", "decimal", "double", "real":
 		return xreflect.Float64Type, true
 	case "bool", "boolean":
 		return xreflect.BoolType, true
@@ -102,10 +103,14 @@ func ParseType(columnType string) (reflect.Type, bool) {
 		return reflect.TypeOf(types.BitBool(true)), true
 	case "string", "varbinary", "varchar", "char", "text", "longtext", "longblob", "mediumblob", "mediumtext", "blob", "tinytext":
 		return reflect.TypeOf(""), true
-	case "date", "time", "timestamp", "datetime":
+	case "date", "time", "timestamp", "datetime", "timestamptz":
 		return xreflect.TimeType, true
-	case "sql.rawbytes", "rawbytes", "json", "bytes":
+	case "sql.rawbytes", "rawbytes", "bytes":
 		return reflect.TypeOf([]byte("")), true
+	case "uuid", "guid":
+		return xreflect.StringType, true
+	case "jsonb", "json":
+		return reflect.TypeOf(json.RawMessage{}), true
 	case "interface":
 		t := xreflect.InterfaceType
 		return t, true

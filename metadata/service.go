@@ -3,6 +3,7 @@ package metadata
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"github.com/viant/sqlx/metadata/database"
 	"github.com/viant/sqlx/metadata/info"
@@ -11,6 +12,9 @@ import (
 	"github.com/viant/sqlx/option"
 	"strings"
 )
+
+// ErrSequenceReservationUnsupported means the product has no atomic reservation owner.
+var ErrSequenceReservationUnsupported = errors.New("atomic sequence reservation is unsupported")
 
 type (
 	//Service represents metadata service
@@ -32,13 +36,13 @@ func (s *Service) setService(db *sql.DB, product *database.Product) {
 	}
 }
 
-//DetectProduct detect product for supplied *sql.DB
-func (s *Service) DetectProduct(ctx context.Context, db *sql.DB) (*database.Product, error) {
+// DetectProduct detect product for supplied *sql.DB
+func (s *Service) DetectProduct(ctx context.Context, db *sql.DB, options ...option.Option) (*database.Product, error) {
 	if product := s.recent.match(db); product != nil {
 		s.dialect = registry.LookupDialect(product)
 		return product, nil
 	}
-	product, err := s.matchProduct(ctx, db)
+	product, err := s.matchProduct(ctx, db, options...)
 	if err == nil {
 		s.recent.db = db
 		s.recent.product = product
@@ -50,12 +54,12 @@ func (s *Service) DetectProduct(ctx context.Context, db *sql.DB) (*database.Prod
 	return product, err
 }
 
-//Execute execute the metadata kind corresponding SQL
+// Execute execute the metadata kind corresponding SQL
 func (s *Service) Execute(ctx context.Context, db *sql.DB, kind info.Kind, options ...option.Option) (sql.Result, error) {
 	var err error
 	product := option.Options(options).Product()
 	if product == nil {
-		if product, err = s.DetectProduct(ctx, db); err != nil {
+		if product, err = s.DetectProduct(ctx, db, options...); err != nil {
 			return nil, err
 		}
 	}
@@ -71,13 +75,13 @@ func (s *Service) Execute(ctx context.Context, db *sql.DB, kind info.Kind, optio
 
 }
 
-//Info execute the metadata kind corresponding Query, result are passed to sink
+// Info execute the metadata kind corresponding Query, result are passed to sink
 func (s *Service) Info(ctx context.Context, db *sql.DB, kind info.Kind, sink Sink, options ...option.Option) error {
 	var err error
 
 	product := option.Options.Product(options)
 	if product == nil {
-		if product, err = s.DetectProduct(ctx, db); err != nil {
+		if product, err = s.DetectProduct(ctx, db, options...); err != nil {
 			return err
 		}
 	} else {
@@ -86,6 +90,9 @@ func (s *Service) Info(ctx context.Context, db *sql.DB, kind info.Kind, sink Sin
 
 	queries := registry.Lookup(product.Name, kind)
 	if len(queries) == 0 {
+		if kind == info.KindSequenceLock {
+			return fmt.Errorf("%w for %s", ErrSequenceReservationUnsupported, product.Name)
+		}
 		return fmt.Errorf("unsupported info kind: %s for: %s", kind, product.Name)
 	}
 	query := queries.Match(product)
@@ -129,7 +136,7 @@ func (s *Service) runHandler(ctx context.Context, db *sql.DB, handlers []info.Ha
 	return false, err
 }
 
-func (s *Service) matchProduct(ctx context.Context, db *sql.DB) (*database.Product, error) {
+func (s *Service) matchProduct(ctx context.Context, db *sql.DB, options ...option.Option) (*database.Product, error) {
 	product := registry.MatchProduct(db)
 	if product == nil {
 		return &ansi.ANSI, nil
@@ -137,10 +144,16 @@ func (s *Service) matchProduct(ctx context.Context, db *sql.DB) (*database.Produ
 	if product.Name == ansi.ANSI.Name {
 		return product, nil
 	}
-	return s.matchVersion(ctx, db, product)
+	return s.matchVersion(ctx, db, product, options...)
 }
 
-func (s *Service) matchVersion(ctx context.Context, db *sql.DB, product *database.Product) (*database.Product, error) {
+func (s *Service) matchVersion(ctx context.Context, db *sql.DB, product *database.Product, options ...option.Option) (*database.Product, error) {
+	// Version detection has no table/schema criteria. Only propagate the
+	// connection owner; carrying the caller's metadata Args changes its query.
+	var versionOptions []option.Option
+	if tx := option.Options(options).Tx(); tx != nil {
+		versionOptions = append(versionOptions, tx)
+	}
 	versionQueries := registry.Lookup(product.Name, info.KindVersion)
 	if len(versionQueries) == 0 {
 		return product, nil
@@ -148,7 +161,7 @@ func (s *Service) matchVersion(ctx context.Context, db *sql.DB, product *databas
 	var err error
 	for _, query := range versionQueries {
 		var version string
-		if err = s.runQuery(ctx, db, query, &version); err == nil {
+		if err = s.runQuery(ctx, db, query, &version, versionOptions...); err == nil {
 			productTmp, err := database.Parse([]byte(version))
 			if err == nil && productTmp != nil {
 				if productTmp.Name != "" {
@@ -307,7 +320,7 @@ func prepareSQL(query *info.Query, placeholderGetter func() string, argsOpt *opt
 	return SQL + " WHERE " + clause, filterArgs, nil
 }
 
-//match checks if the db matched previously match product
+// match checks if the db matched previously match product
 func (r *recent) match(db *sql.DB) *database.Product {
 	if r.db == db {
 		return r.product
@@ -315,7 +328,7 @@ func (r *recent) match(db *sql.DB) *database.Product {
 	return nil
 }
 
-//New creates new metadata service
+// New creates new metadata service
 func New() *Service {
 	return &Service{}
 }

@@ -1,86 +1,74 @@
 package aerospike
 
 import (
-	"context"
 	"sync"
-	"sync/atomic"
 	"time"
 )
 
+// FailureHandler temporarily bypasses cache reads after consecutive failures.
+// Close stops its reset timer and prevents further timers from being scheduled.
 type FailureHandler struct {
-	mux            sync.RWMutex
-	counter        int64
-	limit          int64
-	resetAfter     *time.Duration
-	probingResetFn func()
-	isProbing      bool
+	mux        sync.Mutex
+	counter    int64
+	limit      int64
+	resetAfter time.Duration
+	timer      *time.Timer
+	isProbing  bool
+	closed     bool
 }
 
 func NewFailureHandler(limit int64, resetAfter *time.Duration) *FailureHandler {
-	return &FailureHandler{
-		limit:      limit,
-		resetAfter: resetAfter,
+	result := &FailureHandler{limit: limit}
+	if resetAfter != nil {
+		result.resetAfter = *resetAfter
 	}
+	return result
 }
 
 func (f *FailureHandler) HandleFailure() {
-	failed := atomic.AddInt64(&f.counter, 1)
-	if failed > f.limit && f.limit != 0 && f.resetAfter != nil {
-		f.startProbing()
+	f.mux.Lock()
+	defer f.mux.Unlock()
+	if f.closed {
+		return
 	}
+	f.counter++
+	if f.counter <= f.limit || f.limit == 0 || f.resetAfter <= 0 || f.isProbing {
+		return
+	}
+	f.isProbing = true
+	f.timer = time.AfterFunc(f.resetAfter, f.reset)
+}
+
+func (f *FailureHandler) reset() {
+	f.mux.Lock()
+	defer f.mux.Unlock()
+	if f.closed {
+		return
+	}
+	f.counter = 0
+	f.timer = nil
+	f.isProbing = false
 }
 
 func (f *FailureHandler) HandleSuccess() {
-	atomic.StoreInt64(&f.counter, 0)
+	f.mux.Lock()
+	defer f.mux.Unlock()
+	f.counter = 0
 }
 
 func (f *FailureHandler) Close() error {
 	f.mux.Lock()
-	if f.probingResetFn != nil {
-		f.probingResetFn()
+	defer f.mux.Unlock()
+	f.closed = true
+	if f.timer != nil {
+		f.timer.Stop()
+		f.timer = nil
 	}
-
-	f.probingResetFn = nil
-	f.mux.Unlock()
 	return nil
 }
 
-func (f *FailureHandler) startProbing() {
+func (f *FailureHandler) IsProbing() bool {
 	f.mux.Lock()
 	defer f.mux.Unlock()
-	if f.isProbing {
-		return
-	}
-
-	f.isProbing = true
-	resetFn := f.startTimer(func() {
-		f.mux.Lock()
-		atomic.StoreInt64(&f.counter, 0)
-		f.probingResetFn()
-		f.probingResetFn = nil
-		f.isProbing = false
-		f.mux.Unlock()
-	})
-
-	f.probingResetFn = resetFn
-}
-
-func (f *FailureHandler) startTimer(callback func()) context.CancelFunc {
-	ctx := context.Background()
-	actualCtx, cancelFunc := context.WithCancel(ctx)
-
-	go func() {
-		select {
-		case <-time.After(*f.resetAfter):
-			callback()
-		case <-actualCtx.Done():
-			//Do nothing
-		}
-	}()
-
-	return cancelFunc
-}
-
-func (f *FailureHandler) IsProbing() bool {
 	return f.isProbing
 }

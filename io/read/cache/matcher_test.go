@@ -8,8 +8,8 @@ import (
 
 func TestParmetrizedQueryWarmupIdentity_DefaultsToExecutionSQLAndArgs(t *testing.T) {
 	query := &ParmetrizedQuery{
-		SQL:  "SELECT * FROM campaign_flight WHERE tenant_id = ?",
-		Args: []interface{}{"tenant-a"},
+		SQL:  "SELECT * FROM entity_relation WHERE scope_id = ?",
+		Args: []interface{}{"scope-a"},
 	}
 
 	identitySQL, identityArgs, identityArgsMarshal, err := query.WarmupIdentity()
@@ -20,11 +20,11 @@ func TestParmetrizedQueryWarmupIdentity_DefaultsToExecutionSQLAndArgs(t *testing
 	if identitySQL != query.SQL {
 		t.Fatalf("expected identity SQL %q, got %q", query.SQL, identitySQL)
 	}
-	if len(identityArgs) != 1 || identityArgs[0] != "tenant-a" {
-		t.Fatalf("expected identity args [tenant-a], got %v", identityArgs)
+	if len(identityArgs) != 1 || identityArgs[0] != "scope-a" {
+		t.Fatalf("expected identity args [scope-a], got %v", identityArgs)
 	}
 
-	wantMarshal, err := json.Marshal([]interface{}{"tenant-a"})
+	wantMarshal, err := json.Marshal([]interface{}{"scope-a"})
 	if err != nil {
 		t.Fatalf("json.Marshal() error = %v", err)
 	}
@@ -35,10 +35,10 @@ func TestParmetrizedQueryWarmupIdentity_DefaultsToExecutionSQLAndArgs(t *testing
 
 func TestParmetrizedQueryWarmupIdentity_UsesExplicitIdentity(t *testing.T) {
 	query := &ParmetrizedQuery{
-		SQL:          "SELECT * FROM campaign_flight WHERE tenant_id = ? AND campaign_id = ?",
-		Args:         []interface{}{"tenant-a", 2002},
-		IdentitySQL:  "SELECT * FROM campaign_flight WHERE tenant_id = ?",
-		IdentityArgs: []interface{}{"tenant-a"},
+		SQL:          "SELECT * FROM entity_relation WHERE scope_id = ? AND group_id = ?",
+		Args:         []interface{}{"scope-a", 2002},
+		IdentitySQL:  "SELECT * FROM entity_relation WHERE scope_id = ?",
+		IdentityArgs: []interface{}{"scope-a"},
 	}
 
 	identitySQL, identityArgs, identityArgsMarshal, err := query.WarmupIdentity()
@@ -49,11 +49,11 @@ func TestParmetrizedQueryWarmupIdentity_UsesExplicitIdentity(t *testing.T) {
 	if identitySQL != query.IdentitySQL {
 		t.Fatalf("expected identity SQL %q, got %q", query.IdentitySQL, identitySQL)
 	}
-	if len(identityArgs) != 1 || identityArgs[0] != "tenant-a" {
-		t.Fatalf("expected identity args [tenant-a], got %v", identityArgs)
+	if len(identityArgs) != 1 || identityArgs[0] != "scope-a" {
+		t.Fatalf("expected identity args [scope-a], got %v", identityArgs)
 	}
 
-	wantMarshal, err := json.Marshal([]interface{}{"tenant-a"})
+	wantMarshal, err := json.Marshal([]interface{}{"scope-a"})
 	if err != nil {
 		t.Fatalf("json.Marshal() error = %v", err)
 	}
@@ -64,9 +64,9 @@ func TestParmetrizedQueryWarmupIdentity_UsesExplicitIdentity(t *testing.T) {
 
 func TestParmetrizedQueryWarmupIdentity_DerivesWarmupIdentityFromSimpleByPredicate(t *testing.T) {
 	query := &ParmetrizedQuery{
-		By:   "campaign_id",
-		SQL:  "SELECT * FROM campaign_flight WHERE tenant_id = ? AND campaign_id = ?",
-		Args: []interface{}{"tenant-a", 2002},
+		By:   "group_id",
+		SQL:  "SELECT * FROM entity_relation WHERE scope_id = ? AND group_id = ?",
+		Args: []interface{}{"scope-a", 2002},
 	}
 
 	identitySQL, identityArgs, identityArgsMarshal, err := query.WarmupIdentity()
@@ -74,15 +74,15 @@ func TestParmetrizedQueryWarmupIdentity_DerivesWarmupIdentityFromSimpleByPredica
 		t.Fatalf("WarmupIdentity() error = %v", err)
 	}
 
-	wantSQL := "SELECT * FROM campaign_flight WHERE tenant_id = ?"
+	wantSQL := "SELECT * FROM entity_relation WHERE scope_id = ?"
 	if normalizeSQL(identitySQL) != normalizeSQL(wantSQL) {
 		t.Fatalf("expected identity SQL %q, got %q", wantSQL, identitySQL)
 	}
-	if len(identityArgs) != 1 || identityArgs[0] != "tenant-a" {
-		t.Fatalf("expected identity args [tenant-a], got %v", identityArgs)
+	if len(identityArgs) != 1 || identityArgs[0] != "scope-a" {
+		t.Fatalf("expected identity args [scope-a], got %v", identityArgs)
 	}
 
-	wantMarshal, err := json.Marshal([]interface{}{"tenant-a"})
+	wantMarshal, err := json.Marshal([]interface{}{"scope-a"})
 	if err != nil {
 		t.Fatalf("json.Marshal() error = %v", err)
 	}
@@ -93,9 +93,9 @@ func TestParmetrizedQueryWarmupIdentity_DerivesWarmupIdentityFromSimpleByPredica
 
 func TestParmetrizedQueryWarmupIdentity_DerivesWarmupIdentityFromSimpleByInPredicate(t *testing.T) {
 	query := &ParmetrizedQuery{
-		By:   "ad_order_id",
-		SQL:  "SELECT * FROM ad_order_flight WHERE tenant_id = ? AND event_day BETWEEN ? AND ? AND ad_order_id IN (?, ?, ?)",
-		Args: []interface{}{"tenant-a", "2026-07-01", "2026-07-31", 101, 202, 303},
+		By:   "item_id",
+		SQL:  "SELECT * FROM scoped_items WHERE scope_id = ? AND event_day BETWEEN ? AND ? AND item_id IN (?, ?, ?)",
+		Args: []interface{}{"scope-a", "2026-07-01", "2026-07-31", 101, 202, 303},
 	}
 
 	identitySQL, identityArgs, identityArgsMarshal, err := query.WarmupIdentity()
@@ -103,11 +103,11 @@ func TestParmetrizedQueryWarmupIdentity_DerivesWarmupIdentityFromSimpleByInPredi
 		t.Fatalf("WarmupIdentity() error = %v", err)
 	}
 
-	wantSQL := "SELECT * FROM ad_order_flight WHERE tenant_id = ? AND event_day BETWEEN ? AND ?"
+	wantSQL := "SELECT * FROM scoped_items WHERE scope_id = ? AND event_day BETWEEN ? AND ?"
 	if normalizeSQL(identitySQL) != normalizeSQL(wantSQL) {
 		t.Fatalf("expected identity SQL %q, got %q", wantSQL, identitySQL)
 	}
-	wantArgs := []interface{}{"tenant-a", "2026-07-01", "2026-07-31"}
+	wantArgs := []interface{}{"scope-a", "2026-07-01", "2026-07-31"}
 	if len(identityArgs) != len(wantArgs) {
 		t.Fatalf("expected identity args %v, got %v", wantArgs, identityArgs)
 	}
@@ -128,8 +128,8 @@ func TestParmetrizedQueryWarmupIdentity_DerivesWarmupIdentityFromSimpleByInPredi
 
 func TestParmetrizedQueryWarmupIdentity_IgnoresByIsNotNullAndRemovesByInPredicate(t *testing.T) {
 	query := &ParmetrizedQuery{
-		By:   "order_id",
-		SQL:  "SELECT * FROM fact_perf_daily_v p WHERE p.order_id IS NOT NULL AND advertiser_date = CURRENT_DATE() AND p.order_id IN (?)",
+		By:   "entity_id",
+		SQL:  "SELECT * FROM activity_metrics p WHERE p.entity_id IS NOT NULL AND business_date = CURRENT_DATE() AND p.entity_id IN (?)",
 		Args: []interface{}{2684543},
 	}
 
@@ -138,7 +138,7 @@ func TestParmetrizedQueryWarmupIdentity_IgnoresByIsNotNullAndRemovesByInPredicat
 		t.Fatalf("WarmupIdentity() error = %v", err)
 	}
 
-	wantSQL := "SELECT * FROM fact_perf_daily_v p WHERE p.order_id IS NOT NULL AND advertiser_date = CURRENT_DATE()"
+	wantSQL := "SELECT * FROM activity_metrics p WHERE p.entity_id IS NOT NULL AND business_date = CURRENT_DATE()"
 	if normalizeSQL(identitySQL) != normalizeSQL(wantSQL) {
 		t.Fatalf("expected identity SQL %q, got %q", wantSQL, identitySQL)
 	}
@@ -152,9 +152,9 @@ func TestParmetrizedQueryWarmupIdentity_IgnoresByIsNotNullAndRemovesByInPredicat
 
 func TestParmetrizedQueryWarmupIdentity_PreservesGroupedOrPredicateWhenRemovingSelector(t *testing.T) {
 	query := &ParmetrizedQuery{
-		By: "order_id",
-		SQL: "SELECT * FROM fact_perf_daily_v p " +
-			"WHERE p.order_id IS NOT NULL AND (p.impressions > 0 OR p.clicks > 0) AND p.order_id IN (?)",
+		By: "entity_id",
+		SQL: "SELECT * FROM activity_metrics p " +
+			"WHERE p.entity_id IS NOT NULL AND (p.views > 0 OR p.actions > 0) AND p.entity_id IN (?)",
 		Args: []interface{}{2684543},
 	}
 
@@ -163,7 +163,7 @@ func TestParmetrizedQueryWarmupIdentity_PreservesGroupedOrPredicateWhenRemovingS
 		t.Fatalf("WarmupIdentity() error = %v", err)
 	}
 
-	wantSQL := "SELECT * FROM fact_perf_daily_v p WHERE p.order_id IS NOT NULL AND (p.impressions > 0 OR p.clicks > 0)"
+	wantSQL := "SELECT * FROM activity_metrics p WHERE p.entity_id IS NOT NULL AND (p.views > 0 OR p.actions > 0)"
 	if normalizeSQL(identitySQL) != normalizeSQL(wantSQL) {
 		t.Fatalf("expected identity SQL %q, got %q", wantSQL, identitySQL)
 	}
@@ -177,16 +177,16 @@ func TestParmetrizedQueryWarmupIdentity_PreservesGroupedOrPredicateWhenRemovingS
 
 func TestParmetrizedQueryWarmupIdentity_DerivesWarmupIdentityFromGroupedAndTimelinePredicate(t *testing.T) {
 	query := &ParmetrizedQuery{
-		By: "order_id",
-		SQL: "SELECT t.advertiser_time, t.order_id, t.IAS_IN_VIEW_IMPS, t.IAS_MEASURED_IMPS FROM (" +
-			"SELECT TIMESTAMP_TRUNC(i.advertiser_time, DAY) AS advertiser_time, i.order_id, " +
-			"SUM(COALESCE(i.ias_in_view_imps, 0)) AS IAS_IN_VIEW_IMPS, " +
-			"SUM(COALESCE(i.ias_measured_imps, 0)) AS IAS_MEASURED_IMPS " +
-			"FROM viant-mediator.steward.fact_ias_daily_v i " +
-			"WHERE i.order_id IS NOT NULL " +
-			"AND (((advertiser_date = CURRENT_DATE() AND event_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY)))) " +
-			"AND (i.order_id IN (?)) " +
-			"GROUP BY 1, 2 ORDER BY advertiser_time LIMIT 1000) AS t",
+		By: "entity_id",
+		SQL: "SELECT t.report_time, t.entity_id, t.VISIBLE_COUNT, t.MEASURED_COUNT FROM (" +
+			"SELECT TIMESTAMP_TRUNC(i.report_time, DAY) AS report_time, i.entity_id, " +
+			"SUM(COALESCE(i.visible_count, 0)) AS VISIBLE_COUNT, " +
+			"SUM(COALESCE(i.measured_count, 0)) AS MEASURED_COUNT " +
+			"FROM project.dataset.daily_measurements i " +
+			"WHERE i.entity_id IS NOT NULL " +
+			"AND (((business_date = CURRENT_DATE() AND source_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY)))) " +
+			"AND (i.entity_id IN (?)) " +
+			"GROUP BY 1, 2 ORDER BY report_time LIMIT 1000) AS t",
 		Args: []interface{}{2684543},
 	}
 
@@ -195,16 +195,16 @@ func TestParmetrizedQueryWarmupIdentity_DerivesWarmupIdentityFromGroupedAndTimel
 		t.Fatalf("WarmupIdentity() error = %v", err)
 	}
 
-	if strings.Contains(identitySQL, "i.order_id IN (?)") {
+	if strings.Contains(identitySQL, "i.entity_id IN (?)") {
 		t.Fatalf("expected selector predicate to be removed, got %q", identitySQL)
 	}
 	if strings.Contains(strings.ToUpper(identitySQL), "LIMIT 1000") {
 		t.Fatalf("expected limit to be removed, got %q", identitySQL)
 	}
-	if !strings.Contains(identitySQL, "i.order_id IS NOT NULL") {
+	if !strings.Contains(identitySQL, "i.entity_id IS NOT NULL") {
 		t.Fatalf("expected non-selector predicate to remain, got %q", identitySQL)
 	}
-	if !strings.Contains(identitySQL, "advertiser_date = CURRENT_DATE()") {
+	if !strings.Contains(identitySQL, "business_date = CURRENT_DATE()") {
 		t.Fatalf("expected grouped date predicate to remain, got %q", identitySQL)
 	}
 	if len(identityArgs) != 0 {
@@ -217,32 +217,32 @@ func TestParmetrizedQueryWarmupIdentity_DerivesWarmupIdentityFromGroupedAndTimel
 
 func TestParmetrizedQueryWarmupIdentity_DerivesWarmupIdentityFromNestedCTEByInPredicate(t *testing.T) {
 	query := &ParmetrizedQuery{
-		By: "order_id",
-		SQL: "SELECT t.order_id, t.advertiser_time, t.TIME_ELAPSED_PCT, t.EXPECTED_PACING_RATE, " +
-			"t.PACE_DAILY_BUDGET, t.BUDGET_PACING_INDEX, t.ACHIEVED_SPEND, t.TODAY_SPEND, " +
-			"t.DAILY_BUDGET, t.LIFETIME_BUDGET FROM (" +
+		By: "entity_id",
+		SQL: "SELECT t.entity_id, t.report_time, t.TIME_RATIO, t.EXPECTED_RATE, " +
+			"t.DAILY_LIMIT, t.PACING_INDEX, t.ACHIEVED_VALUE, t.CURRENT_VALUE, " +
+			"t.DAILY_TARGET, t.TOTAL_TARGET FROM (" +
 			"WITH ranked AS (" +
-			"SELECT id AS order_id, " +
-			"DATETIME_TRUNC(DATETIME(allocationTime, ianaTimezoneStr), DAY) AS advertiser_time, " +
-			"DATE(DATETIME(allocationTime, ianaTimezoneStr)) AS advertiser_date, " +
-			"DATE(allocationTime) AS event_date, " +
-			"pctServingTimeElapsed AS TIME_ELAPSED_PCT, " +
-			"expectedPacingRate AS EXPECTED_PACING_RATE, " +
-			"paceDailyBudget AS PACE_DAILY_BUDGET, " +
-			"cyclePerformance.budgetPacingIndex AS BUDGET_PACING_INDEX, " +
-			"delivery.todaySpendTotal.totalSpendLocal AS ACHIEVED_SPEND, " +
-			"delivery.todaySpendTotal.totalSpendLocal AS TODAY_SPEND, " +
-			"constraints.daily.budget AS DAILY_BUDGET, " +
-			"constraints.lifetime.budget AS LIFETIME_BUDGET, " +
-			"allocationTime, " +
-			"ROW_NUMBER() OVER (PARTITION BY id, DATETIME_TRUNC(DATETIME(allocationTime, ianaTimezoneStr), DAY) ORDER BY allocationTime DESC) AS RN " +
-			"FROM viant-mediator.mdp.bidalloc_adorder_fulfillment" +
+			"SELECT id AS entity_id, " +
+			"DATETIME_TRUNC(DATETIME(snapshot_time, timezone_name), DAY) AS report_time, " +
+			"DATE(DATETIME(snapshot_time, timezone_name)) AS business_date, " +
+			"DATE(snapshot_time) AS source_date, " +
+			"pctElapsed AS TIME_RATIO, " +
+			"expectedRate AS EXPECTED_RATE, " +
+			"dailyLimit AS DAILY_LIMIT, " +
+			"cycleMetrics.pacingIndex AS PACING_INDEX, " +
+			"delivery.currentTotals.totalAmount AS ACHIEVED_VALUE, " +
+			"delivery.currentTotals.totalAmount AS CURRENT_VALUE, " +
+			"constraints.daily.target AS DAILY_TARGET, " +
+			"constraints.total.target AS TOTAL_TARGET, " +
+			"snapshot_time, " +
+			"ROW_NUMBER() OVER (PARTITION BY id, DATETIME_TRUNC(DATETIME(snapshot_time, timezone_name), DAY) ORDER BY snapshot_time DESC) AS RN " +
+			"FROM project.dataset.fulfillment_snapshots" +
 			") " +
-			"SELECT order_id, advertiser_time, TIME_ELAPSED_PCT, EXPECTED_PACING_RATE, PACE_DAILY_BUDGET, " +
-			"BUDGET_PACING_INDEX, ACHIEVED_SPEND, TODAY_SPEND, DAILY_BUDGET, LIFETIME_BUDGET " +
-			"FROM ranked WHERE RN = 1 AND order_id IS NOT NULL " +
-			"AND (((advertiser_date = CURRENT_DATE() AND event_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY)))) " +
-			"AND (order_id IN (?)) ORDER BY advertiser_time LIMIT 1000) AS t",
+			"SELECT entity_id, report_time, TIME_RATIO, EXPECTED_RATE, DAILY_LIMIT, " +
+			"PACING_INDEX, ACHIEVED_VALUE, CURRENT_VALUE, DAILY_TARGET, TOTAL_TARGET " +
+			"FROM ranked WHERE RN = 1 AND entity_id IS NOT NULL " +
+			"AND (((business_date = CURRENT_DATE() AND source_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 1 DAY)))) " +
+			"AND (entity_id IN (?)) ORDER BY report_time LIMIT 1000) AS t",
 		Args: []interface{}{2684543},
 	}
 
@@ -251,19 +251,19 @@ func TestParmetrizedQueryWarmupIdentity_DerivesWarmupIdentityFromNestedCTEByInPr
 		t.Fatalf("WarmupIdentity() error = %v", err)
 	}
 
-	if strings.Contains(identitySQL, "order_id IN (?)") {
+	if strings.Contains(identitySQL, "entity_id IN (?)") {
 		t.Fatalf("expected selector predicate to be removed, got %q", identitySQL)
 	}
 	if strings.Contains(strings.ToUpper(identitySQL), "LIMIT 1000") {
 		t.Fatalf("expected limit to be removed, got %q", identitySQL)
 	}
-	if !strings.Contains(identitySQL, "viant-mediator.mdp.bidalloc_adorder_fulfillment") {
+	if !strings.Contains(identitySQL, "project.dataset.fulfillment_snapshots") {
 		t.Fatalf("expected pacing source query to remain, got %q", identitySQL)
 	}
 	if !strings.Contains(identitySQL, "RN = 1") {
 		t.Fatalf("expected final-select predicate to remain, got %q", identitySQL)
 	}
-	if !strings.Contains(identitySQL, "order_id IS NOT NULL") {
+	if !strings.Contains(identitySQL, "entity_id IS NOT NULL") {
 		t.Fatalf("expected non-selector predicate to remain, got %q", identitySQL)
 	}
 	if len(identityArgs) != 0 {
@@ -276,9 +276,9 @@ func TestParmetrizedQueryWarmupIdentity_DerivesWarmupIdentityFromNestedCTEByInPr
 
 func TestParmetrizedQueryWarmupIdentity_FallsBackWhenMultipleByInPredicatesExist(t *testing.T) {
 	query := &ParmetrizedQuery{
-		By: "order_id",
-		SQL: "SELECT * FROM fact_perf_daily_v p " +
-			"WHERE advertiser_date = CURRENT_DATE() AND p.order_id IN (?) AND p.order_id = ?",
+		By: "entity_id",
+		SQL: "SELECT * FROM activity_metrics p " +
+			"WHERE business_date = CURRENT_DATE() AND p.entity_id IN (?) AND p.entity_id = ?",
 		Args: []interface{}{2684543, 2684543},
 	}
 
@@ -305,12 +305,12 @@ func TestParmetrizedQueryWarmupIdentity_FallsBackWhenMultipleByInPredicatesExist
 
 func TestParmetrizedQueryWarmupIdentity_DerivesWarmupIdentityFromNestedByInPredicateAndDropsLimit(t *testing.T) {
 	query := &ParmetrizedQuery{
-		By: "audience_id",
-		SQL: "SELECT t.event_date, t.order_id, t.audience_id FROM (" +
-			"SELECT si.event_date, si.order_id, si.audience_id " +
-			"FROM dataset.soft_ineligibilities si " +
-			"JOIN UNNEST(si.feature_rejection_estimates) fr ON 1=1 " +
-			"WHERE si.event_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 3 DAY) AND (si.audience_id IN (?)) " +
+		By: "segment_id",
+		SQL: "SELECT t.event_date, t.entity_id, t.segment_id FROM (" +
+			"SELECT si.event_date, si.entity_id, si.segment_id " +
+			"FROM dataset.nested_rejections si " +
+			"JOIN UNNEST(si.reason_estimates) fr ON 1=1 " +
+			"WHERE si.event_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 3 DAY) AND (si.segment_id IN (?)) " +
 			"LIMIT 40) AS t",
 		Args: []interface{}{7333543},
 	}
@@ -320,7 +320,7 @@ func TestParmetrizedQueryWarmupIdentity_DerivesWarmupIdentityFromNestedByInPredi
 		t.Fatalf("WarmupIdentity() error = %v", err)
 	}
 
-	if strings.Contains(identitySQL, "si.audience_id IN (?)") {
+	if strings.Contains(identitySQL, "si.segment_id IN (?)") {
 		t.Fatalf("expected selector predicate to be removed, got %q", identitySQL)
 	}
 	if strings.Contains(strings.ToUpper(identitySQL), "LIMIT 40") {
@@ -339,11 +339,11 @@ func TestParmetrizedQueryWarmupIdentity_DerivesWarmupIdentityFromNestedByInPredi
 
 func TestParmetrizedQueryWarmupIdentity_DerivesWarmupIdentityFromPureWrapperAndDropsOuterPagination(t *testing.T) {
 	query := &ParmetrizedQuery{
-		By: "audience_id",
-		SQL: "SELECT t.event_date, t.order_id, t.audience_id FROM (" +
-			"SELECT si.event_date, si.order_id, si.audience_id " +
-			"FROM dataset.soft_ineligibilities si " +
-			"WHERE si.event_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 3 DAY) AND (si.audience_id IN (?))) AS t " +
+		By: "segment_id",
+		SQL: "SELECT t.event_date, t.entity_id, t.segment_id FROM (" +
+			"SELECT si.event_date, si.entity_id, si.segment_id " +
+			"FROM dataset.nested_rejections si " +
+			"WHERE si.event_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 3 DAY) AND (si.segment_id IN (?))) AS t " +
 			"ORDER BY t.event_date LIMIT 40 OFFSET 10",
 		Args: []interface{}{7333543},
 	}
@@ -353,7 +353,7 @@ func TestParmetrizedQueryWarmupIdentity_DerivesWarmupIdentityFromPureWrapperAndD
 		t.Fatalf("WarmupIdentity() error = %v", err)
 	}
 
-	if strings.Contains(identitySQL, "si.audience_id IN (?)") {
+	if strings.Contains(identitySQL, "si.segment_id IN (?)") {
 		t.Fatalf("expected selector predicate to be removed, got %q", identitySQL)
 	}
 	if strings.Contains(strings.ToUpper(identitySQL), "LIMIT 40") {
@@ -378,11 +378,11 @@ func TestParmetrizedQueryWarmupIdentity_DerivesWarmupIdentityFromPureWrapperAndD
 
 func TestParmetrizedQueryWarmupIdentity_FallsBackWhenOuterWrapperUsesRealWindowClause(t *testing.T) {
 	query := &ParmetrizedQuery{
-		By: "audience_id",
+		By: "segment_id",
 		SQL: "SELECT t.event_date, ROW_NUMBER() OVER win AS rn FROM (" +
-			"SELECT si.event_date, si.audience_id " +
-			"FROM dataset.soft_ineligibilities si " +
-			"WHERE si.audience_id IN (?)) AS t " +
+			"SELECT si.event_date, si.segment_id " +
+			"FROM dataset.nested_rejections si " +
+			"WHERE si.segment_id IN (?)) AS t " +
 			"WINDOW win AS (ORDER BY t.event_date)",
 		Args: []interface{}{7333543},
 	}
@@ -409,10 +409,10 @@ func TestParmetrizedQueryWarmupIdentity_FallsBackWhenOuterWrapperUsesRealWindowC
 
 func TestParmetrizedQueryWarmupIdentity_DerivesWarmupIdentityFromProjectionAliasSelector(t *testing.T) {
 	query := &ParmetrizedQuery{
-		By: "CAMPAIGN_ID",
-		SQL: "SELECT t.CAMPAIGN_ID, t.NAME FROM (" +
-			"SELECT c.ID AS CAMPAIGN_ID, c.NAME " +
-			"FROM CI_CAMPAIGN c " +
+		By: "GROUP_ID",
+		SQL: "SELECT t.GROUP_ID, t.NAME FROM (" +
+			"SELECT c.ID AS GROUP_ID, c.NAME " +
+			"FROM ENTITY c " +
 			"WHERE 1 = 1 AND (c.ID IN (?)) " +
 			"LIMIT 40) t",
 		Args: []interface{}{556110},
@@ -442,11 +442,11 @@ func TestParmetrizedQueryWarmupIdentity_DerivesWarmupIdentityFromProjectionAlias
 
 func TestParmetrizedQueryWarmupIdentity_DoesNotMatchUnrelatedQualifiedLeafFromProjectionAlias(t *testing.T) {
 	query := &ParmetrizedQuery{
-		By: "CAMPAIGN_ID",
-		SQL: "SELECT t.CAMPAIGN_ID FROM (" +
-			"SELECT c.ID AS CAMPAIGN_ID " +
-			"FROM CI_CAMPAIGN c JOIN CI_CAMPAIGN_FLIGHT cf ON 1 = 1 " +
-			"WHERE cf.ID IN (?) " +
+		By: "GROUP_ID",
+		SQL: "SELECT t.GROUP_ID FROM (" +
+			"SELECT c.ID AS GROUP_ID " +
+			"FROM ENTITY c JOIN ENTITY_RELATION rel ON 1 = 1 " +
+			"WHERE rel.ID IN (?) " +
 			"LIMIT 40) t",
 		Args: []interface{}{556110},
 	}
@@ -473,9 +473,9 @@ func TestParmetrizedQueryWarmupIdentity_DoesNotMatchUnrelatedQualifiedLeafFromPr
 
 func TestParmetrizedQueryWarmupIdentity_FallsBackWhenSelectorPredicateIsNotTopLevelAnd(t *testing.T) {
 	query := &ParmetrizedQuery{
-		By:   "campaign_id",
-		SQL:  "SELECT * FROM campaign_flight WHERE tenant_id = ? AND (campaign_id = ? OR campaign_id = ?)",
-		Args: []interface{}{"tenant-a", 100, 200},
+		By:   "group_id",
+		SQL:  "SELECT * FROM entity_relation WHERE scope_id = ? AND (group_id = ? OR group_id = ?)",
+		Args: []interface{}{"scope-a", 100, 200},
 	}
 
 	identitySQL, identityArgs, identityArgsMarshal, err := query.WarmupIdentity()
@@ -500,9 +500,9 @@ func TestParmetrizedQueryWarmupIdentity_FallsBackWhenSelectorPredicateIsNotTopLe
 
 func TestParmetrizedQueryWarmupIdentity_FallsBackWhenQueryHasPlaceholderOutsideWhere(t *testing.T) {
 	query := &ParmetrizedQuery{
-		By:   "campaign_id",
-		SQL:  "SELECT ? AS marker FROM campaign_flight WHERE tenant_id = ? AND campaign_id = ?",
-		Args: []interface{}{"warmup", "tenant-a", 2002},
+		By:   "group_id",
+		SQL:  "SELECT ? AS marker FROM entity_relation WHERE scope_id = ? AND group_id = ?",
+		Args: []interface{}{"warmup", "scope-a", 2002},
 	}
 
 	identitySQL, identityArgs, identityArgsMarshal, err := query.WarmupIdentity()
@@ -527,8 +527,8 @@ func TestParmetrizedQueryWarmupIdentity_FallsBackWhenQueryHasPlaceholderOutsideW
 
 func TestParmetrizedQueryWarmupIdentity_RejectsPartialIdentity(t *testing.T) {
 	query := &ParmetrizedQuery{
-		SQL:          "SELECT * FROM campaign_flight",
-		IdentityArgs: []interface{}{"tenant-a"},
+		SQL:          "SELECT * FROM entity_relation",
+		IdentityArgs: []interface{}{"scope-a"},
 	}
 
 	_, _, _, err := query.WarmupIdentity()
@@ -539,9 +539,9 @@ func TestParmetrizedQueryWarmupIdentity_RejectsPartialIdentity(t *testing.T) {
 
 func TestParmetrizedQueryWarmupIdentity_NormalizesNilIdentityArgs(t *testing.T) {
 	query := &ParmetrizedQuery{
-		SQL:         "SELECT * FROM campaign_flight WHERE tenant_id = ?",
-		Args:        []interface{}{"tenant-a"},
-		IdentitySQL: "SELECT * FROM campaign_flight",
+		SQL:         "SELECT * FROM entity_relation WHERE scope_id = ?",
+		Args:        []interface{}{"scope-a"},
+		IdentitySQL: "SELECT * FROM entity_relation",
 	}
 
 	identitySQL, identityArgs, identityArgsMarshal, err := query.WarmupIdentity()
@@ -564,7 +564,7 @@ func TestParmetrizedQueryWarmupIdentity_NormalizesNilIdentityArgs(t *testing.T) 
 
 func TestParmetrizedQueryWarmupIdentity_NormalizesEmptyExecutionArgs(t *testing.T) {
 	query := &ParmetrizedQuery{
-		SQL: "SELECT * FROM campaign_flight",
+		SQL: "SELECT * FROM entity_relation",
 	}
 
 	identitySQL, identityArgs, identityArgsMarshal, err := query.WarmupIdentity()

@@ -38,7 +38,18 @@ func (c *Scanner) New(e *Entry) ScannerFn {
 		}
 
 		for i, cachedValue := range decoder.values {
+			if handled, err := scannerValue(values[i], cachedValue); handled {
+				if err != nil {
+					return err
+				}
+				continue
+			}
 			if cachedValue == nil {
+				if !supportsNullDestination(c.typeHolder.scanTypes[i]) {
+					return unsupportedNullScanError(c.typeHolder.scanTypes[i])
+				}
+				// Clear reused nullable destinations so cached NULL does not leave stale values behind.
+				zeroScanDestination(values[i])
 				continue
 			}
 
@@ -86,7 +97,16 @@ func NewProjectedScanner(entry *Entry, indexes []int, typeHolder *ScanTypeHolder
 				return fmt.Errorf("invalid projected cache format, stored index %v out of range %v", storedIndex, len(decoder.values))
 			}
 			cachedValue := decoder.values[storedIndex]
+			if handled, err := scannerValue(values[destIndex], cachedValue); handled {
+				if err != nil {
+					return err
+				}
+				continue
+			}
 			if cachedValue == nil {
+				if !supportsNullDestination(scanTypes[storedIndex]) {
+					return unsupportedNullScanError(scanTypes[storedIndex])
+				}
 				zeroScanDestination(values[destIndex])
 				continue
 			}
@@ -140,4 +160,24 @@ func zeroScanDestination(value interface{}) {
 		return
 	}
 	rValue.Elem().Set(reflect.Zero(rValue.Elem().Type()))
+}
+
+func unsupportedNullScanError(scanType reflect.Type) error {
+	scanType = normalizeCompatType(scanType)
+	if scanType == nil {
+		return fmt.Errorf("converting NULL is unsupported")
+	}
+	return fmt.Errorf("converting NULL to %s is unsupported", scanType.String())
+}
+
+func supportsNullDestination(scanType reflect.Type) bool {
+	if scanType == nil {
+		return false
+	}
+	switch scanType.Kind() {
+	case reflect.Ptr, reflect.Interface:
+		return true
+	default:
+		return isByteSliceType(scanType)
+	}
 }

@@ -132,6 +132,12 @@ func normalizeCompatTypeName(typeName string) string {
 }
 
 func isCompatibleCacheType(destinationType string, cachedType string) bool {
+	// Interface scan metadata does not identify a concrete SQL result type
+	// (for example SQLite aggregates). The destination scanner validates the
+	// actual encoded value rather than rejecting unknown metadata up front.
+	if cachedType == "interface {}" {
+		return true
+	}
 	if destinationType == cachedType {
 		return true
 	}

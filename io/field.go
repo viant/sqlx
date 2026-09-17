@@ -16,11 +16,18 @@ type (
 		EvalAddr    func(pointer unsafe.Pointer) interface{}
 		Info        *sink.Column
 		MatchesType bool
+		fieldIndex  []int
 	}
 
 	// Fields represents slice of Field
 	Fields []Field
 )
+
+// FieldIndex returns the mapped Go field's complete holder index. The returned
+// slice is detached; unresolved SQL columns have no model field path.
+func (f Field) FieldIndex() []int {
+	return append([]int(nil), f.fieldIndex...)
+}
 
 // ExtractColumnNames returns slice of column names for given Fields
 func (f Fields) ColumnNames() []string {

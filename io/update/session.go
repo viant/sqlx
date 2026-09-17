@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/viant/sqlx/io"
 	"github.com/viant/sqlx/io/config"
+	"github.com/viant/sqlx/io/errx"
 	"github.com/viant/sqlx/option"
 	"reflect"
 )
@@ -91,6 +92,12 @@ func (s *session) update(ctx context.Context, record interface{}) (int64, error)
 	placeholders = s.setMarker.Placeholders(record, placeholders)
 	result, err := s.stmt.ExecContext(ctx, placeholders...)
 	if err != nil {
+		if errx.IsDuplicateKey(err) {
+			return 0, errx.DuplicateKey("update", s.TableName, err)
+		}
+		if errx.IsConstraint(err) {
+			return 0, errx.Constraint("update", s.TableName, err)
+		}
 		return 0, err
 	}
 	affected, _ := result.RowsAffected()

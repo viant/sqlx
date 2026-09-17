@@ -3,6 +3,7 @@ package update
 import (
 	"bytes"
 	"fmt"
+	"github.com/viant/sqlx/io/errx"
 	"github.com/viant/sqlx/metadata/info"
 	"github.com/viant/sqlx/option"
 	"github.com/viant/xunsafe"
@@ -55,7 +56,7 @@ func NewBuilder(table string, columns []string, identityIndex int, dialect *info
 		return nil, fmt.Errorf("columns were empty")
 	}
 	if identityIndex <= 0 {
-		return nil, fmt.Errorf("identity index was empty")
+		return nil, errx.MissingIdentity("update", table, columns, identityIndex)
 	}
 	var fragments = make([]string, len(columns))
 	getter := dialect.PlaceholderGetter()

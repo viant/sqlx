@@ -107,6 +107,16 @@ func StructColumnMapper(src interface{}, options ...option.Option) ([]Column, Pl
 	} else {
 		columns = builder.mergeColumns()
 	}
+	if builder.setMarker != nil {
+		mapped := Columns(asColumnSlice(columns))
+		index := mapped.PrimaryKeys()
+		if index < 0 {
+			index = mapped.IdentityColumnPos()
+		}
+		if index >= 0 {
+			builder.setMarker.IdentityIndex = index
+		}
+	}
 
 	var getters []xunsafe.Getter
 	filedPos := map[string]int{}
@@ -123,13 +133,7 @@ func StructColumnMapper(src interface{}, options ...option.Option) ([]Column, Pl
 
 		}
 
-		if aTag.isIdentity(col.Name()) {
-			if builder.setMarker != nil {
-				builder.setMarker.IdentityIndex = i
-			}
-		}
-
-		getter, err := fieldGetter(aTag, field, recordType)
+		getter, err := columnGetter(aTag, fields, recordType)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -183,6 +187,8 @@ func fieldGetter(tag *Tag, field *xunsafe.Field, recordType reflect.Type) (xunsa
 	switch tag.Encoding {
 	case EncodingJSON:
 		return jsonFieldEncodder(tag, field, recordType), nil
+	case EncodingCSV:
+		return func(pointer unsafe.Pointer) interface{} { return &CSVEncodedValue{Val: field.Addr(pointer)} }, nil
 	default:
 		return nil, fmt.Errorf("unsupported column encoding type %v", tag.Encoding)
 	}
@@ -252,12 +258,13 @@ func (b *columnMapperBuilder) appendColumns(field reflect.StructField, caseForma
 		if holderTag.Ns != "" {
 			tag.Ns = holderTag.Ns
 		}
-		if actualHolder.Type.Kind() == reflect.Struct {
-			xField.Offset += actualHolder.Offset
-			holders = nil
+		immediateHolder := holders[len(holders)-1]
+		if immediateHolder.Type.Kind() == reflect.Struct {
+			xField.Offset += immediateHolder.Offset
+			holders = holders[:len(holders)-1]
 		}
 	}
-	holders = append(holders, xField)
+	holders = append(append([]*xunsafe.Field(nil), holders...), xField)
 	if xField.Anonymous || tag.Ns != "" {
 		fieldType := xField.Type
 		for fieldType.Kind() == reflect.Ptr {
@@ -267,7 +274,7 @@ func (b *columnMapperBuilder) appendColumns(field reflect.StructField, caseForma
 		if fieldType.Kind() == reflect.Struct {
 			numField := fieldType.NumField()
 			for i := 0; i < numField; i++ {
-				if err := b.appendColumns(fieldType.Field(i), caseFormat, xField); err != nil {
+				if err := b.appendColumns(fieldType.Field(i), caseFormat, holders...); err != nil {
 					return err
 				}
 			}

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/viant/sqlx/io"
 	"github.com/viant/sqlx/io/config"
+	"github.com/viant/sqlx/io/errx"
 	"github.com/viant/sqlx/metadata/info/dialect"
 	"github.com/viant/sqlx/metadata/sink"
 	"github.com/viant/sqlx/option"
@@ -24,10 +25,12 @@ type session struct {
 	db             *sql.DB
 	stmt           *sql.Stmt
 	recordUpdaters []recordUpdater
+	setMarker      *option.SetMarker
 }
 
 func (s *session) init(record interface{}) (err error) {
-	if s.columns, s.binder, err = s.Mapper(record); err != nil {
+	s.setMarker = &option.SetMarker{}
+	if s.columns, s.binder, err = s.Mapper(record, s.setMarker); err != nil {
 		return err
 	}
 	for i, column := range s.columns {
@@ -56,6 +59,11 @@ func (s *session) begin(ctx context.Context, db *sql.DB, options []option.Option
 }
 
 func (s *session) end(err error) error {
+	for _, updater := range s.recordUpdaters {
+		if numeric, ok := updater.(*numericSequencer); ok {
+			numeric.explicitIdentities = nil
+		}
+	}
 	if s.stmt != nil {
 		if sErr := s.stmt.Close(); sErr != nil {
 			if !isClosedError(err) {
@@ -124,10 +132,10 @@ func (s *session) insert(ctx context.Context, recValues []interface{}, valueAt i
 		}
 
 		s.binder(record, recValues[offset:], 0, len(s.columns))
-		for _, updater := range s.recordUpdaters {
+		for updaterIndex, updater := range s.recordUpdaters {
 			idIndex := offset + updater.columnPosition()
-			identitiesBatched[inBatchCount] = recValues[idIndex]
-			if err = updater.updateRecord(ctx, s, record, &recValues[idIndex], size, recValues[offset:idIndex+1], nil); err != nil {
+			identitiesBatched[updaterIndex*s.batchSize+inBatchCount] = recValues[idIndex]
+			if err = updater.updateRecord(ctx, s, record, &recValues[idIndex], size, recValues[offset:offset+len(s.columns)], nil); err != nil {
 				return 0, 0, err
 			}
 		}
@@ -163,6 +171,12 @@ func (s *session) flush(ctx context.Context, values []interface{}, identities []
 	}
 	result, err := s.stmt.ExecContext(ctx, values...)
 	if err != nil {
+		if errx.IsDuplicateKey(err) {
+			return 0, 0, errx.DuplicateKey("insert", s.TableName, err)
+		}
+		if errx.IsConstraint(err) {
+			return 0, 0, errx.Constraint("insert", s.TableName, err)
+		}
 		return 0, 0, err
 	}
 
@@ -179,8 +193,9 @@ func (s *session) flush(ctx context.Context, values []interface{}, identities []
 		}
 	}
 	if id > 0 {
-		for _, updater := range s.recordUpdaters {
-			lastInsertedID, err := updater.afterFlush(ctx, values, identities, rowsAffected, id)
+		for updaterIndex, updater := range s.recordUpdaters {
+			start := updaterIndex * s.batchSize
+			lastInsertedID, err := updater.afterFlush(ctx, values, identities[start:start+s.batchSize], rowsAffected, id)
 			if err != nil {
 				return 0, 0, err
 			}
@@ -197,10 +212,15 @@ func (s *session) flushQuery(ctx context.Context, values []interface{}, identiti
 	var rowsAffected, newLastInsertedID int64
 	rows, err := s.stmt.QueryContext(ctx, values...)
 	if err != nil {
+		if errx.IsDuplicateKey(err) {
+			return 0, 0, errx.DuplicateKey("insert", s.TableName, err)
+		}
+		if errx.IsConstraint(err) {
+			return 0, 0, errx.Constraint("insert", s.TableName, err)
+		}
 		return 0, 0, err
 	}
 	defer io.RunWithError(rows.Close, &err)
-	rows.NextResultSet()
 	newLastInsertedID = 0
 
 	for rows.Next() {
@@ -216,5 +236,5 @@ func (s *session) flushQuery(ctx context.Context, values []interface{}, identiti
 		*idPtr = newLastInsertedID
 		rowsAffected++
 	}
-	return rowsAffected, newLastInsertedID, err
+	return rowsAffected, newLastInsertedID, rows.Err()
 }

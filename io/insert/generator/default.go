@@ -3,15 +3,17 @@ package generator
 import (
 	"context"
 	"database/sql"
+	"reflect"
+	"strings"
+	"sync"
+	"unsafe"
+
 	"github.com/viant/sqlx/io"
 	"github.com/viant/sqlx/io/config"
 	"github.com/viant/sqlx/io/read"
 	"github.com/viant/sqlx/metadata/info"
 	"github.com/viant/sqlx/metadata/sink"
 	"github.com/viant/sqlx/option"
-	"reflect"
-	"strings"
-	"unsafe"
 )
 
 // Default represents generator for default strategy
@@ -27,11 +29,17 @@ type Default struct {
 }
 
 // NewDefault creates a default generator
-func NewDefault(ctx context.Context, dialect *info.Dialect, db *sql.DB, session *sink.Session) (*Default, error) {
+func NewDefault(ctx context.Context, dialect *info.Dialect, db *sql.DB, session *sink.Session, metaSessionCacheKey string, cache *sync.Map) (*Default, error) {
 	if session == nil {
 		var err error
-		if session, err = config.Session(ctx, db, dialect); err != nil {
-			return nil, err
+		if metaSessionCacheKey != "" {
+			if session, err = config.SessionCached(ctx, db, dialect, metaSessionCacheKey, cache); err != nil {
+				return nil, err
+			}
+		} else {
+			if session, err = config.Session(ctx, db, dialect); err != nil {
+				return nil, err
+			}
 		}
 	}
 	return &Default{
@@ -175,7 +183,7 @@ func (d *Default) shouldLoadColumnInfo(rType reflect.Type) bool {
 
 	for i := 0; i < rType.NumField(); i++ {
 		tag := io.ParseTag(rType.Field(i).Tag)
-		if tag.Generator != "" && !(tag.PrimaryKey && tag.Autoincrement) {
+		if tag.HasDefaultGenerator() {
 			return true
 		}
 	}
