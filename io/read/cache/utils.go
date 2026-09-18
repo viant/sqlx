@@ -1,6 +1,9 @@
 package cache
 
-import "io"
+import (
+	"bytes"
+	"io"
+)
 
 type LineReader interface {
 	ReadLine() (line []byte, prefix bool, err error)
@@ -11,6 +14,7 @@ func ReadLine(reader LineReader) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	line = bytes.Clone(line)
 
 	var restLine []byte
 	for prefix {
