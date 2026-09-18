@@ -114,6 +114,31 @@ func (p *Parameters) NamedCount() int {
 func (p *Parameters) PositionalCount() int { return p.Count() - p.NamedCount() }
 func (p *Parameters) HasPositional() bool  { return p.PositionalCount() != 0 }
 
+// RewritePositional replaces executable positional placeholders in source order.
+// The callback receives their zero-based ordinal. Named parameters, operators,
+// quoted regions and comments remain unchanged; the parsed source is not mutated.
+func (p *Parameters) RewritePositional(replace func(int) string) string {
+	if p == nil {
+		return ""
+	}
+	if replace == nil || !p.HasPositional() {
+		return p.SQL
+	}
+	var result strings.Builder
+	previous, ordinal := 0, 0
+	for _, item := range p.items {
+		if item.name != "" {
+			continue
+		}
+		result.WriteString(p.SQL[previous:item.start])
+		result.WriteString(replace(ordinal))
+		previous = item.end
+		ordinal++
+	}
+	result.WriteString(p.SQL[previous:])
+	return result.String()
+}
+
 // ExpandSinglePositional expands the sole executable positional placeholder.
 // Existing named placeholders, literal text and comments remain byte-for-byte.
 func (p *Parameters) ExpandSinglePositional(count int) string {
