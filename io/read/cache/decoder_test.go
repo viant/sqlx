@@ -3,7 +3,9 @@ package cache
 import (
 	"github.com/francoispqt/gojay"
 	"github.com/stretchr/testify/assert"
+	"math"
 	"reflect"
+	"strconv"
 	"testing"
 	"time"
 )
@@ -175,6 +177,31 @@ func TestDecoder_NullSlicePreservesNil(t *testing.T) {
 	err := gojay.UnmarshalJSONArray([]byte(`[null]`), decoder)
 	assert.NoError(t, err)
 	assert.Nil(t, decoder.values[0])
+}
+
+func TestDecoder_FloatUsesCorrectlyRoundedParsing(t *testing.T) {
+	literals := []string{
+		"1.1600000000000001",
+		"209.40650000000102",
+	}
+	for _, literal := range literals {
+		expected, err := strconv.ParseFloat(literal, 64)
+		if err != nil {
+			t.Fatalf("ParseFloat(%q) error = %v", literal, err)
+		}
+		payload := "[" + literal + "]"
+		decoder := NewDecoder([]reflect.Type{reflect.TypeOf(float64(0))}, []byte(payload))
+		if err := gojay.UnmarshalJSONArray([]byte(payload), decoder); err != nil {
+			t.Fatalf("UnmarshalJSONArray(%q) error = %v", payload, err)
+		}
+		actualPtr, ok := decoder.values[0].(*float64)
+		if !ok || actualPtr == nil {
+			t.Fatalf("decoded value type = %T, want *float64", decoder.values[0])
+		}
+		if got, want := math.Float64bits(*actualPtr), math.Float64bits(expected); got != want {
+			t.Fatalf("decoded bits for %s = %x, want %x", literal, got, want)
+		}
+	}
 }
 
 func boolPtr(b bool) *bool {

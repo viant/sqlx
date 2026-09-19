@@ -3,7 +3,9 @@ package cache
 import (
 	"database/sql"
 	"encoding/json"
+	"math"
 	"reflect"
+	"strconv"
 	"testing"
 	"time"
 )
@@ -357,6 +359,64 @@ func TestScannerTypedSliceReuse(t *testing.T) {
 			}
 			if campaignIDs != nil {
 				t.Fatalf("campaignIDs got %#v want nil", campaignIDs)
+			}
+		})
+	}
+}
+
+func TestScannerFloatReplayUsesCorrectlyRoundedParsing(t *testing.T) {
+	literals := []string{
+		"1.1600000000000001",
+		"209.40650000000102",
+	}
+	for _, projected := range []bool{false, true} {
+		name := "full"
+		if projected {
+			name = "projected"
+		}
+		t.Run(name, func(t *testing.T) {
+			fields := []*Field{{ColumnName: "total_spend", ColumnScanType: "float64"}}
+			payloads := []string{"[" + literals[0] + "]", "[" + literals[1] + "]"}
+			if projected {
+				fields = []*Field{
+					{ColumnName: "total_spend", ColumnScanType: "float64"},
+					{ColumnName: "label", ColumnScanType: "string"},
+				}
+				payloads = []string{
+					"[" + literals[0] + ",\"ignored\"]",
+					"[" + literals[1] + ",\"ignored\"]",
+				}
+			}
+			for _, field := range fields {
+				if err := field.Init(); err != nil {
+					t.Fatalf("field init error = %v", err)
+				}
+			}
+			entry := &Entry{
+				Meta: Meta{
+					Fields:           fields,
+					ProjectedIndexes: []int{0},
+				},
+			}
+			var totalSpend float64
+			holder := &ScanTypeHolder{}
+			holder.InitType([]interface{}{&totalSpend})
+			scan := NewScanner(holder, nil).New(entry)
+			if projected {
+				scan = NewProjectedScanner(entry, entry.Meta.ProjectedIndexes, holder, nil)
+			}
+			for i, payload := range payloads {
+				expected, err := strconv.ParseFloat(literals[i], 64)
+				if err != nil {
+					t.Fatalf("ParseFloat(%q) error = %v", literals[i], err)
+				}
+				entry.Data = []byte(payload)
+				if err := scan(&totalSpend); err != nil {
+					t.Fatal(err)
+				}
+				if got, want := math.Float64bits(totalSpend), math.Float64bits(expected); got != want {
+					t.Fatalf("decoded bits for %s = %x, want %x", literals[i], got, want)
+				}
 			}
 		})
 	}

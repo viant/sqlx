@@ -7,6 +7,7 @@ import (
 	"github.com/francoispqt/gojay"
 	"github.com/viant/xunsafe"
 	"reflect"
+	"strconv"
 	"time"
 	"unsafe"
 )
@@ -35,6 +36,10 @@ func cursor(dec *gojay.Decoder) int {
 
 func data(dec *gojay.Decoder) []byte {
 	return *(*[]byte)(unsafe.Pointer(uintptr(unsafe.Pointer(dec)) + dataOffset))
+}
+
+func setCursor(dec *gojay.Decoder, value int) {
+	*(*int)(unsafe.Pointer(uintptr(unsafe.Pointer(dec)) + curOffset)) = value
 }
 
 type (
@@ -95,14 +100,9 @@ func (d *Decoder) UnmarshalJSONArray(decoder *gojay.Decoder) error {
 
 func nextTokenNull(decoder *gojay.Decoder) bool {
 	buffer := data(decoder)
-	position := cursor(decoder)
-	for position < len(buffer) {
-		switch buffer[position] {
-		case ' ', '\n', '\t', '\r', ',':
-			position++
-			continue
-		}
-		break
+	position, _ := nextTokenPosition(buffer, cursor(decoder))
+	if position < 0 {
+		return false
 	}
 	if position+4 > len(buffer) {
 		return false
@@ -119,6 +119,129 @@ func nextTokenNull(decoder *gojay.Decoder) bool {
 	default:
 		return false
 	}
+}
+
+func nextTokenPosition(buffer []byte, position int) (int, bool) {
+	for position < len(buffer) {
+		switch buffer[position] {
+		case ' ', '\n', '\t', '\r', ',':
+			position++
+			continue
+		}
+		break
+	}
+	if position >= len(buffer) {
+		return 0, false
+	}
+	return position, true
+}
+
+func consumeNullToken(decoder *gojay.Decoder) bool {
+	buffer := data(decoder)
+	position, ok := nextTokenPosition(buffer, cursor(decoder))
+	if !ok || position+4 > len(buffer) {
+		return false
+	}
+	if string(buffer[position:position+4]) != "null" {
+		return false
+	}
+	if position+4 < len(buffer) {
+		switch buffer[position+4] {
+		case ' ', '\n', '\t', '\r', ',', ']', '}':
+		default:
+			return false
+		}
+	}
+	setCursor(decoder, position+4)
+	return true
+}
+
+func nextFloatToken(decoder *gojay.Decoder) (string, error) {
+	buffer := data(decoder)
+	position, ok := nextTokenPosition(buffer, cursor(decoder))
+	if !ok {
+		return "", fmt.Errorf("unexpected end of JSON while decoding float")
+	}
+	start := position
+	if buffer[position] == '-' {
+		position++
+		if position >= len(buffer) {
+			return "", fmt.Errorf("unexpected end of JSON while decoding float")
+		}
+	}
+	digits := 0
+	for position < len(buffer) && isJSONDigit(buffer[position]) {
+		position++
+		digits++
+	}
+	if position < len(buffer) && buffer[position] == '.' {
+		position++
+		for position < len(buffer) && isJSONDigit(buffer[position]) {
+			position++
+			digits++
+		}
+	}
+	if digits == 0 {
+		return "", fmt.Errorf("invalid JSON float token")
+	}
+	if position < len(buffer) && (buffer[position] == 'e' || buffer[position] == 'E') {
+		position++
+		if position < len(buffer) && (buffer[position] == '+' || buffer[position] == '-') {
+			position++
+		}
+		expDigits := 0
+		for position < len(buffer) && isJSONDigit(buffer[position]) {
+			position++
+			expDigits++
+		}
+		if expDigits == 0 {
+			return "", fmt.Errorf("invalid JSON float exponent")
+		}
+	}
+	end := position
+	if end < len(buffer) {
+		switch buffer[end] {
+		case ' ', '\n', '\t', '\r', ',', ']', '}':
+		default:
+			return "", fmt.Errorf("invalid JSON float delimiter")
+		}
+	}
+	setCursor(decoder, end)
+	return string(buffer[start:end]), nil
+}
+
+func isJSONDigit(b byte) bool {
+	return b >= '0' && b <= '9'
+}
+
+func decodeFloat64Value(decoder *gojay.Decoder) (float64, bool, error) {
+	if consumeNullToken(decoder) {
+		return 0, true, nil
+	}
+	token, err := nextFloatToken(decoder)
+	if err != nil {
+		return 0, false, err
+	}
+	parsed, err := strconv.ParseFloat(token, 64)
+	if err != nil {
+		return 0, false, err
+	}
+	return parsed, false, nil
+}
+
+func decodeFloat32Value(decoder *gojay.Decoder) (float32, bool, error) {
+	if consumeNullToken(decoder) {
+		return 0, true, nil
+	}
+	token, err := nextFloatToken(decoder)
+	if err != nil {
+		return 0, false, err
+	}
+	parsed, err := strconv.ParseFloat(token, 32)
+	if err != nil {
+		return 0, false, err
+	}
+	return float32(parsed), false, nil
 }
 
 func (d *Decoder) buildDecoders() {
@@ -458,28 +581,48 @@ func stringDecoder(ptr bool) DecoderFn {
 func float64Decoder(ptr bool) DecoderFn {
 	if !ptr {
 		return func(decoder *gojay.Decoder) (interface{}, error) {
-			aFloat := float64(0)
-			return &aFloat, decoder.Float64(&aFloat)
+			aFloat, _, err := decodeFloat64Value(decoder)
+			if err != nil {
+				return nil, err
+			}
+			return &aFloat, nil
 		}
 	}
 
 	return func(decoder *gojay.Decoder) (interface{}, error) {
-		floatPtr := new(float64)
-		return &floatPtr, decoder.Float64Null(&floatPtr)
+		aFloat, wasNull, err := decodeFloat64Value(decoder)
+		if err != nil {
+			return nil, err
+		}
+		if wasNull {
+			return nil, nil
+		}
+		floatPtr := &aFloat
+		return &floatPtr, nil
 	}
 }
 
 func float32Decoder(ptr bool) DecoderFn {
 	if !ptr {
 		return func(decoder *gojay.Decoder) (interface{}, error) {
-			anInt := float32(0)
-			return &anInt, decoder.Float32(&anInt)
+			aFloat, _, err := decodeFloat32Value(decoder)
+			if err != nil {
+				return nil, err
+			}
+			return &aFloat, nil
 		}
 	}
 
 	return func(decoder *gojay.Decoder) (interface{}, error) {
-		float32Ptr := new(float32)
-		return &float32Ptr, decoder.Float32Null(&float32Ptr)
+		aFloat, wasNull, err := decodeFloat32Value(decoder)
+		if err != nil {
+			return nil, err
+		}
+		if wasNull {
+			return nil, nil
+		}
+		float32Ptr := &aFloat
+		return &float32Ptr, nil
 	}
 }
 
