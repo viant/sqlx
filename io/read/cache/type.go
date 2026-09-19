@@ -52,7 +52,12 @@ func (t *ScanTypeHolder) Match(entry *Entry) bool {
 		return false
 	}
 
-	entry.Meta.Type = t.dataTypes
+	// Projected entries keep Meta.Type in stored cache order. Overwriting it
+	// with destination-order types causes EffectiveType to project twice on
+	// subsequent rows when the requested field order differs from stored order.
+	if !entry.Meta.Projected() {
+		entry.Meta.Type = t.dataTypes
+	}
 	return true
 }
 
