@@ -13,6 +13,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/viant/parsly/matcher"
 	"github.com/viant/sqlparser"
+	"github.com/viant/sqlparser/expr"
+	"github.com/viant/sqlparser/node"
 	"github.com/viant/sqlparser/query"
 	"github.com/viant/sqlx/io"
 	"github.com/viant/sqlx/io/read/cache"
@@ -164,6 +166,9 @@ func tryOrderedSQL(SQL string, column string) (string, bool) {
 	if orderedByColumn {
 		return trimmedSQL, true
 	}
+	if orderByTerms, ok := warmupOuterOrderTerms(trimmedSQL); ok && len(orderByTerms) > 0 {
+		return "SELECT * FROM (" + trimmedSQL + ") AS _sqlx_warmup ORDER BY " + column + ", " + strings.Join(orderByTerms, ", "), true
+	}
 	return "SELECT * FROM (" + trimmedSQL + ") AS _sqlx_warmup ORDER BY " + column, true
 }
 
@@ -183,6 +188,68 @@ func warmupOrderState(SQL string, column string) (bool, bool) {
 	}
 
 	return true, warmupFirstOrderMatches(parsed, column)
+}
+
+func warmupOuterOrderTerms(SQL string) ([]string, bool) {
+	parsed, err := sqlparser.ParseQuery(SQL)
+	if err != nil || parsed == nil || len(parsed.OrderBy) == 0 {
+		return nil, false
+	}
+	result := make([]string, 0, len(parsed.OrderBy))
+	for _, item := range parsed.OrderBy {
+		text, ok := warmupOuterOrderTerm(item)
+		if !ok {
+			return nil, false
+		}
+		result = append(result, text)
+	}
+	return result, len(result) > 0
+}
+
+func warmupOuterOrderTerm(item *query.Item) (string, bool) {
+	if item == nil || item.Expr == nil {
+		return "", false
+	}
+	identity := expr.Identity(item.Expr)
+	if identity == nil {
+		return "", false
+	}
+	base, ok := warmupOuterOrderIdentity(identity)
+	if !ok || base == "" {
+		return "", false
+	}
+	if item.Direction != "" {
+		base += " " + item.Direction
+	}
+	return base, true
+}
+
+func warmupOuterOrderIdentity(n node.Node) (string, bool) {
+	switch actual := n.(type) {
+	case *expr.Ident:
+		return actual.Name, actual.Name != ""
+	case *expr.Selector:
+		leaf := warmupSelectorLeaf(actual)
+		return leaf, leaf != ""
+	default:
+		return "", false
+	}
+}
+
+func warmupSelectorLeaf(selector *expr.Selector) string {
+	if selector == nil {
+		return ""
+	}
+	switch actual := selector.X.(type) {
+	case nil:
+		return selector.Name
+	case *expr.Ident:
+		return actual.Name
+	case *expr.Selector:
+		return warmupSelectorLeaf(actual)
+	default:
+		return selector.Name
+	}
 }
 
 func warmupFirstOrderMatches(sel *query.Select, column string) bool {
