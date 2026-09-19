@@ -229,13 +229,26 @@ func TestTryOrderedSQL_WrapsWhenOrderedByDifferentColumn(t *testing.T) {
 }
 
 func TestTryOrderedSQL_PreservesQualifiedDescendingTermsWhenWrapping(t *testing.T) {
+	sql := "SELECT m.audience_id, m.advertiser_time AS ordered_at, m.metric_name AS metric_label FROM metrics m ORDER BY m.advertiser_time DESC, m.metric_name"
+
+	gotSQL, ordered := tryOrderedSQL(sql, "audience_id")
+	if !ordered {
+		t.Fatalf("expected ordered result")
+	}
+	want := "SELECT * FROM (SELECT m.audience_id, m.advertiser_time AS ordered_at, m.metric_name AS metric_label FROM metrics m ORDER BY m.advertiser_time DESC, m.metric_name) AS _sqlx_warmup ORDER BY audience_id, ordered_at DESC, metric_label"
+	if gotSQL != want {
+		t.Fatalf("unexpected SQL %q, want %q", gotSQL, want)
+	}
+}
+
+func TestTryOrderedSQL_FallsBackWhenWrappedOrderTermIsNotProjected(t *testing.T) {
 	sql := "SELECT m.audience_id, m.advertiser_time FROM metrics m ORDER BY m.advertiser_time DESC, m.metric_name"
 
 	gotSQL, ordered := tryOrderedSQL(sql, "audience_id")
 	if !ordered {
 		t.Fatalf("expected ordered result")
 	}
-	want := "SELECT * FROM (SELECT m.audience_id, m.advertiser_time FROM metrics m ORDER BY m.advertiser_time DESC, m.metric_name) AS _sqlx_warmup ORDER BY audience_id, advertiser_time DESC, metric_name"
+	want := "SELECT * FROM (SELECT m.audience_id, m.advertiser_time FROM metrics m ORDER BY m.advertiser_time DESC, m.metric_name) AS _sqlx_warmup ORDER BY audience_id"
 	if gotSQL != want {
 		t.Fatalf("unexpected SQL %q, want %q", gotSQL, want)
 	}

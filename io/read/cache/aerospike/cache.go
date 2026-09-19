@@ -195,9 +195,10 @@ func warmupOuterOrderTerms(SQL string) ([]string, bool) {
 	if err != nil || parsed == nil || len(parsed.OrderBy) == 0 {
 		return nil, false
 	}
+	visible := warmupOuterVisibleOrderTerms(parsed.List)
 	result := make([]string, 0, len(parsed.OrderBy))
 	for _, item := range parsed.OrderBy {
-		text, ok := warmupOuterOrderTerm(item)
+		text, ok := warmupOuterOrderTerm(item, visible)
 		if !ok {
 			return nil, false
 		}
@@ -206,7 +207,7 @@ func warmupOuterOrderTerms(SQL string) ([]string, bool) {
 	return result, len(result) > 0
 }
 
-func warmupOuterOrderTerm(item *query.Item) (string, bool) {
+func warmupOuterOrderTerm(item *query.Item, visible map[string]string) (string, bool) {
 	if item == nil || item.Expr == nil {
 		return "", false
 	}
@@ -214,42 +215,14 @@ func warmupOuterOrderTerm(item *query.Item) (string, bool) {
 	if identity == nil {
 		return "", false
 	}
-	base, ok := warmupOuterOrderIdentity(identity)
-	if !ok || base == "" {
+	base, ok := warmupVisibleOrderMatch(identity, visible)
+	if !ok {
 		return "", false
 	}
 	if item.Direction != "" {
 		base += " " + item.Direction
 	}
 	return base, true
-}
-
-func warmupOuterOrderIdentity(n node.Node) (string, bool) {
-	switch actual := n.(type) {
-	case *expr.Ident:
-		return actual.Name, actual.Name != ""
-	case *expr.Selector:
-		leaf := warmupSelectorLeaf(actual)
-		return leaf, leaf != ""
-	default:
-		return "", false
-	}
-}
-
-func warmupSelectorLeaf(selector *expr.Selector) string {
-	if selector == nil {
-		return ""
-	}
-	switch actual := selector.X.(type) {
-	case nil:
-		return selector.Name
-	case *expr.Ident:
-		return actual.Name
-	case *expr.Selector:
-		return warmupSelectorLeaf(actual)
-	default:
-		return selector.Name
-	}
 }
 
 func warmupFirstOrderMatches(sel *query.Select, column string) bool {
@@ -278,6 +251,115 @@ func normalizeWarmupOrderExpr(value string) string {
 		value = value[index+1:]
 	}
 	return strings.Trim(value, "`\"")
+}
+
+func warmupOuterVisibleOrderTerms(items query.List) map[string]string {
+	result := map[string]string{}
+	ambiguous := map[string]bool{}
+	for _, item := range items {
+		output, keys, ok := warmupVisibleOrderProjection(item)
+		if !ok {
+			continue
+		}
+		for _, key := range keys {
+			key = strings.ToLower(strings.TrimSpace(key))
+			if key == "" || ambiguous[key] {
+				continue
+			}
+			if previous, exists := result[key]; exists && previous != output {
+				delete(result, key)
+				ambiguous[key] = true
+				continue
+			}
+			result[key] = output
+		}
+	}
+	return result
+}
+
+func warmupVisibleOrderProjection(item *query.Item) (string, []string, bool) {
+	if item == nil || item.Expr == nil {
+		return "", nil, false
+	}
+	output := strings.TrimSpace(item.Alias)
+	identity := expr.Identity(item.Expr)
+	if output == "" {
+		var ok bool
+		output, ok = warmupIdentityLeaf(identity)
+		if !ok {
+			return "", nil, false
+		}
+	}
+	keys := []string{output}
+	if identity != nil {
+		if full, ok := warmupIdentityPath(identity); ok {
+			keys = append(keys, full)
+		}
+		if leaf, ok := warmupIdentityLeaf(identity); ok {
+			keys = append(keys, leaf)
+		}
+	}
+	return output, keys, true
+}
+
+func warmupVisibleOrderMatch(identity node.Node, visible map[string]string) (string, bool) {
+	for _, key := range warmupOrderLookupKeys(identity) {
+		if matched := visible[strings.ToLower(strings.TrimSpace(key))]; matched != "" {
+			return matched, true
+		}
+	}
+	return "", false
+}
+
+func warmupOrderLookupKeys(identity node.Node) []string {
+	result := make([]string, 0, 2)
+	if full, ok := warmupIdentityPath(identity); ok {
+		result = append(result, full)
+	}
+	if leaf, ok := warmupIdentityLeaf(identity); ok {
+		if len(result) == 0 || !strings.EqualFold(result[len(result)-1], leaf) {
+			result = append(result, leaf)
+		}
+	}
+	return result
+}
+
+func warmupIdentityPath(n node.Node) (string, bool) {
+	switch actual := n.(type) {
+	case *expr.Ident:
+		return actual.Name, actual.Name != ""
+	case *expr.Selector:
+		if actual == nil {
+			return "", false
+		}
+		if actual.X == nil {
+			return actual.Name, actual.Name != ""
+		}
+		prefix, ok := warmupIdentityPath(actual.X)
+		if !ok || prefix == "" {
+			return actual.Name, actual.Name != ""
+		}
+		return actual.Name + "." + prefix, true
+	default:
+		return "", false
+	}
+}
+
+func warmupIdentityLeaf(n node.Node) (string, bool) {
+	switch actual := n.(type) {
+	case *expr.Ident:
+		return actual.Name, actual.Name != ""
+	case *expr.Selector:
+		if actual == nil {
+			return "", false
+		}
+		if actual.X == nil {
+			return actual.Name, actual.Name != ""
+		}
+		return warmupIdentityLeaf(actual.X)
+	default:
+		return "", false
+	}
 }
 
 func (a *Cache) metaBin(SQL string, argsStringified string, fieldsStringified string, storedFieldsStringified string, column string) as.BinMap {
