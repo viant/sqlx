@@ -298,6 +298,70 @@ func TestScannerByteSliceNullReuse(t *testing.T) {
 	}
 }
 
+func TestScannerTypedSliceReuse(t *testing.T) {
+	for _, projected := range []bool{false, true} {
+		name := "full"
+		if projected {
+			name = "projected"
+		}
+		t.Run(name, func(t *testing.T) {
+			fields := []*Field{{ColumnName: "campaign_ids", ColumnScanType: "[]int"}}
+			projectedIndexes := []int{0}
+			payloads := []string{`[[100,200]]`, `[[]]`, `[null]`}
+			if projected {
+				fields = []*Field{
+					{ColumnName: "campaign_ids", ColumnScanType: "[]int"},
+					{ColumnName: "label", ColumnScanType: "string"},
+				}
+				projectedIndexes = []int{0}
+				payloads = []string{`[[100,200],"ignored"]`, `[[],"ignored"]`, `[null,"ignored"]`}
+			}
+			for _, field := range fields {
+				if err := field.Init(); err != nil {
+					t.Fatalf("field init error = %v", err)
+				}
+			}
+			entry := &Entry{
+				Meta: Meta{
+					Fields:           fields,
+					ProjectedIndexes: projectedIndexes,
+				},
+			}
+			var campaignIDs []int
+			holder := &ScanTypeHolder{}
+			holder.InitType([]interface{}{&campaignIDs})
+			scan := NewScanner(holder, nil).New(entry)
+			if projected {
+				scan = NewProjectedScanner(entry, entry.Meta.ProjectedIndexes, holder, nil)
+			}
+
+			entry.Data = []byte(payloads[0])
+			if err := scan(&campaignIDs); err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(campaignIDs, []int{100, 200}) {
+				t.Fatalf("campaignIDs got %#v want %#v", campaignIDs, []int{100, 200})
+			}
+
+			entry.Data = []byte(payloads[1])
+			if err := scan(&campaignIDs); err != nil {
+				t.Fatal(err)
+			}
+			if campaignIDs == nil || len(campaignIDs) != 0 {
+				t.Fatalf("campaignIDs got %#v want empty slice", campaignIDs)
+			}
+
+			entry.Data = []byte(payloads[2])
+			if err := scan(&campaignIDs); err != nil {
+				t.Fatal(err)
+			}
+			if campaignIDs != nil {
+				t.Fatalf("campaignIDs got %#v want nil", campaignIDs)
+			}
+		})
+	}
+}
+
 func TestNewProjectedScanner_ScansRequestedSubsetInRequestedOrder(t *testing.T) {
 	fields := []*Field{
 		{ColumnName: "order_id", ColumnScanType: "int"},

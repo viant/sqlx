@@ -190,11 +190,20 @@ func newDecoderFn(dataType reflect.Type, data []byte) DecoderFn {
 				return nil, err
 			}
 
+			typedValues := reflect.MakeSlice(dataType, len(valuesDecoder.values), len(valuesDecoder.values))
 			for i, value := range valuesDecoder.values {
-				valuesDecoder.values[i] = xType.Deref(value)
+				if value == nil {
+					if err := assignDecodedSliceNull(typedValues.Index(i)); err != nil {
+						return nil, err
+					}
+					continue
+				}
+				if err := assignDecodedSliceValue(typedValues.Index(i), xType.Deref(value)); err != nil {
+					return nil, err
+				}
 			}
 
-			return &valuesDecoder.values, nil
+			return wrapDecodedValue(actualDataType, typedValues), nil
 		}
 
 	case reflect.Bool:
@@ -245,6 +254,59 @@ func interfaceDecoder(actualDataType reflect.Type) DecoderFn {
 
 		return asInterface, decoder.Interface(&asInterface)
 	}
+}
+
+func wrapDecodedValue(actualDataType reflect.Type, value reflect.Value) interface{} {
+	container := reflect.New(actualDataType)
+	assignWrappedValue(container.Elem(), value)
+	return container.Interface()
+}
+
+func assignWrappedValue(target reflect.Value, value reflect.Value) {
+	if target.Kind() == reflect.Ptr {
+		nested := reflect.New(target.Type().Elem())
+		assignWrappedValue(nested.Elem(), value)
+		target.Set(nested)
+		return
+	}
+	if value.Type().AssignableTo(target.Type()) {
+		target.Set(value)
+		return
+	}
+	target.Set(value.Convert(target.Type()))
+}
+
+func assignDecodedSliceNull(target reflect.Value) error {
+	switch target.Kind() {
+	case reflect.Ptr, reflect.Interface, reflect.Slice:
+		target.Set(reflect.Zero(target.Type()))
+		return nil
+	default:
+		return fmt.Errorf("Cannot unmarshal JSON to type '%s'", target.Type().String())
+	}
+}
+
+func assignDecodedSliceValue(target reflect.Value, value interface{}) error {
+	if value == nil {
+		return assignDecodedSliceNull(target)
+	}
+	source := reflect.ValueOf(value)
+	if !source.IsValid() {
+		return assignDecodedSliceNull(target)
+	}
+	if source.Type().AssignableTo(target.Type()) {
+		target.Set(source)
+		return nil
+	}
+	if source.Type().ConvertibleTo(target.Type()) {
+		target.Set(source.Convert(target.Type()))
+		return nil
+	}
+	if target.Kind() == reflect.Interface && source.Type().AssignableTo(target.Type()) {
+		target.Set(source)
+		return nil
+	}
+	return fmt.Errorf("Cannot unmarshal JSON to type '%s'", target.Type().String())
 }
 
 func isByteSliceType(rType reflect.Type) bool {

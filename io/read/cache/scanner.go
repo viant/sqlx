@@ -175,7 +175,7 @@ func supportsNullDestination(scanType reflect.Type) bool {
 		return false
 	}
 	switch scanType.Kind() {
-	case reflect.Ptr, reflect.Interface:
+	case reflect.Ptr, reflect.Interface, reflect.Slice:
 		return true
 	default:
 		return isByteSliceType(scanType)

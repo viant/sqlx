@@ -31,7 +31,21 @@ func TestDecoder(t *testing.T) {
 				reflect.SliceOf(reflect.TypeOf(false)),
 			},
 			marshaled: `[0,"abcdef",[true, false, false, true]]`,
-			expected:  []interface{}{intPtr(0), stringPtr("abcdef"), &[]interface{}{true, false, false, true}},
+			expected:  []interface{}{intPtr(0), stringPtr("abcdef"), &[]bool{true, false, false, true}},
+		},
+		{
+			scanTypes: []reflect.Type{
+				reflect.SliceOf(reflect.TypeOf(0)),
+			},
+			marshaled: `[[100,200]]`,
+			expected:  []interface{}{&[]int{100, 200}},
+		},
+		{
+			scanTypes: []reflect.Type{
+				reflect.SliceOf(reflect.TypeOf(0)),
+			},
+			marshaled: `[[]]`,
+			expected:  []interface{}{&[]int{}},
 		},
 		{
 			scanTypes: []reflect.Type{
@@ -154,6 +168,13 @@ func TestDecoder_EscapedStringKeepsLegitimateZeroValues(t *testing.T) {
 	assert.EqualValues(t, float64DoublePtr(0), decoder.values[2])
 	assert.EqualValues(t, stringDoublePtr(""), decoder.values[3])
 	assert.EqualValues(t, boolDoublePtr(false), decoder.values[4])
+}
+
+func TestDecoder_NullSlicePreservesNil(t *testing.T) {
+	decoder := NewDecoder([]reflect.Type{reflect.SliceOf(reflect.TypeOf(0))}, []byte(`[null]`))
+	err := gojay.UnmarshalJSONArray([]byte(`[null]`), decoder)
+	assert.NoError(t, err)
+	assert.Nil(t, decoder.values[0])
 }
 
 func boolPtr(b bool) *bool {
