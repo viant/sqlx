@@ -25,7 +25,7 @@ const (
 	Object = "Object"
 )
 
-//Kind represents dictionary info kind
+// Kind represents dictionary info kind
 type Kind int
 
 const (
@@ -75,6 +75,10 @@ const (
 	KindLockGet
 	// KindLockRelease defines lock release kind
 	KindLockRelease
+	// KindSequenceLock acquires transaction write intent before sequence metadata reads.
+	KindSequenceLock
+	// KindSequenceReservation returns exact allocated values.
+	KindSequenceReservation
 	//KindReserved defines reserved kind
 	KindReserved
 )
@@ -123,6 +127,10 @@ func (k Kind) String() string {
 		return "KindSession"
 	case KindSequenceNextValue:
 		return "KindSequenceNextValue"
+	case KindSequenceLock:
+		return "KindSequenceLock"
+	case KindSequenceReservation:
+		return "KindSequenceReservation"
 	case KindLockGet:
 		return "KindLockGet"
 	case KindLockRelease:
@@ -133,7 +141,7 @@ func (k Kind) String() string {
 
 var emptyCriteria = []string{}
 
-//Criteria defines criteria for each query kind
+// Criteria defines criteria for each query kind
 func (k Kind) Criteria() []string {
 	switch k {
 	case KindVersion:

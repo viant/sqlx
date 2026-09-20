@@ -26,6 +26,7 @@ type (
 		uniquesFields   map[string]bool
 		references      map[string][]string
 		pathAccessors   map[string]*xunsafe.Field
+		pathTypes       map[string]reflect.Type
 		stringifiers    map[reflect.Type]*io2.ObjectStringifier
 		uniqueTypes     map[reflect.Type]bool
 		config          *Config
@@ -87,6 +88,7 @@ func NewMarshaller(rType reflect.Type, config *Config) (*Marshaller, error) {
 		uniquesFields:   map[string]bool{},
 		references:      map[string][]string{},
 		pathAccessors:   map[string]*xunsafe.Field{},
+		pathTypes:       map[string]reflect.Type{},
 		xType:           xunsafe.NewType(elemType),
 		uniqueTypes:     map[reflect.Type]bool{},
 	}
@@ -112,10 +114,12 @@ func (m *Marshaller) indexByPath(parentType reflect.Type, path string, excluded 
 		return
 	}
 	m.uniqueTypes[parentType] = true
+	defer delete(m.uniqueTypes, parentType)
 
 	elemParentType := Elem(parentType)
 	numField := elemParentType.NumField()
 	m.pathAccessors[path] = parentAccessor
+	m.pathTypes[path] = elemParentType
 	for i := 0; i < numField; i++ {
 		field := elemParentType.Field(i)
 		if field.PkgPath != "" {
@@ -232,7 +236,7 @@ func (m *Marshaller) session(fields []*Field, dest interface{}) (*UnmarshalSessi
 		dest:      dest,
 	}
 
-	return s, s.init(fields, m.references, m.pathAccessors, m.stringifiers)
+	return s, s.init(fields, m.references, m.pathAccessors, m.stringifiers, m.pathTypes)
 }
 
 func (m *Marshaller) fieldsByName(names []string) ([]*Field, error) {

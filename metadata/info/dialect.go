@@ -18,8 +18,10 @@ type Dialect struct {
 	CompositeInRenderer func(columns []string, rowCount int) string
 	Transactional       bool
 	Insert              dialect.InsertFeatures
-	Upsert              dialect.UpsertFeatures
-	Load                dialect.LoadFeature
+	// InsertIdentityOverride materializes explicitly mapped identity values.
+	InsertIdentityOverride string
+	Upsert                 dialect.UpsertFeatures
+	Load                   dialect.LoadFeature
 	//LoadResolver        temp.SessionResolver
 	CanAutoincrement  bool
 	AutoincrementFunc string
@@ -31,6 +33,7 @@ type Dialect struct {
 	// i.e. normalized column on the dialect
 	Keywords                  map[string]bool
 	DefaultPresetIDStrategy   dialect.PresetIDStrategy
+	DefaultSequenceStrategy   dialect.PresetIDStrategy
 	SpecialKeywordEscapeQuote byte
 }
 

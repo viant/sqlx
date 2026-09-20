@@ -3,6 +3,7 @@ package metadata
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"github.com/viant/sqlx/metadata/database"
 	"github.com/viant/sqlx/metadata/info"
@@ -11,6 +12,9 @@ import (
 	"github.com/viant/sqlx/option"
 	"strings"
 )
+
+// ErrSequenceReservationUnsupported means the product has no atomic reservation owner.
+var ErrSequenceReservationUnsupported = errors.New("atomic sequence reservation is unsupported")
 
 type (
 	//Service represents metadata service
@@ -86,6 +90,9 @@ func (s *Service) Info(ctx context.Context, db *sql.DB, kind info.Kind, sink Sin
 
 	queries := registry.Lookup(product.Name, kind)
 	if len(queries) == 0 {
+		if kind == info.KindSequenceLock {
+			return fmt.Errorf("%w for %s", ErrSequenceReservationUnsupported, product.Name)
+		}
 		return fmt.Errorf("unsupported info kind: %s for: %s", kind, product.Name)
 	}
 	query := queries.Match(product)

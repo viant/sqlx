@@ -55,14 +55,21 @@ func NewBuilder(table string, columns []string, dialect *info.Dialect, identity 
 
 	sqlBuilder.WriteString(insertIntoFragment)
 
-	escapeRune := dialect.SpecialKeywordEscapeQuote
-
-	if escapeRune != 0 {
-		sqlBuilder.WriteByte(escapeRune)
-	}
-	sqlBuilder.WriteString(table)
-	if escapeRune != 0 {
-		sqlBuilder.WriteByte(escapeRune)
+	if strings.EqualFold(dialect.Name, "MySQL") {
+		identifier, err := dialect.TableIdentifier(table, "")
+		if err != nil {
+			return nil, err
+		}
+		sqlBuilder.WriteString(identifier)
+	} else {
+		escapeRune := dialect.SpecialKeywordEscapeQuote
+		if escapeRune != 0 {
+			sqlBuilder.WriteByte(escapeRune)
+		}
+		sqlBuilder.WriteString(table)
+		if escapeRune != 0 {
+			sqlBuilder.WriteByte(escapeRune)
+		}
 	}
 	sqlBuilder.WriteString("(")
 	for i, column := range columns {
@@ -71,7 +78,11 @@ func NewBuilder(table string, columns []string, dialect *info.Dialect, identity 
 		}
 		sqlBuilder.WriteString(column)
 	}
-	sqlBuilder.WriteString(") VALUES ")
+	sqlBuilder.WriteString(")")
+	if identity != "" && dialect.InsertIdentityOverride != "" {
+		sqlBuilder.WriteString(" " + dialect.InsertIdentityOverride)
+	}
+	sqlBuilder.WriteString(" VALUES ")
 	getPlaceholder := dialect.PlaceholderGetter()
 	for i := 0; i < batchSize; i++ {
 		if i > 0 {

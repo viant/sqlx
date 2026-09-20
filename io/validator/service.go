@@ -56,12 +56,18 @@ func (s *Service) Validate(ctx context.Context, db *sql.DB, any interface{}, opt
 	for _, opt := range opts {
 		opt(options)
 	}
+	if err := options.validateCandidatePolicyConflicts(); err != nil {
+		return nil, err
+	}
 	if options.previousSet && !options.Shallow {
 		return nil, fmt.Errorf("explicit previous validation requires shallow rows; validate nested matched rows separately")
 	}
 	valueAt, count, err := io.Values(any)
 
 	if err != nil {
+		return nil, err
+	}
+	if err = options.validateCandidatePolicies(any, valueAt, count); err != nil {
 		return nil, err
 	}
 	if count == 0 {
@@ -71,6 +77,9 @@ func (s *Service) Validate(ctx context.Context, db *sql.DB, any interface{}, opt
 	recordType := reflect.TypeOf(record)
 	checks, err := s.checksFor(recordType, options.SetMarker)
 	if err != nil {
+		return nil, err
+	}
+	if err = options.validateCandidateReferences(checks); err != nil {
 		return nil, err
 	}
 	var ret Validation
@@ -257,7 +266,7 @@ func (s *Service) checkUniques(ctx context.Context, path *Path, db *sql.DB, at i
 }
 
 func (s *Service) checkUnique(ctx context.Context, path *Path, db *sql.DB, at io.ValueAccessor, count int, check *Check, violations *Validation, options *Options) error {
-	if options.previousSet {
+	if options.previousSet || options.candidatePoliciesSet {
 		return s.checkUniquePrevious(ctx, path, db, at, count, check, violations, options)
 	}
 	queryCtx := s.buildUniqueMatchContext(check, count, path, at, options)
@@ -298,7 +307,7 @@ func (s *Service) buildUniqueMatchContext(check *Check, count int, path *Path, a
 		fieldPath := itemPath.AppendField(check.Field.Name)
 		record := at(i)
 		recordPtr := xunsafe.AsPointer(record)
-		if !options.includes(record, check.Field.Name) {
+		if !options.includesAt(i, record, check.Field.Name) {
 			continue
 		}
 		value := check.Field.Value(recordPtr)
@@ -335,9 +344,15 @@ func (s *Service) checkRef(ctx context.Context, path *Path, db *sql.DB, at io.Va
 	if len(queryCtx.values) == 0 {
 		return nil
 	}
-	maxPlaceholders := s.initMaxPlaceholders(db, options, len(queryCtx.placeholders))
+	lookup := newQueryContext(queryCtx.SQL)
+	for _, entry := range queryCtx.entries {
+		if _, exists := lookup.index[mapKey(entry.value)]; !exists {
+			lookup.Append(entry.value, entry.field, entry.path)
+		}
+	}
+	maxPlaceholders := s.initMaxPlaceholders(db, options, len(lookup.placeholders))
 	var index = map[interface{}]bool{}
-	for _, chunk := range queryCtx.QueryChunks(maxPlaceholders) {
+	for _, chunk := range lookup.QueryChunks(maxPlaceholders) {
 		//build query for all reference values
 		reader, err := options.reader(ctx, db, chunk.Query(), check.CheckType)
 		if err != nil {
@@ -356,8 +371,9 @@ func (s *Service) checkRef(ctx context.Context, path *Path, db *sql.DB, at io.Va
 			return err
 		}
 	}
-	//we do not check 0 references
-	for refValue, ctxElem := range queryCtx.index { //all struct index values should have value in reference table
+	// Lookup values are deduplicated, but every included candidate owns a diagnostic.
+	for _, ctxElem := range queryCtx.entries {
+		refValue := mapKey(ctxElem.value)
 		if !index[refValue] {
 			violations.AppendRef(ctxElem.path, ctxElem.field, refValue, check.ErrorMsg)
 		}
@@ -372,7 +388,7 @@ func (s *Service) buildCheckRefQueryContext(check *Check, count int, path *Path,
 		fieldPath := itemPath.AppendField(check.Field.Name)
 		record := at(i)
 		recordPtr := xunsafe.AsPointer(record)
-		if !options.includes(record, check.Field.Name) {
+		if options.deferredAt(i, check.Field.Name) || options.referenceSatisfiedAt(i, check.Reference) || !options.includesAt(i, record, check.Field.Name) {
 			continue
 		}
 		value := check.Field.Value(recordPtr)

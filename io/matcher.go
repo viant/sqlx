@@ -42,6 +42,14 @@ func (f *Matcher) Match(targetType reflect.Type, columns []Column) ([]Field, err
 			return nil, fmt.Errorf("failed to create column for struct: %v, %w", targetType.String(), err)
 		}
 	}
+	seen := make(map[string]bool, len(columns))
+	for _, column := range columns {
+		name := strings.ToLower(column.Name())
+		if seen[name] {
+			return nil, fmt.Errorf("duplicate output column %q; assign distinct SQL aliases", column.Name())
+		}
+		seen[name] = true
+	}
 	xStruct := xunsafe.NewStruct(targetType)
 	var matched = make([]Field, len(columns))
 	return matched, f.matchedColumns(xStruct, matched, columns)
@@ -153,10 +161,10 @@ func (f *Matcher) indexField(idx index, ns string, field *Field, pos int) {
 	}
 	if field.Tag.Column != "" {
 		for _, name := range strings.Split(field.Tag.Column, "|") {
-			idx.add(ns+name, pos)
+			idx.add(ns+name, pos, false)
 		}
 	}
-	idx.add(ns+field.Field.Name, pos)
+	idx.add(ns+field.Field.Name, pos, field.Tag.Column == "")
 }
 
 // NewMatcher creates a fields to column matcher

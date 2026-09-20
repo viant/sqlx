@@ -36,3 +36,63 @@ func TestMarshallerNestedObjectSession(t *testing.T) {
 		})
 	}
 }
+
+func TestMarshallerProjectionWithoutParentScalars(t *testing.T) {
+	type child struct {
+		Value int
+		Note  *string
+	}
+	type parent struct{ Children []child }
+	m, err := NewMarshaller(reflect.TypeFor[parent](), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := m.Marshal([]parent{{Children: []child{{Value: 0}, {Value: 2}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "\"Children.Value\",\"Children.Note\"\n0,null\n2,null"
+	if string(got) != want {
+		t.Fatalf("%s; want %s", got, want)
+	}
+}
+
+func TestMarshallerSharedTypedHolders(t *testing.T) {
+	type child struct{ Value int }
+	type parent struct {
+		A child
+		B child
+	}
+	m, err := NewMarshaller(reflect.TypeFor[parent](), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := m.Marshal([]parent{{A: child{1}, B: child{2}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "\"A.Value\",\"B.Value\"\n1,2" {
+		t.Fatal(string(got))
+	}
+}
+
+func TestMarshallerSiblingSlicesRetainCartesianValues(t *testing.T) {
+	type child struct{ Value int }
+	type parent struct {
+		ID int
+		A  []child
+		B  []child
+	}
+	m, err := NewMarshaller(reflect.TypeFor[parent](), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := m.Marshal([]parent{{ID: 7, A: []child{{1}, {2}}, B: []child{{10}, {20}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "\"ID\",\"A.Value\",\"B.Value\"\n7,1,10\n7,2,10\n7,1,20\n7,2,20"
+	if string(got) != want {
+		t.Fatalf("%s; want %s", got, want)
+	}
+}

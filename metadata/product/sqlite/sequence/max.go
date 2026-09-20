@@ -60,30 +60,9 @@ func (n *Max) Handle(ctx context.Context, db *sql.DB, target interface{}, iopts 
 		return false, err
 	}
 
-	sequence := sink.Sequence{}
-	if args := options.Args(); args != nil {
-		values := args.Unwrap()
-		if len(values) >= 3 {
-			var ok bool
-			if sequence.Catalog, ok = values[0].(string); !ok {
-				return false, fmt.Errorf("sequence catalog must be a string")
-			}
-			if sequence.Schema, ok = values[1].(string); !ok {
-				return false, fmt.Errorf("sequence schema must be a string")
-			}
-			if sequence.Name, ok = values[2].(string); !ok {
-				return false, fmt.Errorf("sequence name must be a string")
-			}
-		}
-	}
-	// Legacy direct callers may supply a logical sequence name unrelated to
-	// the MAX query's table. Only explicit physical-table authority permits
-	// canonical table resolution; do not reinterpret the logical name.
-	if table := options.SequenceTable(); table != "" {
-		sequence.Name = table
-		if err = n.resolveIdentity(ctx, queryer, &sequence); err != nil {
-			return false, err
-		}
+	sequence, err := (&Metadata{}).identity(ctx, queryer, options)
+	if err != nil {
+		return false, err
 	}
 	if maxID < 0 {
 		maxID = 0

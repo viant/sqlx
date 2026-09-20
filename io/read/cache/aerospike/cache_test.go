@@ -40,20 +40,20 @@ func TestCacheResolveIndexIdentity_DefaultsToExecutionSQLAndArgs(t *testing.T) {
 	aCache := &Cache{}
 
 	identitySQL, identityArgs, identityArgsMarshal, meta, err := aCache.resolveIndexIdentity(
-		"SELECT * FROM campaign_flight WHERE tenant_id = ? AND campaign_id = ?",
-		[]interface{}{"tenant-a", 2002},
+		"SELECT * FROM entity_relation WHERE scope_id = ? AND group_id = ?",
+		[]interface{}{"scope-a", 2002},
 	)
 	if err != nil {
 		t.Fatalf("resolveIndexIdentity() error = %v", err)
 	}
 
-	if identitySQL != "SELECT * FROM campaign_flight WHERE tenant_id = ? AND campaign_id = ?" {
+	if identitySQL != "SELECT * FROM entity_relation WHERE scope_id = ? AND group_id = ?" {
 		t.Fatalf("unexpected identity SQL %q", identitySQL)
 	}
 	if len(identityArgs) != 2 {
 		t.Fatalf("expected execution args to be used by default, got %v", identityArgs)
 	}
-	if string(identityArgsMarshal) != `["tenant-a",2002]` {
+	if string(identityArgsMarshal) != `["scope-a",2002]` {
 		t.Fatalf("unexpected marshaled identity args %s", string(identityArgsMarshal))
 	}
 	if meta.Source != "execution" {
@@ -64,10 +64,10 @@ func TestCacheResolveIndexIdentity_DefaultsToExecutionSQLAndArgs(t *testing.T) {
 func TestCacheResolveIndexIdentity_UsesMatcherWarmupIdentity(t *testing.T) {
 	aCache := &Cache{}
 	matcher := &cache.ParmetrizedQuery{
-		SQL:          "SELECT * FROM campaign_flight WHERE tenant_id = ? AND campaign_id = ?",
-		Args:         []interface{}{"tenant-a", 2002},
-		IdentitySQL:  "SELECT * FROM campaign_flight WHERE tenant_id = ?",
-		IdentityArgs: []interface{}{"tenant-a"},
+		SQL:          "SELECT * FROM entity_relation WHERE scope_id = ? AND group_id = ?",
+		Args:         []interface{}{"scope-a", 2002},
+		IdentitySQL:  "SELECT * FROM entity_relation WHERE scope_id = ?",
+		IdentityArgs: []interface{}{"scope-a"},
 	}
 
 	identitySQL, identityArgs, identityArgsMarshal, meta, err := aCache.resolveIndexIdentity(
@@ -82,10 +82,10 @@ func TestCacheResolveIndexIdentity_UsesMatcherWarmupIdentity(t *testing.T) {
 	if identitySQL != matcher.IdentitySQL {
 		t.Fatalf("expected identity SQL %q, got %q", matcher.IdentitySQL, identitySQL)
 	}
-	if len(identityArgs) != 1 || identityArgs[0] != "tenant-a" {
-		t.Fatalf("expected matcher identity args [tenant-a], got %v", identityArgs)
+	if len(identityArgs) != 1 || identityArgs[0] != "scope-a" {
+		t.Fatalf("expected matcher identity args [scope-a], got %v", identityArgs)
 	}
-	if string(identityArgsMarshal) != `["tenant-a"]` {
+	if string(identityArgsMarshal) != `["scope-a"]` {
 		t.Fatalf("unexpected marshaled matcher identity args %s", string(identityArgsMarshal))
 	}
 	if meta.Source != "explicit" {
@@ -96,8 +96,8 @@ func TestCacheResolveIndexIdentity_UsesMatcherWarmupIdentity(t *testing.T) {
 func TestCacheResolveIndexIdentity_RejectsInvalidMatcherIdentity(t *testing.T) {
 	aCache := &Cache{}
 	matcher := &cache.ParmetrizedQuery{
-		SQL:          "SELECT * FROM campaign_flight",
-		IdentityArgs: []interface{}{"tenant-a"},
+		SQL:          "SELECT * FROM entity_relation",
+		IdentityArgs: []interface{}{"scope-a"},
 	}
 
 	_, _, _, _, err := aCache.resolveIndexIdentity(matcher.SQL, matcher.Args, matcher)
@@ -107,8 +107,8 @@ func TestCacheResolveIndexIdentity_RejectsInvalidMatcherIdentity(t *testing.T) {
 }
 
 func TestCanonicalWarmupSQL_NormalizesEquivalentSQL(t *testing.T) {
-	writeSQL := "SELECT  t.CAMPAIGN_ID,  t.ID FROM (SELECT\n        cf.CAMPAIGN_ID,\n        cf.ID\n    FROM CI_CAMPAIGN_FLIGHT cf   ) AS t "
-	readSQL := "SELECT t.CAMPAIGN_ID, t.ID FROM  (SELECT cf.CAMPAIGN_ID, cf.ID FROM CI_CAMPAIGN_FLIGHT cf)  t"
+	writeSQL := "SELECT  t.GROUP_ID,  t.ID FROM (SELECT\n        rel.GROUP_ID,\n        rel.ID\n    FROM ENTITY_RELATION rel   ) AS t "
+	readSQL := "SELECT t.GROUP_ID, t.ID FROM  (SELECT rel.GROUP_ID, rel.ID FROM ENTITY_RELATION rel)  t"
 
 	canonicalWrite, ok, _ := canonicalWarmupSQL(writeSQL)
 	if !ok {
@@ -125,8 +125,8 @@ func TestCanonicalWarmupSQL_NormalizesEquivalentSQL(t *testing.T) {
 }
 
 func TestCanonicalWarmupSQL_NormalizesEquivalentOperators(t *testing.T) {
-	writeSQL := "SELECT t.audience_id FROM(SELECT si.audience_id FROM soft_ineligibilities si JOIN UNNEST(si.feature_rejection_estimates) fr ON 1=1 WHERE si.event_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 3 DAY)) t"
-	readSQL := "SELECT t.audience_id FROM(SELECT si.audience_id FROM soft_ineligibilities si JOIN UNNEST(si.feature_rejection_estimates) fr ON 1 = 1 WHERE si.event_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 3 DAY)) t"
+	writeSQL := "SELECT t.segment_id FROM(SELECT si.segment_id FROM nested_rejections si JOIN UNNEST(si.reason_estimates) fr ON 1=1 WHERE si.event_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 3 DAY)) t"
+	readSQL := "SELECT t.segment_id FROM(SELECT si.segment_id FROM nested_rejections si JOIN UNNEST(si.reason_estimates) fr ON 1 = 1 WHERE si.event_date >= DATE_SUB(CURRENT_DATE(), INTERVAL 3 DAY)) t"
 
 	canonicalWrite, ok, _ := canonicalWarmupSQL(writeSQL)
 	if !ok {
@@ -144,8 +144,8 @@ func TestCanonicalWarmupSQL_NormalizesEquivalentOperators(t *testing.T) {
 
 func TestCanonicalWarmupIdentityURL_MatchesBetweenWriteAndReadForms(t *testing.T) {
 	aCache := &Cache{}
-	writeSQL := "SELECT  t.CAMPAIGN_ID,  t.ID FROM (SELECT\n        cf.CAMPAIGN_ID,\n        cf.ID\n    FROM CI_CAMPAIGN_FLIGHT cf   ) AS t "
-	readSQL := "SELECT t.CAMPAIGN_ID, t.ID FROM  (SELECT cf.CAMPAIGN_ID, cf.ID FROM CI_CAMPAIGN_FLIGHT cf)  t"
+	writeSQL := "SELECT  t.GROUP_ID,  t.ID FROM (SELECT\n        rel.GROUP_ID,\n        rel.ID\n    FROM ENTITY_RELATION rel   ) AS t "
+	readSQL := "SELECT t.GROUP_ID, t.ID FROM  (SELECT rel.GROUP_ID, rel.ID FROM ENTITY_RELATION rel)  t"
 	argsJSON := []byte("[]")
 
 	writeSQL, writeArgs, _ := canonicalWarmupIdentity(writeSQL, argsJSON)
@@ -209,7 +209,7 @@ func TestTryOrderedSQL_DoesNotTreatSubstringMatchAsOrdered(t *testing.T) {
 	if !ordered {
 		t.Fatalf("expected ordered result")
 	}
-	want := "SELECT * FROM (SELECT id, advertiser_id FROM metrics ORDER BY advertiser_id) AS _sqlx_warmup ORDER BY id"
+	want := "SELECT * FROM (SELECT id, advertiser_id FROM metrics ORDER BY advertiser_id) AS _sqlx_warmup ORDER BY id, advertiser_id"
 	if gotSQL != want {
 		t.Fatalf("unexpected SQL %q, want %q", gotSQL, want)
 	}
@@ -222,7 +222,33 @@ func TestTryOrderedSQL_WrapsWhenOrderedByDifferentColumn(t *testing.T) {
 	if !ordered {
 		t.Fatalf("expected ordered result")
 	}
-	want := "SELECT * FROM (SELECT order_id, advertiser_time FROM metrics ORDER BY advertiser_time) AS _sqlx_warmup ORDER BY order_id"
+	want := "SELECT * FROM (SELECT order_id, advertiser_time FROM metrics ORDER BY advertiser_time) AS _sqlx_warmup ORDER BY order_id, advertiser_time"
+	if gotSQL != want {
+		t.Fatalf("unexpected SQL %q, want %q", gotSQL, want)
+	}
+}
+
+func TestTryOrderedSQL_PreservesQualifiedDescendingTermsWhenWrapping(t *testing.T) {
+	sql := "SELECT m.audience_id, m.advertiser_time AS ordered_at, m.metric_name AS metric_label FROM metrics m ORDER BY m.advertiser_time DESC, m.metric_name"
+
+	gotSQL, ordered := tryOrderedSQL(sql, "audience_id")
+	if !ordered {
+		t.Fatalf("expected ordered result")
+	}
+	want := "SELECT * FROM (SELECT m.audience_id, m.advertiser_time AS ordered_at, m.metric_name AS metric_label FROM metrics m ORDER BY m.advertiser_time DESC, m.metric_name) AS _sqlx_warmup ORDER BY audience_id, ordered_at DESC, metric_label"
+	if gotSQL != want {
+		t.Fatalf("unexpected SQL %q, want %q", gotSQL, want)
+	}
+}
+
+func TestTryOrderedSQL_FallsBackWhenWrappedOrderTermIsNotProjected(t *testing.T) {
+	sql := "SELECT m.audience_id, m.advertiser_time FROM metrics m ORDER BY m.advertiser_time DESC, m.metric_name"
+
+	gotSQL, ordered := tryOrderedSQL(sql, "audience_id")
+	if !ordered {
+		t.Fatalf("expected ordered result")
+	}
+	want := "SELECT * FROM (SELECT m.audience_id, m.advertiser_time FROM metrics m ORDER BY m.advertiser_time DESC, m.metric_name) AS _sqlx_warmup ORDER BY audience_id"
 	if gotSQL != want {
 		t.Fatalf("unexpected SQL %q, want %q", gotSQL, want)
 	}
@@ -258,7 +284,7 @@ func TestCacheIndexBy_WritesStoredFieldsOnMarkerRecord(t *testing.T) {
 	records := map[string]as.BinMap{}
 	aCache := &Cache{
 		namespace: "ns_memory",
-		set:       "steward_test",
+		set:       "sqlx_test",
 		putFn: func(key *as.Key, binMap as.BinMap) error {
 			records[key.String()] = cloneBinMap(binMap)
 			return nil
@@ -343,7 +369,7 @@ func TestCacheIndexBy_UnindexedReturnsWarmupKeyWithoutMarkerKey(t *testing.T) {
 	writes := 0
 	aCache := &Cache{
 		namespace: "ns_memory",
-		set:       "steward_test",
+		set:       "sqlx_test",
 		putFn: func(key *as.Key, binMap as.BinMap) error {
 			writes++
 			return nil
@@ -395,7 +421,7 @@ func TestCacheIndexBy_MarkerWriteFailureDoesNotCountMarker(t *testing.T) {
 	markerErr := errors.New("marker write failed")
 	aCache := &Cache{
 		namespace: "ns_memory",
-		set:       "steward_test",
+		set:       "sqlx_test",
 		putFn: func(key *as.Key, binMap as.BinMap) error {
 			if _, ok := binMap[columnBin]; ok {
 				markerWrites++
@@ -448,7 +474,7 @@ func TestCacheIndexBy_LegacyCountIncludesMarkerForIndexedWarmup(t *testing.T) {
 
 	aCache := &Cache{
 		namespace: "ns_memory",
-		set:       "steward_test",
+		set:       "sqlx_test",
 		putFn: func(key *as.Key, binMap as.BinMap) error {
 			return nil
 		},
@@ -522,8 +548,8 @@ func TestCacheUpdateMetaFields_ToleratesMissingStoredFieldsBin(t *testing.T) {
 
 func TestCacheUpdateMetaFields_PrefersWarmupStoredFieldsWhenLazyRecordExists(t *testing.T) {
 	lazyFieldsJSON := `[{"ColumnName":"order_id","ColumnScanType":"int","ColumnDatabaseName":"INTEGER"}]`
-	warmupFieldsJSON := `[{"ColumnName":"campaign_id","ColumnScanType":"int","ColumnDatabaseName":"INTEGER"}]`
-	storedFieldsJSON := `[{"Name":"campaign_id","ColumnName":"campaign_id"}]`
+	warmupFieldsJSON := `[{"ColumnName":"group_id","ColumnScanType":"int","ColumnDatabaseName":"INTEGER"}]`
+	storedFieldsJSON := `[{"Name":"group_id","ColumnName":"group_id"}]`
 	entry := &cache.Entry{}
 
 	err := (&Cache{}).updateMetaFields(
@@ -554,7 +580,7 @@ func TestCacheUpdateMetaFields_PrefersWarmupStoredFieldsWhenLazyRecordExists(t *
 	if len(entry.Meta.StoredFields) != 1 {
 		t.Fatalf("unexpected stored fields count %d", len(entry.Meta.StoredFields))
 	}
-	if entry.Meta.StoredFields[0].Name != "campaign_id" {
+	if entry.Meta.StoredFields[0].Name != "group_id" {
 		t.Fatalf("unexpected stored field %+v", entry.Meta.StoredFields[0])
 	}
 }
@@ -584,12 +610,12 @@ func TestWarmupProjectionIndexes_NonGroupableSubset(t *testing.T) {
 
 func TestWarmupProjectionIndexes_MatchesCanonicalProjectionKeys(t *testing.T) {
 	stored := []cache.ProjectionField{
-		{Name: "Campaign", DimensionKey: "campaign.id"},
+		{Name: "Group", DimensionKey: "group.id"},
 		{Name: "Spend", MeasureKey: "metrics.spend"},
 	}
 	requested := []cache.ProjectionField{
 		{MeasureKey: "metrics.spend"},
-		{DimensionKey: "campaign.id"},
+		{DimensionKey: "group.id"},
 	}
 
 	indexes, ok, _, err := warmupProjectionIndexes(stored, requested)
@@ -606,13 +632,13 @@ func TestWarmupProjectionIndexes_MatchesCanonicalProjectionKeys(t *testing.T) {
 
 func TestWarmupProjectionIndexes_NonGroupedCanonicalKeysStillUseSubsetLogic(t *testing.T) {
 	stored := []cache.ProjectionField{
-		{Name: "Campaign", DimensionKey: "campaign.id"},
+		{Name: "Group", DimensionKey: "group.id"},
 		{Name: "Spend", MeasureKey: "metrics.spend"},
 		{Name: "Clicks", MeasureKey: "metrics.clicks"},
 	}
 	requested := []cache.ProjectionField{
 		{MeasureKey: "metrics.clicks"},
-		{DimensionKey: "campaign.id"},
+		{DimensionKey: "group.id"},
 	}
 
 	indexes, ok, _, err := warmupProjectionIndexes(stored, requested)
@@ -629,10 +655,10 @@ func TestWarmupProjectionIndexes_NonGroupedCanonicalKeysStillUseSubsetLogic(t *t
 
 func TestWarmupProjectionIndexes_RejectsAmbiguousStoredAliases(t *testing.T) {
 	stored := []cache.ProjectionField{
-		{Name: "campaign_id"},
-		{Name: "campaignid"},
+		{Name: "group_id"},
+		{Name: "groupid"},
 	}
-	requested := []cache.ProjectionField{{Name: "campaign_id"}}
+	requested := []cache.ProjectionField{{Name: "group_id"}}
 
 	_, ok, _, err := warmupProjectionIndexes(stored, requested)
 	if err != nil {
@@ -645,11 +671,11 @@ func TestWarmupProjectionIndexes_RejectsAmbiguousStoredAliases(t *testing.T) {
 
 func TestWarmupProjectionIndexes_IgnoresRequestedLookupWhenCanonicalIdentityIsUnique(t *testing.T) {
 	stored := []cache.ProjectionField{
-		{Name: "campaign_id"},
-		{Name: "order_id", Lookup: []string{"campaignid"}},
+		{Name: "group_id"},
+		{Name: "order_id", Lookup: []string{"groupid"}},
 	}
 	requested := []cache.ProjectionField{{
-		Name:   "campaign_id",
+		Name:   "group_id",
 		Lookup: []string{"order_id"},
 	}}
 
@@ -667,13 +693,13 @@ func TestWarmupProjectionIndexes_IgnoresRequestedLookupWhenCanonicalIdentityIsUn
 
 func TestWarmupProjectionIndexes_AllowsExactShapeWithDuplicateSource(t *testing.T) {
 	stored := []cache.ProjectionField{
-		{Name: "campaign_id", FieldName: "CampaignId", Source: "ID"},
-		{Name: "media_plan_id", FieldName: "MediaPlanId", Source: "ID"},
+		{Name: "group_id", FieldName: "GroupId", Source: "ID"},
+		{Name: "plan_id", FieldName: "PlanId", Source: "ID"},
 		{Name: "spend", FieldName: "Spend", Source: "SPEND"},
 	}
 	requested := []cache.ProjectionField{
-		{Name: "campaign_id", FieldName: "CampaignId", Source: "ID"},
-		{Name: "media_plan_id", FieldName: "MediaPlanId", Source: "ID"},
+		{Name: "group_id", FieldName: "GroupId", Source: "ID"},
+		{Name: "plan_id", FieldName: "PlanId", Source: "ID"},
 		{Name: "spend", FieldName: "Spend", Source: "SPEND"},
 	}
 
@@ -691,13 +717,13 @@ func TestWarmupProjectionIndexes_AllowsExactShapeWithDuplicateSource(t *testing.
 
 func TestWarmupProjectionIndexes_IgnoresDuplicateSourceWhenPrimaryIdentityIsUnique(t *testing.T) {
 	stored := []cache.ProjectionField{
-		{Name: "campaign_id", FieldName: "CampaignId", Source: "ID"},
-		{Name: "media_plan_id", FieldName: "MediaPlanId", Source: "ID"},
+		{Name: "group_id", FieldName: "GroupId", Source: "ID"},
+		{Name: "plan_id", FieldName: "PlanId", Source: "ID"},
 		{Name: "spend", FieldName: "Spend", Source: "SPEND"},
 	}
 	requested := []cache.ProjectionField{
-		{Name: "media_plan_id", FieldName: "MediaPlanId"},
-		{Name: "campaign_id", FieldName: "CampaignId"},
+		{Name: "plan_id", FieldName: "PlanId"},
+		{Name: "group_id", FieldName: "GroupId"},
 	}
 
 	indexes, ok, _, err := warmupProjectionIndexes(stored, requested)
@@ -714,11 +740,11 @@ func TestWarmupProjectionIndexes_IgnoresDuplicateSourceWhenPrimaryIdentityIsUniq
 
 func TestWarmupProjectionIndexes_UsesUniqueSourceAsWeakFallback(t *testing.T) {
 	stored := []cache.ProjectionField{
-		{Name: "campaign_id", FieldName: "CampaignId", Source: "CAMPAIGN_ID"},
-		{Name: "media_plan_id", FieldName: "MediaPlanId", Source: "MEDIA_PLAN_ID"},
+		{Name: "group_id", FieldName: "GroupId", Source: "GROUP_ID"},
+		{Name: "plan_id", FieldName: "PlanId", Source: "PLAN_ID"},
 	}
 	requested := []cache.ProjectionField{
-		{Source: "MEDIA_PLAN_ID"},
+		{Source: "PLAN_ID"},
 	}
 
 	indexes, ok, _, err := warmupProjectionIndexes(stored, requested)
@@ -735,8 +761,8 @@ func TestWarmupProjectionIndexes_UsesUniqueSourceAsWeakFallback(t *testing.T) {
 
 func TestWarmupProjectionIndexes_RejectsDuplicateSourceOnlyWhenNoStrongIdentityMatches(t *testing.T) {
 	stored := []cache.ProjectionField{
-		{Name: "campaign_id", FieldName: "CampaignId", Source: "ID"},
-		{Name: "media_plan_id", FieldName: "MediaPlanId", Source: "ID"},
+		{Name: "group_id", FieldName: "GroupId", Source: "ID"},
+		{Name: "plan_id", FieldName: "PlanId", Source: "ID"},
 	}
 	requested := []cache.ProjectionField{
 		{Source: "ID"},
@@ -756,12 +782,12 @@ func TestWarmupProjectionIndexes_RejectsDuplicateSourceOnlyWhenNoStrongIdentityM
 
 func TestWarmupProjectionIndexes_AllowsExactShapeWithDuplicateLookupAliases(t *testing.T) {
 	stored := []cache.ProjectionField{
-		{Name: "CAMPAIGN_ID", FieldName: "CAMPAIGN_ID", ColumnName: "CAMPAIGN_ID", Source: "ID", Lookup: []string{"CAMPAIGN_ID", "campaignid", "campaign_id", "ID", "id"}},
-		{Name: "MEDIA_PLAN_ID", FieldName: "MEDIA_PLAN_ID", ColumnName: "MEDIA_PLAN_ID", Source: "ID", Lookup: []string{"MEDIA_PLAN_ID", "mediaplanid", "media_plan_id", "ID", "id"}},
+		{Name: "GROUP_ID", FieldName: "GROUP_ID", ColumnName: "GROUP_ID", Source: "ID", Lookup: []string{"GROUP_ID", "groupid", "group_id", "ID", "id"}},
+		{Name: "PLAN_ID", FieldName: "PLAN_ID", ColumnName: "PLAN_ID", Source: "ID", Lookup: []string{"PLAN_ID", "planid", "plan_id", "ID", "id"}},
 	}
 	requested := []cache.ProjectionField{
-		{Name: "CAMPAIGN_ID", FieldName: "CAMPAIGN_ID", ColumnName: "CAMPAIGN_ID", Source: "ID", Lookup: []string{"CAMPAIGN_ID", "campaignid", "campaign_id", "ID", "id"}},
-		{Name: "MEDIA_PLAN_ID", FieldName: "MEDIA_PLAN_ID", ColumnName: "MEDIA_PLAN_ID", Source: "ID", Lookup: []string{"MEDIA_PLAN_ID", "mediaplanid", "media_plan_id", "ID", "id"}},
+		{Name: "GROUP_ID", FieldName: "GROUP_ID", ColumnName: "GROUP_ID", Source: "ID", Lookup: []string{"GROUP_ID", "groupid", "group_id", "ID", "id"}},
+		{Name: "PLAN_ID", FieldName: "PLAN_ID", ColumnName: "PLAN_ID", Source: "ID", Lookup: []string{"PLAN_ID", "planid", "plan_id", "ID", "id"}},
 	}
 
 	indexes, ok, _, err := warmupProjectionIndexes(stored, requested)
@@ -778,12 +804,12 @@ func TestWarmupProjectionIndexes_AllowsExactShapeWithDuplicateLookupAliases(t *t
 
 func TestWarmupProjectionIndexes_IgnoresDuplicateLookupAliasesWhenStrongIdentityIsUnique(t *testing.T) {
 	stored := []cache.ProjectionField{
-		{Name: "CAMPAIGN_ID", FieldName: "CAMPAIGN_ID", ColumnName: "CAMPAIGN_ID", Source: "ID", Lookup: []string{"CAMPAIGN_ID", "campaignid", "campaign_id", "ID", "id"}},
-		{Name: "MEDIA_PLAN_ID", FieldName: "MEDIA_PLAN_ID", ColumnName: "MEDIA_PLAN_ID", Source: "ID", Lookup: []string{"MEDIA_PLAN_ID", "mediaplanid", "media_plan_id", "ID", "id"}},
+		{Name: "GROUP_ID", FieldName: "GROUP_ID", ColumnName: "GROUP_ID", Source: "ID", Lookup: []string{"GROUP_ID", "groupid", "group_id", "ID", "id"}},
+		{Name: "PLAN_ID", FieldName: "PLAN_ID", ColumnName: "PLAN_ID", Source: "ID", Lookup: []string{"PLAN_ID", "planid", "plan_id", "ID", "id"}},
 	}
 	requested := []cache.ProjectionField{
-		{Name: "MEDIA_PLAN_ID", FieldName: "MEDIA_PLAN_ID", ColumnName: "MEDIA_PLAN_ID", Lookup: []string{"MEDIA_PLAN_ID", "mediaplanid", "media_plan_id", "ID", "id"}},
-		{Name: "CAMPAIGN_ID", FieldName: "CAMPAIGN_ID", ColumnName: "CAMPAIGN_ID", Lookup: []string{"CAMPAIGN_ID", "campaignid", "campaign_id", "ID", "id"}},
+		{Name: "PLAN_ID", FieldName: "PLAN_ID", ColumnName: "PLAN_ID", Lookup: []string{"PLAN_ID", "planid", "plan_id", "ID", "id"}},
+		{Name: "GROUP_ID", FieldName: "GROUP_ID", ColumnName: "GROUP_ID", Lookup: []string{"GROUP_ID", "groupid", "group_id", "ID", "id"}},
 	}
 
 	indexes, ok, _, err := warmupProjectionIndexes(stored, requested)
@@ -821,14 +847,14 @@ func TestWarmupProjectionIndexes_RejectsDuplicateLookupAliasesWhenNoCanonicalIde
 
 func TestWarmupProjectionIndexes_GroupedAllowsSameDimensionsAndSubsetMeasures(t *testing.T) {
 	stored := []cache.ProjectionField{
-		{Name: "Campaign", DimensionKey: "campaign.id"},
+		{Name: "Group", DimensionKey: "group.id"},
 		{Name: "Day", DimensionKey: "date.day"},
 		{Name: "Spend", MeasureKey: "metrics.spend"},
 		{Name: "Clicks", MeasureKey: "metrics.clicks"},
 	}
 	requested := []cache.ProjectionField{
 		{Name: "Day", DimensionKey: "date.day"},
-		{Name: "Campaign", DimensionKey: "campaign.id"},
+		{Name: "Group", DimensionKey: "group.id"},
 		{Name: "Clicks", MeasureKey: "metrics.clicks"},
 	}
 
@@ -1029,12 +1055,12 @@ func TestCacheApplyWarmupProjection_ClearsWarmupMetadataOnIncompatibleProjection
 }
 
 func TestCacheReadRecords_PopulatesWarmupStatsOnMarkerMiss(t *testing.T) {
-	aCache := &Cache{namespace: "ns_memory", set: "steward_test"}
+	aCache := &Cache{namespace: "ns_memory", set: "sqlx_test"}
 	matcher := &cache.ParmetrizedQuery{
-		By:  "campaign_id",
-		SQL: "SELECT campaign_id, name FROM campaign WHERE tenant_id = ?",
+		By:  "group_id",
+		SQL: "SELECT group_id, name FROM entity WHERE scope_id = ?",
 		Args: []interface{}{
-			"tenant-a",
+			"scope-a",
 		},
 	}
 	stats := &cache.Stats{}
@@ -1055,12 +1081,12 @@ func TestCacheReadRecords_PopulatesWarmupStatsOnMarkerMiss(t *testing.T) {
 }
 
 func TestCacheReadRecords_PopulatesWarmupStatsOnMarkerHit(t *testing.T) {
-	aCache := &Cache{namespace: "ns_memory", set: "steward_test"}
+	aCache := &Cache{namespace: "ns_memory", set: "sqlx_test"}
 	matcher := &cache.ParmetrizedQuery{
-		By:  "campaign_id",
-		SQL: "SELECT campaign_id, name FROM campaign WHERE tenant_id = ?",
+		By:  "group_id",
+		SQL: "SELECT group_id, name FROM entity WHERE scope_id = ?",
 		Args: []interface{}{
-			"tenant-a",
+			"scope-a",
 		},
 	}
 	stats := &cache.Stats{}

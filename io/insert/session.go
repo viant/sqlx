@@ -221,7 +221,6 @@ func (s *session) flushQuery(ctx context.Context, values []interface{}, identiti
 		return 0, 0, err
 	}
 	defer io.RunWithError(rows.Close, &err)
-	rows.NextResultSet()
 	newLastInsertedID = 0
 
 	for rows.Next() {
@@ -237,5 +236,5 @@ func (s *session) flushQuery(ctx context.Context, values []interface{}, identiti
 		*idPtr = newLastInsertedID
 		rowsAffected++
 	}
-	return rowsAffected, newLastInsertedID, err
+	return rowsAffected, newLastInsertedID, rows.Err()
 }

@@ -27,7 +27,8 @@ func ParseParameters(SQL string) *Parameters {
 			continue
 		}
 		if SQL[i] == '?' {
-			if result.questionOperator(i) {
+			previous, kind := scanner.PreviousSignificant()
+			if result.questionOperator(i, previous, kind != "") {
 				continue
 			}
 			result.items = append(result.items, parameter{start: i, end: i + 1})
@@ -53,7 +54,7 @@ func ParseParameters(SQL string) *Parameters {
 	return result
 }
 
-func (p *Parameters) questionOperator(position int) bool {
+func (p *Parameters) questionOperator(position, previous int, quoted bool) bool {
 	SQL := p.SQL
 	if position > 0 && SQL[position-1] == '@' {
 		return true
@@ -61,21 +62,8 @@ func (p *Parameters) questionOperator(position int) bool {
 	if position+1 < len(SQL) && (SQL[position+1] == '|' || SQL[position+1] == '&') {
 		return true
 	}
-	previous := position - 1
-	for previous >= 0 {
-		if source.IsWhitespace(SQL[previous]) {
-			previous--
-			continue
-		}
-		start, _, kind := source.ProtectedRangeAt(SQL, previous)
-		if strings.Contains(kind, "comment") {
-			previous = start - 1
-			continue
-		}
-		if kind != "" {
-			return true
-		}
-		break
+	if quoted {
+		return true
 	}
 	if previous < 0 {
 		return false
@@ -97,7 +85,7 @@ func (p *Parameters) questionOperator(position int) bool {
 		start--
 	}
 	switch strings.ToLower(SQL[start : previous+1]) {
-	case "select", "where", "and", "or", "not", "like", "ilike", "in", "between", "when", "then", "else", "on", "having", "as", "set", "values", "returning", "is", "by", "offset", "limit", "case", "from", "join", "update", "insert", "into", "delete", "distinct", "all", "exists", "union", "except", "intersect":
+	case "select", "where", "and", "or", "not", "like", "ilike", "in", "between", "when", "then", "else", "on", "having", "as", "set", "values", "returning", "is", "by", "offset", "limit", "case", "from", "join", "update", "insert", "into", "delete", "distinct", "all", "exists", "union", "except", "intersect", "struct":
 		return false
 	}
 	return true
@@ -125,6 +113,31 @@ func (p *Parameters) NamedCount() int {
 }
 func (p *Parameters) PositionalCount() int { return p.Count() - p.NamedCount() }
 func (p *Parameters) HasPositional() bool  { return p.PositionalCount() != 0 }
+
+// RewritePositional replaces executable positional placeholders in source order.
+// The callback receives their zero-based ordinal. Named parameters, operators,
+// quoted regions and comments remain unchanged; the parsed source is not mutated.
+func (p *Parameters) RewritePositional(replace func(int) string) string {
+	if p == nil {
+		return ""
+	}
+	if replace == nil || !p.HasPositional() {
+		return p.SQL
+	}
+	var result strings.Builder
+	previous, ordinal := 0, 0
+	for _, item := range p.items {
+		if item.name != "" {
+			continue
+		}
+		result.WriteString(p.SQL[previous:item.start])
+		result.WriteString(replace(ordinal))
+		previous = item.end
+		ordinal++
+	}
+	result.WriteString(p.SQL[previous:])
+	return result.String()
+}
 
 // ExpandSinglePositional expands the sole executable positional placeholder.
 // Existing named placeholders, literal text and comments remain byte-for-byte.

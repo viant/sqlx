@@ -10,21 +10,38 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/viant/sqlx/io/read"
 	_ "github.com/viant/sqlx/metadata/product/sqlite"
+	"github.com/viant/sqlx/testutil/sqlfault"
 )
 
 // Harness owns isolated native SQLX integration-test databases.
-type Harness struct{ DB *sql.DB }
+type Harness struct {
+	DB  *sql.DB
+	dsn string
+}
 
 func New(t testing.TB, statements ...string) *Harness {
 	t.Helper()
-	db, err := sql.Open("sqlite3", filepath.Join(t.TempDir(), "data.db"))
+	return NewWithDSN(t, filepath.Join(t.TempDir(), "data.db"), statements...)
+}
+
+// NewWithDSN supports tests of connection-local pragmas and separate pools.
+func NewWithDSN(t testing.TB, dsn string, statements ...string) *Harness {
+	t.Helper()
+	db, err := sql.Open("sqlite3", dsn)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
-	result := &Harness{DB: db}
+	result := &Harness{DB: db, dsn: dsn}
 	result.Exec(t, statements...)
 	return result
+}
+
+func (h *Harness) FaultDB(t testing.TB, before func(context.Context, sqlfault.Call) error) *sql.DB {
+	t.Helper()
+	db := sql.OpenDB(&sqlfault.Connector{Base: h.DB.Driver(), DSN: h.dsn, Before: before})
+	t.Cleanup(func() { _ = db.Close() })
+	return db
 }
 func (h *Harness) Exec(t testing.TB, statements ...string) {
 	t.Helper()

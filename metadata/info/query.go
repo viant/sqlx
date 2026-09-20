@@ -141,23 +141,18 @@ func (q Queries) Less(i, j int) bool {
 	return q[i].Product.Major < q[j].Product.Major && q[i].Product.Minor < q[j].Product.Minor
 }
 
-// Match matches queries for version, or latest version
-func (q Queries) Match(info *database.Product) *Query {
-	switch len(q) {
-	case 0:
-		return nil
-	case 1:
-		return q[0]
-	}
+// Match selects the newest query supported by the requested product version.
+func (q Queries) Match(product *database.Product) *Query {
+	var result *Query
 	for _, candidate := range q {
-		if candidate.Product.Major >= info.Major {
-			if candidate.Product.Minor >= info.Minor {
-				return candidate
-			}
+		if candidate.Major > product.Major || candidate.Major == product.Major && candidate.Minor > product.Minor {
+			continue
+		}
+		if result == nil || candidate.Major > result.Major || candidate.Major == result.Major && candidate.Minor > result.Minor {
+			result = candidate
 		}
 	}
-	//by default return the latest version
-	return q[len(q)-1]
+	return result
 }
 
 // NewCriterion creates a new criteria, name refers to kind.Crtiera, column to local vendor column, use '?' for already defined placeholder, %v for substitution

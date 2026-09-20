@@ -46,6 +46,8 @@ func registerProduct(product database.Product, schemaTable string) {
 		maxPlaceholders = 32761
 	}
 	err := registry.Register(
+		info.NewQuery(info.KindSequenceReservation, "", product).OnPre(&sequence.Reserve{}),
+		info.NewQuery(info.KindSequenceLock, "", product).OnPre(&sequence.Lock{}),
 		info.NewQuery(info.KindVersion, "SELECT 'SQLite - ' || sqlite_version()", product),
 		info.NewQuery(info.KindSchemas, `SELECT 
 	name AS SCHEMA_NAME,
@@ -62,7 +64,7 @@ FROM pragma_database_list`, product,
 type AS TABLE_TYPE,
 name AS TABLE_NAME,
 sql 
-FROM `+schemaTable+` WHERE type='table' AND name NOT IN('sqlite_sequence')`, product,
+FROM `+schemaTable+` WHERE type='table' AND name NOT IN('sqlite_sequence', 'sqlx_sequence_reservations')`, product,
 			info.NewCriterion(info.Catalog, ""),
 			info.NewCriterion(info.Schema, ""),
 		),
@@ -128,7 +130,7 @@ FROM SQLITE_SEQUENCE`,
 			info.NewCriterion(info.Catalog, ""),
 			info.NewCriterion(info.Schema, ""),
 			info.NewCriterion(info.Sequence, "name"),
-		),
+		).OnPre(&sequence.Metadata{}),
 
 		info.NewQuery(info.KindPrimaryKeys, `SELECT
 		m.name || '_pk' CONSTRAINT_NAME,
@@ -228,5 +230,6 @@ FROM pragma_database_list
 		CanLastInsertID:         true,
 		MaxPlaceholders:         maxPlaceholders,
 		DefaultPresetIDStrategy: dialect.PresetIDStrategyUndefined,
+		DefaultSequenceStrategy: dialect.PresetIDWithReservation,
 	})
 }

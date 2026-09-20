@@ -8,8 +8,8 @@ import (
 
 func TestEmitIndexProgress(t *testing.T) {
 	ctx := WithIndexProgress(context.Background(), &IndexProgress{
-		View:    "performanceTimeline",
-		Dataset: "ns_memory/performanceTimeline_dataset",
+		View:    "indexed_timeline_view",
+		Dataset: "ns_memory/indexed_timeline_dataset",
 		Case:    "Period=today,Granularity=hour",
 	})
 
@@ -32,10 +32,10 @@ func TestEmitIndexProgress(t *testing.T) {
 	if actual == nil {
 		t.Fatalf("expected callback event")
 	}
-	if actual.View != "performanceTimeline" {
+	if actual.View != "indexed_timeline_view" {
 		t.Fatalf("unexpected view: %v", actual.View)
 	}
-	if actual.Dataset != "ns_memory/performanceTimeline_dataset" {
+	if actual.Dataset != "ns_memory/indexed_timeline_dataset" {
 		t.Fatalf("unexpected dataset: %v", actual.Dataset)
 	}
 	if actual.Case != "Period=today,Granularity=hour" {

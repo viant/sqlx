@@ -40,6 +40,9 @@ type (
 )
 
 func (c *Cache) Rollback(ctx context.Context, entry *cache.Entry) error {
+	if entry != nil && entry.ReadOnly {
+		return entry.Close()
+	}
 	if entry == nil {
 		return nil
 	}
@@ -77,17 +80,60 @@ func NewCache(URL string, ttl time.Duration, signature string, stream *option.St
 	return cache, nil
 }
 
-func (c *Cache) Get(ctx context.Context, SQL string, args []interface{}, options ...interface{}) (*cache.Entry, error) {
+func (c *Cache) Get(ctx context.Context, SQL string, args []interface{}, options ...interface{}) (result *cache.Entry, readErr error) {
+	var stats *cache.Stats
 	for _, option := range options {
+		if value, ok := option.(*cache.Stats); ok && value != nil {
+			stats = value
+			*stats = cache.Stats{}
+		}
+	}
+	defer func() { c.observeEntry(stats, result, readErr) }()
+	var refresh bool
+	var readOnly bool
+	for _, option := range options {
+		if only, ok := option.(lookupOnly); ok {
+			readOnly = bool(only)
+		}
+		if requested, ok := option.(cache.Refresh); ok {
+			refresh = bool(requested)
+		}
+	}
+
+	if refresh {
+		for _, option := range options {
+			if matcher, ok := option.(*cache.ParmetrizedQuery); ok && matcher != nil {
+				if err := c.refreshWarmup(ctx, matcher, stats); err != nil {
+					return nil, err
+				}
+			}
+		}
+	}
+
+	for _, option := range options {
+		if refresh {
+			break
+		}
 		if matcher, ok := option.(*cache.ParmetrizedQuery); ok && matcher != nil && matcher.IdentitySQL != "" && matcher.By == "" && len(matcher.ByColumns) == 0 {
 			entry, err := c.queryEntry(ctx, matcher)
 			if err != nil || entry != nil {
+				if stats != nil && entry != nil && entry.Has() {
+					stats.Type = cache.TypeReadMulti
+					stats.FoundWarmup = true
+					stats.WarmupKey = entry.Meta.URL
+				}
 				return entry, err
 			}
 		}
 		if matcher, ok := option.(*cache.ParmetrizedQuery); ok && matcher != nil && (matcher.By != "" && len(matcher.In) > 0 || len(matcher.ByColumns) > 0 && len(matcher.InTuples) > 0) {
 			entry, err := c.indexedEntry(ctx, matcher)
 			if err != nil || entry != nil {
+				if stats != nil && entry != nil && entry.Has() {
+					stats.Type = cache.TypeReadMulti
+					stats.FoundWarmup = true
+					stats.WarmupKey = entry.Meta.URL
+					stats.MarkerKey = entry.Meta.URL
+				}
 				return entry, err
 			}
 		}
@@ -96,14 +142,35 @@ func (c *Cache) Get(ctx context.Context, SQL string, args []interface{}, options
 	if err != nil {
 		return nil, err
 	}
+	if stats != nil {
+		stats.Key = URL
+	}
 	// Published entries are immutable; cache readers must not compete for the
 	// exclusive lease used while creating a missing entry.
-	if entry, err := c.cachedEntry(ctx, SQL, args, URL); entry != nil || err != nil {
-		return entry, err
+	if !refresh {
+		if entry, err := c.cachedEntry(ctx, SQL, args, URL); entry != nil || err != nil {
+			return entry, err
+		}
 	}
 
-	if c.mark(URL) {
+	if readOnly {
 		return nil, nil
+	}
+	if c.mark(URL) {
+		if refresh {
+			return nil, fmt.Errorf("cache refresh conflicts with an active query writer")
+		}
+		return nil, nil
+	}
+	if refresh {
+		exists, err := c.afs.Exists(ctx, URL)
+		if err == nil && exists {
+			err = c.afs.Delete(ctx, URL)
+		}
+		if err != nil {
+			c.unmark(URL)
+			return nil, err
+		}
 	}
 
 	entry, err := c.getEntry(ctx, SQL, args, err, URL)
@@ -312,6 +379,9 @@ func (c *Cache) UpdateType(ctx context.Context, entry *cache.Entry, values []int
 }
 
 func (c *Cache) Delete(ctx context.Context, entry *cache.Entry) error {
+	if entry.ReadOnly {
+		return entry.Close()
+	}
 	return c.afs.Delete(ctx, entry.Meta.URL)
 }
 
@@ -337,6 +407,9 @@ func (c *Cache) scanner(e *cache.Entry) cache.ScannerFn {
 }
 
 func (c *Cache) Close(ctx context.Context, e *cache.Entry) error {
+	if e.ReadOnly {
+		return e.Close()
+	}
 	actualURL := strings.ReplaceAll(e.Meta.URL, ".json"+e.Id, ".json")
 	if !e.Has() {
 		defer c.unmark(actualURL)

@@ -192,6 +192,30 @@ Validator service has ability to validate unique,foreign key and not null constr
 - refColumn,refTable
 - errorMsg
 
+`db` and `refDb` are optional SQL qualifiers for `table` and `refTable`;
+they do not select a connection. All four values retain authored SQL identifier
+quoting. For example, `refDb=main,refTable=parents` produces `main.parents`,
+whereas `refDb="odd.schema",refTable=parents` produces `"odd.schema".parents`.
+The latter names one schema containing a literal dot. For a BigQuery whole path,
+put the complete backtick or legacy bracket spelling in `table`/`refTable` and
+leave the separate qualifier empty. SQL execution still requires the appropriate
+database dialect/query mode.
+
+Migration from earlier releases: these four values previously went through
+Go-string unquoting. This could erase SQL identifier delimiters, change the target,
+or produce invalid SQL. Quotes now remain in `Tag.Db`, `Tag.RefDb`, `Tag.Table`,
+`Tag.RefTable`, generated constraint SQL, and stored `validator.Reference` values.
+This is an intentional identifier-correctness change, not byte-for-byte metadata
+compatibility. If quotes were only used as Go-style value wrappers, remove that
+extra quoting: `db="main"` becomes `db=main`; a multi-part plain prefix written
+as `refDb="project.dataset"` becomes `refDb=project.dataset`. In a Go struct tag,
+this means removing the inner escaped quotes, not the enclosing `sqlx:"..."`.
+Keep dialect-appropriate quotes when they actually delimit an SQL identifier.
+Simple `main` and `"main"` resolve to the same schema in SQLite, but raw metadata
+differs; use the native target matcher/returned native descriptor when comparing
+or retaining reference identities. Other SQLX tag values and Tagly's default
+`MatchPairs` decoding are unchanged.
+
 
 For example:
 ```go

@@ -9,6 +9,7 @@ import (
 
 	"github.com/viant/sqlparser"
 	"github.com/viant/sqlx/metadata/sink"
+	"github.com/viant/sqlx/option"
 )
 
 type sequenceQueryer interface {
@@ -19,7 +20,7 @@ type sequenceQueryer interface {
 // resolveIdentity delegates identifier syntax to SQLparser and name matching
 // to SQLite itself. Actual stored schema/table names unify quoting/case aliases;
 // unqualified lookup follows SQLite's temp/main/attachment search order.
-func (n *Max) resolveIdentity(ctx context.Context, queryer sequenceQueryer, sequence *sink.Sequence) error {
+func (n *Metadata) resolveIdentity(ctx context.Context, queryer sequenceQueryer, sequence *sink.Sequence, schema string) error {
 	if sequence.Name == "" {
 		return nil
 	}
@@ -29,6 +30,9 @@ func (n *Max) resolveIdentity(ctx context.Context, queryer sequenceQueryer, sequ
 	}
 	if len(parts) > 2 {
 		return fmt.Errorf("SQLite table identity permits schema and table only")
+	}
+	if len(parts) == 1 && schema != "" {
+		parts = append([]string{schema}, parts...)
 	}
 	query := "SELECT name FROM pragma_database_list"
 	var args []any
@@ -73,4 +77,29 @@ func (n *Max) resolveIdentity(ctx context.Context, queryer sequenceQueryer, sequ
 		return nil
 	}
 	return fmt.Errorf("SQLite sequence table %q was not found", sequence.Name)
+}
+
+// identity decodes native metadata arguments. Only SequenceTable authorizes
+// reinterpreting a logical sequence name as a physical allocation table.
+func (n *Metadata) identity(ctx context.Context, queryer sequenceQueryer, options option.Options) (sink.Sequence, error) {
+	result := sink.Sequence{StartValue: 1, IncrementBy: 1}
+	if args := options.Args(); args != nil {
+		values := args.Unwrap()
+		if len(values) >= 3 {
+			for i, field := range []*string{&result.Catalog, &result.Schema, &result.Name} {
+				value, ok := values[i].(string)
+				if !ok {
+					return result, fmt.Errorf("sequence identity argument %d must be a string", i)
+				}
+				*field = value
+			}
+		}
+	}
+	if table := options.SequenceTable(); table != "" {
+		result.Name = table
+		if err := n.resolveIdentity(ctx, queryer, &result, ""); err != nil {
+			return result, err
+		}
+	}
+	return result, nil
 }

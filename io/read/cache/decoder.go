@@ -1,19 +1,21 @@
 package cache
 
 import (
-	"bytes"
+	"database/sql"
+	"encoding/base64"
 	"fmt"
 	"github.com/francoispqt/gojay"
 	"github.com/viant/xunsafe"
 	"reflect"
+	"strconv"
 	"time"
 	"unsafe"
 )
 
 var timeType = reflect.TypeOf(time.Time{})
+var rawBytesType = reflect.TypeOf(sql.RawBytes(nil))
 var curOffset uintptr
-
-var nullBytes = []byte("null")
+var dataOffset uintptr
 
 func init() {
 	cur, ok := reflect.TypeOf(gojay.Decoder{}).FieldByName("cursor")
@@ -21,10 +23,23 @@ func init() {
 		panic("failed to get Decoder.cursor field")
 	}
 	curOffset = cur.Offset
+	data, ok := reflect.TypeOf(gojay.Decoder{}).FieldByName("data")
+	if !ok {
+		panic("failed to get Decoder.data field")
+	}
+	dataOffset = data.Offset
 }
 
 func cursor(dec *gojay.Decoder) int {
 	return *(*int)(unsafe.Pointer(uintptr(unsafe.Pointer(dec)) + curOffset))
+}
+
+func data(dec *gojay.Decoder) []byte {
+	return *(*[]byte)(unsafe.Pointer(uintptr(unsafe.Pointer(dec)) + dataOffset))
+}
+
+func setCursor(dec *gojay.Decoder, value int) {
+	*(*int)(unsafe.Pointer(uintptr(unsafe.Pointer(dec)) + curOffset)) = value
 }
 
 type (
@@ -66,14 +81,12 @@ func (d *Decoder) UnmarshalJSONArray(decoder *gojay.Decoder) error {
 		decoderFn = d.sliceDecoder
 	}
 
-	beforePos := cursor(decoder)
+	wasNull := nextTokenNull(decoder)
 	value, err := decoderFn(decoder)
 	if err != nil {
 		return err
 	}
-	after := cursor(decoder)
-
-	if bytes.Equal(bytes.TrimSpace(d.Data[beforePos:after]), nullBytes) {
+	if wasNull {
 		value = nil
 	}
 
@@ -83,6 +96,152 @@ func (d *Decoder) UnmarshalJSONArray(decoder *gojay.Decoder) error {
 		d.values = append(d.values, value)
 	}
 	return nil
+}
+
+func nextTokenNull(decoder *gojay.Decoder) bool {
+	buffer := data(decoder)
+	position, _ := nextTokenPosition(buffer, cursor(decoder))
+	if position < 0 {
+		return false
+	}
+	if position+4 > len(buffer) {
+		return false
+	}
+	if buffer[position] != 'n' || buffer[position+1] != 'u' || buffer[position+2] != 'l' || buffer[position+3] != 'l' {
+		return false
+	}
+	if position+4 == len(buffer) {
+		return true
+	}
+	switch buffer[position+4] {
+	case ' ', '\n', '\t', '\r', ',', ']', '}':
+		return true
+	default:
+		return false
+	}
+}
+
+func nextTokenPosition(buffer []byte, position int) (int, bool) {
+	for position < len(buffer) {
+		switch buffer[position] {
+		case ' ', '\n', '\t', '\r', ',':
+			position++
+			continue
+		}
+		break
+	}
+	if position >= len(buffer) {
+		return 0, false
+	}
+	return position, true
+}
+
+func consumeNullToken(decoder *gojay.Decoder) bool {
+	buffer := data(decoder)
+	position, ok := nextTokenPosition(buffer, cursor(decoder))
+	if !ok || position+4 > len(buffer) {
+		return false
+	}
+	if string(buffer[position:position+4]) != "null" {
+		return false
+	}
+	if position+4 < len(buffer) {
+		switch buffer[position+4] {
+		case ' ', '\n', '\t', '\r', ',', ']', '}':
+		default:
+			return false
+		}
+	}
+	setCursor(decoder, position+4)
+	return true
+}
+
+func nextFloatToken(decoder *gojay.Decoder) (string, error) {
+	buffer := data(decoder)
+	position, ok := nextTokenPosition(buffer, cursor(decoder))
+	if !ok {
+		return "", fmt.Errorf("unexpected end of JSON while decoding float")
+	}
+	start := position
+	if buffer[position] == '-' {
+		position++
+		if position >= len(buffer) {
+			return "", fmt.Errorf("unexpected end of JSON while decoding float")
+		}
+	}
+	digits := 0
+	for position < len(buffer) && isJSONDigit(buffer[position]) {
+		position++
+		digits++
+	}
+	if position < len(buffer) && buffer[position] == '.' {
+		position++
+		for position < len(buffer) && isJSONDigit(buffer[position]) {
+			position++
+			digits++
+		}
+	}
+	if digits == 0 {
+		return "", fmt.Errorf("invalid JSON float token")
+	}
+	if position < len(buffer) && (buffer[position] == 'e' || buffer[position] == 'E') {
+		position++
+		if position < len(buffer) && (buffer[position] == '+' || buffer[position] == '-') {
+			position++
+		}
+		expDigits := 0
+		for position < len(buffer) && isJSONDigit(buffer[position]) {
+			position++
+			expDigits++
+		}
+		if expDigits == 0 {
+			return "", fmt.Errorf("invalid JSON float exponent")
+		}
+	}
+	end := position
+	if end < len(buffer) {
+		switch buffer[end] {
+		case ' ', '\n', '\t', '\r', ',', ']', '}':
+		default:
+			return "", fmt.Errorf("invalid JSON float delimiter")
+		}
+	}
+	setCursor(decoder, end)
+	return string(buffer[start:end]), nil
+}
+
+func isJSONDigit(b byte) bool {
+	return b >= '0' && b <= '9'
+}
+
+func decodeFloat64Value(decoder *gojay.Decoder) (float64, bool, error) {
+	if consumeNullToken(decoder) {
+		return 0, true, nil
+	}
+	token, err := nextFloatToken(decoder)
+	if err != nil {
+		return 0, false, err
+	}
+	parsed, err := strconv.ParseFloat(token, 64)
+	if err != nil {
+		return 0, false, err
+	}
+	return parsed, false, nil
+}
+
+func decodeFloat32Value(decoder *gojay.Decoder) (float32, bool, error) {
+	if consumeNullToken(decoder) {
+		return 0, true, nil
+	}
+	token, err := nextFloatToken(decoder)
+	if err != nil {
+		return 0, false, err
+	}
+	parsed, err := strconv.ParseFloat(token, 32)
+	if err != nil {
+		return 0, false, err
+	}
+	return float32(parsed), false, nil
 }
 
 func (d *Decoder) buildDecoders() {
@@ -138,6 +297,9 @@ func newDecoderFn(dataType reflect.Type, data []byte) DecoderFn {
 	case reflect.String:
 		return stringDecoder(wasPtr)
 	case reflect.Slice:
+		if isByteSliceType(dataType) {
+			return bytesDecoder(actualDataType)
+		}
 		sliceItemType := dataType.Elem()
 		xType := xunsafe.NewType(sliceItemType)
 		return func(decoder *gojay.Decoder) (interface{}, error) {
@@ -151,11 +313,20 @@ func newDecoderFn(dataType reflect.Type, data []byte) DecoderFn {
 				return nil, err
 			}
 
+			typedValues := reflect.MakeSlice(dataType, len(valuesDecoder.values), len(valuesDecoder.values))
 			for i, value := range valuesDecoder.values {
-				valuesDecoder.values[i] = xType.Deref(value)
+				if value == nil {
+					if err := assignDecodedSliceNull(typedValues.Index(i)); err != nil {
+						return nil, err
+					}
+					continue
+				}
+				if err := assignDecodedSliceValue(typedValues.Index(i), xType.Deref(value)); err != nil {
+					return nil, err
+				}
 			}
 
-			return &valuesDecoder.values, nil
+			return wrapDecodedValue(actualDataType, typedValues), nil
 		}
 
 	case reflect.Bool:
@@ -167,6 +338,25 @@ func newDecoderFn(dataType reflect.Type, data []byte) DecoderFn {
 	}
 
 	return interfaceDecoder(actualDataType)
+}
+
+func bytesDecoder(actualDataType reflect.Type) DecoderFn {
+	return func(decoder *gojay.Decoder) (interface{}, error) {
+		encoded := ""
+		if err := decoder.String(&encoded); err != nil {
+			return nil, err
+		}
+		decoded, err := base64.StdEncoding.DecodeString(encoded)
+		if err != nil {
+			return nil, err
+		}
+		if actualDataType == rawBytesType {
+			value := sql.RawBytes(decoded)
+			return &value, nil
+		}
+		value := []byte(decoded)
+		return &value, nil
+	}
 }
 
 func timeDecoder(ptr bool, actualDataType reflect.Type) DecoderFn {
@@ -187,6 +377,63 @@ func interfaceDecoder(actualDataType reflect.Type) DecoderFn {
 
 		return asInterface, decoder.Interface(&asInterface)
 	}
+}
+
+func wrapDecodedValue(actualDataType reflect.Type, value reflect.Value) interface{} {
+	container := reflect.New(actualDataType)
+	assignWrappedValue(container.Elem(), value)
+	return container.Interface()
+}
+
+func assignWrappedValue(target reflect.Value, value reflect.Value) {
+	if target.Kind() == reflect.Ptr {
+		nested := reflect.New(target.Type().Elem())
+		assignWrappedValue(nested.Elem(), value)
+		target.Set(nested)
+		return
+	}
+	if value.Type().AssignableTo(target.Type()) {
+		target.Set(value)
+		return
+	}
+	target.Set(value.Convert(target.Type()))
+}
+
+func assignDecodedSliceNull(target reflect.Value) error {
+	switch target.Kind() {
+	case reflect.Ptr, reflect.Interface, reflect.Slice:
+		target.Set(reflect.Zero(target.Type()))
+		return nil
+	default:
+		return fmt.Errorf("Cannot unmarshal JSON to type '%s'", target.Type().String())
+	}
+}
+
+func assignDecodedSliceValue(target reflect.Value, value interface{}) error {
+	if value == nil {
+		return assignDecodedSliceNull(target)
+	}
+	source := reflect.ValueOf(value)
+	if !source.IsValid() {
+		return assignDecodedSliceNull(target)
+	}
+	if source.Type().AssignableTo(target.Type()) {
+		target.Set(source)
+		return nil
+	}
+	if source.Type().ConvertibleTo(target.Type()) {
+		target.Set(source.Convert(target.Type()))
+		return nil
+	}
+	if target.Kind() == reflect.Interface && source.Type().AssignableTo(target.Type()) {
+		target.Set(source)
+		return nil
+	}
+	return fmt.Errorf("Cannot unmarshal JSON to type '%s'", target.Type().String())
+}
+
+func isByteSliceType(rType reflect.Type) bool {
+	return rType != nil && rType.Kind() == reflect.Slice && rType.Elem().Kind() == reflect.Uint8
 }
 
 func boolDecoder(ptr bool) DecoderFn {
@@ -334,28 +581,48 @@ func stringDecoder(ptr bool) DecoderFn {
 func float64Decoder(ptr bool) DecoderFn {
 	if !ptr {
 		return func(decoder *gojay.Decoder) (interface{}, error) {
-			aFloat := float64(0)
-			return &aFloat, decoder.Float64(&aFloat)
+			aFloat, _, err := decodeFloat64Value(decoder)
+			if err != nil {
+				return nil, err
+			}
+			return &aFloat, nil
 		}
 	}
 
 	return func(decoder *gojay.Decoder) (interface{}, error) {
-		floatPtr := new(float64)
-		return &floatPtr, decoder.Float64Null(&floatPtr)
+		aFloat, wasNull, err := decodeFloat64Value(decoder)
+		if err != nil {
+			return nil, err
+		}
+		if wasNull {
+			return nil, nil
+		}
+		floatPtr := &aFloat
+		return &floatPtr, nil
 	}
 }
 
 func float32Decoder(ptr bool) DecoderFn {
 	if !ptr {
 		return func(decoder *gojay.Decoder) (interface{}, error) {
-			anInt := float32(0)
-			return &anInt, decoder.Float32(&anInt)
+			aFloat, _, err := decodeFloat32Value(decoder)
+			if err != nil {
+				return nil, err
+			}
+			return &aFloat, nil
 		}
 	}
 
 	return func(decoder *gojay.Decoder) (interface{}, error) {
-		float32Ptr := new(float32)
-		return &float32Ptr, decoder.Float32Null(&float32Ptr)
+		aFloat, wasNull, err := decodeFloat32Value(decoder)
+		if err != nil {
+			return nil, err
+		}
+		if wasNull {
+			return nil, nil
+		}
+		float32Ptr := &aFloat
+		return &float32Ptr, nil
 	}
 }
 

@@ -9,7 +9,7 @@ import (
 
 const defaultProductName = "ansi"
 
-//MatchProduct matches product with sql driver
+// MatchProduct matches product with sql driver
 func MatchProduct(db *sql.DB) *database.Product {
 	driverTypeName := reflect.TypeOf(db.Driver()).Elem().String()
 	driverTypePair := strings.Split(driverTypeName, ".")
@@ -20,7 +20,9 @@ func MatchProduct(db *sql.DB) *database.Product {
 		if strings.Contains(driverPkg, name) ||
 			(candidate.DriverPkg != "" && strings.Contains(driverPkg, candidate.DriverPkg)) ||
 			(candidate.Driver != "" && strings.Contains(candidate.Driver, driverName) && driverName != "Driver") { // CONDITION WAS MET FOR VERTICA AND BIGQUERY WHEN driverName == "Driver"
-			product = candidate
+			// Driver/version discovery belongs to this caller, not the registry.
+			matched := *candidate
+			product = &matched
 			product.DriverPkg = driverPkg
 			product.Driver = driverName
 		}
@@ -29,7 +31,11 @@ func MatchProduct(db *sql.DB) *database.Product {
 		}
 	}
 	if product == nil {
-		product = defaultProduct
+		if defaultProduct == nil {
+			return nil
+		}
+		matched := *defaultProduct
+		product = &matched
 	}
 	return product
 }

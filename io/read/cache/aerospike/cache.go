@@ -13,6 +13,8 @@ import (
 	"github.com/google/uuid"
 	"github.com/viant/parsly/matcher"
 	"github.com/viant/sqlparser"
+	"github.com/viant/sqlparser/expr"
+	"github.com/viant/sqlparser/node"
 	"github.com/viant/sqlparser/query"
 	"github.com/viant/sqlx/io"
 	"github.com/viant/sqlx/io/read/cache"
@@ -44,7 +46,7 @@ var cachedBins = []string{typesBin, argsBin, sqlBin, dataBin, fieldsBin, storedF
 type (
 	Cache struct {
 		recorder        cache.Recorder
-		typeHolder      *cache.ScanTypeHolder
+		identityPrefix  string
 		client          *as.Client
 		getRecordFn     func(key *as.Key, bins ...string) (*as.Record, error)
 		putFn           func(key *as.Key, binMap as.BinMap) error
@@ -100,7 +102,13 @@ func (a *Cache) IndexByWithResult(ctx context.Context, db *sql.DB, column, SQL s
 	if err != nil {
 		return nil, err
 	}
-	identitySQL, argsMarshal, canonicalization := canonicalWarmupIdentity(identitySQL, argsMarshal)
+	canonicalization := "exact_query"
+	// A non-indexed warmup populates the ordinary query cache, whose metadata
+	// is matched against the original SQL. Indexed warmup has its own canonical
+	// identity shared by index writes and indexed lookups.
+	if column != "" {
+		identitySQL, argsMarshal, canonicalization = canonicalWarmupIdentity(identitySQL, argsMarshal)
+	}
 	URL, err := a.identityURL(identitySQL, identityArgs, argsMarshal)
 	if err != nil {
 		return nil, err
@@ -158,6 +166,9 @@ func tryOrderedSQL(SQL string, column string) (string, bool) {
 	if orderedByColumn {
 		return trimmedSQL, true
 	}
+	if orderByTerms, ok := warmupOuterOrderTerms(trimmedSQL); ok && len(orderByTerms) > 0 {
+		return "SELECT * FROM (" + trimmedSQL + ") AS _sqlx_warmup ORDER BY " + column + ", " + strings.Join(orderByTerms, ", "), true
+	}
 	return "SELECT * FROM (" + trimmedSQL + ") AS _sqlx_warmup ORDER BY " + column, true
 }
 
@@ -177,6 +188,41 @@ func warmupOrderState(SQL string, column string) (bool, bool) {
 	}
 
 	return true, warmupFirstOrderMatches(parsed, column)
+}
+
+func warmupOuterOrderTerms(SQL string) ([]string, bool) {
+	parsed, err := sqlparser.ParseQuery(SQL)
+	if err != nil || parsed == nil || len(parsed.OrderBy) == 0 {
+		return nil, false
+	}
+	visible := warmupOuterVisibleOrderTerms(parsed.List)
+	result := make([]string, 0, len(parsed.OrderBy))
+	for _, item := range parsed.OrderBy {
+		text, ok := warmupOuterOrderTerm(item, visible)
+		if !ok {
+			return nil, false
+		}
+		result = append(result, text)
+	}
+	return result, len(result) > 0
+}
+
+func warmupOuterOrderTerm(item *query.Item, visible map[string]string) (string, bool) {
+	if item == nil || item.Expr == nil {
+		return "", false
+	}
+	identity := expr.Identity(item.Expr)
+	if identity == nil {
+		return "", false
+	}
+	base, ok := warmupVisibleOrderMatch(identity, visible)
+	if !ok {
+		return "", false
+	}
+	if item.Direction != "" {
+		base += " " + item.Direction
+	}
+	return base, true
 }
 
 func warmupFirstOrderMatches(sel *query.Select, column string) bool {
@@ -205,6 +251,115 @@ func normalizeWarmupOrderExpr(value string) string {
 		value = value[index+1:]
 	}
 	return strings.Trim(value, "`\"")
+}
+
+func warmupOuterVisibleOrderTerms(items query.List) map[string]string {
+	result := map[string]string{}
+	ambiguous := map[string]bool{}
+	for _, item := range items {
+		output, keys, ok := warmupVisibleOrderProjection(item)
+		if !ok {
+			continue
+		}
+		for _, key := range keys {
+			key = strings.ToLower(strings.TrimSpace(key))
+			if key == "" || ambiguous[key] {
+				continue
+			}
+			if previous, exists := result[key]; exists && previous != output {
+				delete(result, key)
+				ambiguous[key] = true
+				continue
+			}
+			result[key] = output
+		}
+	}
+	return result
+}
+
+func warmupVisibleOrderProjection(item *query.Item) (string, []string, bool) {
+	if item == nil || item.Expr == nil {
+		return "", nil, false
+	}
+	output := strings.TrimSpace(item.Alias)
+	identity := expr.Identity(item.Expr)
+	if output == "" {
+		var ok bool
+		output, ok = warmupIdentityLeaf(identity)
+		if !ok {
+			return "", nil, false
+		}
+	}
+	keys := []string{output}
+	if identity != nil {
+		if full, ok := warmupIdentityPath(identity); ok {
+			keys = append(keys, full)
+		}
+		if leaf, ok := warmupIdentityLeaf(identity); ok {
+			keys = append(keys, leaf)
+		}
+	}
+	return output, keys, true
+}
+
+func warmupVisibleOrderMatch(identity node.Node, visible map[string]string) (string, bool) {
+	for _, key := range warmupOrderLookupKeys(identity) {
+		if matched := visible[strings.ToLower(strings.TrimSpace(key))]; matched != "" {
+			return matched, true
+		}
+	}
+	return "", false
+}
+
+func warmupOrderLookupKeys(identity node.Node) []string {
+	result := make([]string, 0, 2)
+	if full, ok := warmupIdentityPath(identity); ok {
+		result = append(result, full)
+	}
+	if leaf, ok := warmupIdentityLeaf(identity); ok {
+		if len(result) == 0 || !strings.EqualFold(result[len(result)-1], leaf) {
+			result = append(result, leaf)
+		}
+	}
+	return result
+}
+
+func warmupIdentityPath(n node.Node) (string, bool) {
+	switch actual := n.(type) {
+	case *expr.Ident:
+		return actual.Name, actual.Name != ""
+	case *expr.Selector:
+		if actual == nil {
+			return "", false
+		}
+		if actual.X == nil {
+			return actual.Name, actual.Name != ""
+		}
+		prefix, ok := warmupIdentityPath(actual.X)
+		if !ok || prefix == "" {
+			return actual.Name, actual.Name != ""
+		}
+		return actual.Name + "." + prefix, true
+	default:
+		return "", false
+	}
+}
+
+func warmupIdentityLeaf(n node.Node) (string, bool) {
+	switch actual := n.(type) {
+	case *expr.Ident:
+		return actual.Name, actual.Name != ""
+	case *expr.Selector:
+		if actual == nil {
+			return "", false
+		}
+		if actual.X == nil {
+			return actual.Name, actual.Name != ""
+		}
+		return warmupIdentityLeaf(actual.X)
+	default:
+		return "", false
+	}
 }
 
 func (a *Cache) metaBin(SQL string, argsStringified string, fieldsStringified string, storedFieldsStringified string, column string) as.BinMap {
@@ -284,7 +439,6 @@ func (a *Cache) get(ctx context.Context, SQL string, args []interface{}, columns
 	a.updateCacheStats(lazyMatch, warmupMatch, cacheStats)
 	cacheStats.ErrorType, cacheStats.ErrorCode, err = a.findActualError(err)
 	if cacheStats.ErrorCode != types.OK && !cacheStats.FoundAny() || err != nil {
-		a.handleResponseFailure(cacheStats.ErrorCode)
 		return nil, err
 	}
 
@@ -328,6 +482,9 @@ func (a *Cache) applyWarmupProjection(entry *cache.Entry, matcher *cache.Parmetr
 	}
 	exactMismatchIndex, exactMismatchStored, exactMismatchRequested := exactProjectionMismatch(entry.Meta.StoredFields, matcher.RequestedFields)
 	indexes, ok, reason, err := warmupProjectionIndexes(entry.Meta.StoredFields, matcher.RequestedFields)
+	if len(entry.Meta.StoredFields) == 0 && entry.Meta.ApplyProjection(matcher.RequestedFields) {
+		indexes, ok, reason, err = entry.Meta.ProjectedIndexes, true, "", nil
+	}
 	if err != nil {
 		return err
 	}
@@ -472,7 +629,10 @@ func (a *Cache) readRecords(SQL string, args []interface{}, query *cache.Parmetr
 			errors[1] = e
 			return
 		}
-		identitySQL, identityArgsMarshal, canonicalization := canonicalWarmupIdentity(identitySQL, identityArgsMarshal)
+		canonicalization := "exact_query"
+		if query.By != "" {
+			identitySQL, identityArgsMarshal, canonicalization = canonicalWarmupIdentity(identitySQL, identityArgsMarshal)
+		}
 		if warmupURL, urlErr := a.identityURL(identitySQL, identityArgs, identityArgsMarshal); urlErr == nil {
 			if stats != nil {
 				stats.WarmupKey = warmupURL
@@ -482,9 +642,13 @@ func (a *Cache) readRecords(SQL string, args []interface{}, query *cache.Parmetr
 			}
 			a.logWarmupIdentityResolved("read_lookup", query.By, warmupURL, identitySQL, identityArgsMarshal, canonicalization, meta)
 		}
-		warmupMatch, errors[1] = a.readRecord(identitySQL, identityArgs, identityArgsMarshal, func(aKey string) (string, error) {
-			return a.columnURL(aKey, query.By), nil
-		})
+		if query.By == "" {
+			warmupMatch, errors[1] = a.readRecord(identitySQL, identityArgs, identityArgsMarshal)
+		} else {
+			warmupMatch, errors[1] = a.readRecord(identitySQL, identityArgs, identityArgsMarshal, func(aKey string) (string, error) {
+				return a.columnURL(aKey, query.By), nil
+			})
+		}
 	}(query)
 	wg.Wait()
 	for i := range errors {
@@ -550,6 +714,9 @@ func (a *Cache) newBasePolicy(idempotent bool) *as.BasePolicy {
 		if a.timeoutConfig.MaxRetries != 0 && idempotent {
 			policy.SleepBetweenRetries = time.Millisecond * time.Duration(a.timeoutConfig.SleepBetweenRetriesMs)
 		}
+		if a.timeoutConfig.SocketTimeoutMs != 0 {
+			policy.SocketTimeout = time.Millisecond * time.Duration(a.timeoutConfig.SocketTimeoutMs)
+		}
 		if a.timeoutConfig.TotalTimeoutMs != 0 {
 			policy.TotalTimeout = time.Millisecond * time.Duration(a.timeoutConfig.TotalTimeoutMs)
 		}
@@ -562,9 +729,12 @@ func (a *Cache) AssignRows(entry *cache.Entry, rows *sql.Rows) error {
 }
 
 func (a *Cache) UpdateType(ctx context.Context, entry *cache.Entry, args []interface{}) (bool, error) {
-	a.ensureTypeHolder(args)
+	if entry.ScanTypes == nil {
+		entry.ScanTypes = &cache.ScanTypeHolder{}
+		entry.ScanTypes.InitType(args)
+	}
 
-	if !a.typeHolder.Match(entry) {
+	if !entry.ScanTypes.Match(entry) {
 		return false, a.Delete(ctx, entry)
 	}
 
@@ -654,17 +824,6 @@ func (a *Cache) reader(key *as.Key, record *as.Record) (*Reader, error) {
 		record:    record,
 		set:       a.set,
 	}, nil
-}
-
-func (a *Cache) ensureTypeHolder(values []interface{}) {
-	if a.typeHolder != nil {
-		return
-	}
-
-	a.mux.Lock()
-	a.typeHolder = &cache.ScanTypeHolder{}
-	a.typeHolder.InitType(values)
-	a.mux.Unlock()
 }
 
 func (a *Cache) updateEntry(record *as.Record, entry *cache.Entry) error {
@@ -758,9 +917,9 @@ func (a *Cache) columnURL(URL string, column string) string {
 
 func (a *Cache) identityURL(SQL string, args []interface{}, argsMarshal []byte) (string, error) {
 	if argsMarshal == nil {
-		return hash.GenerateURL(SQL, "", "", args)
+		return hash.GenerateURL(SQL, a.identityPrefix, "", args)
 	}
-	return hash.GenerateWithMarshal(SQL, "", "", argsMarshal)
+	return hash.GenerateWithMarshal(SQL, a.identityPrefix, "", argsMarshal)
 }
 
 func canonicalWarmupIdentity(SQL string, argsMarshal []byte) (string, []byte, string) {
@@ -914,9 +1073,6 @@ func (a *Cache) resolveIndexIdentity(SQL string, args []interface{}, options ...
 }
 
 func (a *Cache) storedFieldsMeta(column string, options ...interface{}) (string, error) {
-	if column == "" {
-		return "", nil
-	}
 	for _, option := range options {
 		matcher, ok := option.(*cache.ParmetrizedQuery)
 		if !ok || matcher == nil || matcher.StoredFields == nil {
@@ -1007,7 +1163,9 @@ func (a *Cache) updateColumnsInMatchEntry(entry *cache.Entry, match *RecordMatch
 	if err != nil {
 		return err
 	}
-	identitySQL, identityArgsMarshal, _ = canonicalWarmupIdentity(identitySQL, identityArgsMarshal)
+	if matcher.By != "" {
+		identitySQL, identityArgsMarshal, _ = canonicalWarmupIdentity(identitySQL, identityArgsMarshal)
+	}
 	warmupURL, markerKey := "", ""
 	if identityURL, err := a.identityURL(identitySQL, nil, identityArgsMarshal); err == nil {
 		warmupURL = identityURL
@@ -1030,33 +1188,54 @@ func (a *Cache) updateColumnsInMatchEntry(entry *cache.Entry, match *RecordMatch
 
 	multiReader := NewMultiReader(matcher)
 
-	chanSize := len(matcher.In)
-
-	readerChan := make(chan *readerWrapper, chanSize)
-	if chanSize == 0 {
-		close(readerChan)
+	if matcher.By == "" {
+		reader, err := a.reader(match.key, match.record)
+		if err != nil {
+			return err
+		}
+		multiReader.AddReader(reader)
+		entry.SetReader(multiReader, multiReader)
+		stats.Type = cache.TypeReadMulti
+		stats.RecordsCounter = 1
+		stats.Key = match.keyValue
+		return nil
 	}
 
-	for i := range matcher.In {
-		a.readChan(readerChan, matcher, warmupURL, matcher.In[i])
+	// IN is a membership predicate: duplicate keys must not duplicate rows.
+	// Fetch concurrently, but assemble in the same first-key order as AFS.
+	values := make([]interface{}, 0, len(matcher.In))
+	seen := make(map[string]bool, len(matcher.In))
+	for _, value := range matcher.In {
+		encoded, err := json.Marshal(value)
+		if err != nil {
+			return err
+		}
+		key := string(encoded)
+		if !seen[key] {
+			seen[key] = true
+			values = append(values, value)
+		}
 	}
-
-	counter := 0
+	readers := make([]readerWrapper, len(values))
+	var pending sync.WaitGroup
+	pending.Add(len(values))
+	for i, value := range values {
+		go func(index int, value interface{}) {
+			defer pending.Done()
+			readers[index].reader, readers[index].err = a.newReader(matcher, warmupURL, value)
+		}(i, value)
+	}
+	pending.Wait()
+	counter := len(readers)
 	childRowMiss := false
-	for reader := range readerChan {
+	for _, reader := range readers {
 		if reader.err != nil {
 			return reader.err
 		}
-
 		if reader.reader != nil {
 			multiReader.AddReader(reader.reader)
 		} else {
 			childRowMiss = true
-		}
-
-		counter++
-		if counter == chanSize {
-			close(readerChan)
 		}
 	}
 	if childRowMiss {
@@ -1091,16 +1270,6 @@ func (a *Cache) updateWriter(anEntry *cache.Entry, fullMatch *RecordMatched, SQL
 		stats.ExpiryTime = &expiresAt
 	}
 	return nil
-}
-
-func (a *Cache) readChan(readerChan chan *readerWrapper, matcher *cache.ParmetrizedQuery, warmupURL string, columnValue interface{}) {
-	go func(matcher *cache.ParmetrizedQuery, warmupURL string, columnValue interface{}) {
-		reader, err := a.newReader(matcher, warmupURL, columnValue)
-		readerChan <- &readerWrapper{
-			err:    err,
-			reader: reader,
-		}
-	}(matcher, warmupURL, columnValue)
 }
 
 func (a *Cache) newReader(matcher *cache.ParmetrizedQuery, warmupURL string, columnValue interface{}) (*Reader, error) {
@@ -1302,7 +1471,7 @@ func (a *Cache) handleResponseFailure(code types.ResultCode) {
 		return
 	}
 
-	if code == types.OK {
+	if code == types.OK || code == types.KEY_NOT_FOUND_ERROR {
 		a.failureHandler.HandleSuccess()
 	} else {
 		a.failureHandler.HandleFailure()
@@ -1310,10 +1479,13 @@ func (a *Cache) handleResponseFailure(code types.ResultCode) {
 }
 
 func (a *Cache) getRecord(key *as.Key, bins ...string) (*as.Record, error) {
+	var record *as.Record
+	var err error
 	if a.getRecordFn != nil {
-		return a.getRecordFn(key, bins...)
+		record, err = a.getRecordFn(key, bins...)
+	} else {
+		record, err = a.client.Get(a.newBasePolicy(true), key, bins...)
 	}
-	record, err := a.client.Get(a.newBasePolicy(true), key, bins...)
 	if err != nil {
 		aerospikeErr, ok := asAerospikeErr(err)
 		if ok {
@@ -1323,6 +1495,7 @@ func (a *Cache) getRecord(key *as.Key, bins ...string) (*as.Record, error) {
 		return nil, err
 	}
 
+	a.handleResponseFailure(types.OK)
 	return record, nil
 }
 
@@ -1332,6 +1505,9 @@ func (a *Cache) put(key *as.Key, binMap as.BinMap) error {
 	}
 	policy := a.writePolicy()
 	err := a.client.Put(policy, key, binMap)
+	if err == nil {
+		a.handleResponseFailure(types.OK)
+	}
 	aerospikeErr, ok := asAerospikeErr(err)
 	if ok {
 		a.handleResponseFailure(aerospikeErr.ResultCode())

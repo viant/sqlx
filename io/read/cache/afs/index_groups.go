@@ -15,12 +15,9 @@ func (c *Cache) indexGroups(ctx context.Context, db *sql.DB, column string, quer
 	if db == nil || strings.TrimSpace(query.SQL) == "" {
 		return 0, fmt.Errorf("cache warmup requires a database and SQL")
 	}
-	markerSQL := query.IdentitySQL + "\n-- sqlx-cache-index:" + strings.ToLower(column)
+	markerSQL := indexSQL(query.IdentitySQL, column, query.ByColumns)
 	columns := query.ByColumns
-	if len(columns) > 0 {
-		encoded, _ := json.Marshal(columns)
-		markerSQL = query.IdentitySQL + "\n-- sqlx-cache-columns:" + string(encoded)
-	} else {
+	if len(columns) == 0 {
 		columns = []string{column}
 	}
 	marker, err := c.Get(ctx, markerSQL, query.IdentityArgs)

@@ -17,8 +17,18 @@ const (
 type (
 	CheckKid string
 
+	// Reference identifies an exact compiled reference constraint. Schema is the
+	// declared RefDb, including an empty value; Field is the canonical Go name.
+	Reference struct {
+		Field  string
+		Schema string
+		Table  string
+		Column string
+	}
+
 	Check struct {
 		SQL            string
+		Reference      Reference
 		Field          *xunsafe.Field
 		ErrorMsg       string
 		CheckType      reflect.Type
@@ -118,13 +128,13 @@ func NewChecks(p reflect.Type, presence *option.SetMarker) (*Checks, error) {
 				IdentityColumn: &identityColumn,
 				UniqueDep:      uniqueDep,
 			})
-			continue
 		}
 
 		if tag.RefColumn != "" && tag.RefTable != "" {
 			checkType := reflect.StructOf([]reflect.StructField{{Name: xField.Name, Type: xField.Type, Tag: `sqlx:"Val"`}})
 			checkField := xunsafe.NewField(checkType.Field(0))
 			result.RefKey = append(result.RefKey, &Check{
+				Reference:  Reference{Field: xField.Name, Schema: tag.RefDb, Table: tag.RefTable, Column: tag.RefColumn},
 				SQL:        "SELECT " + tag.RefColumn + " AS Val FROM " + schema(tag.RefDb) + tag.RefTable + " WHERE " + tag.RefColumn,
 				CheckType:  checkType,
 				CheckField: checkField,
@@ -136,9 +146,32 @@ func NewChecks(p reflect.Type, presence *option.SetMarker) (*Checks, error) {
 	return result, nil
 }
 
+// ValidateReferences rejects unknown, wrong-target and duplicate receipts using
+// compiled metadata. It performs no validation callbacks or database queries.
+func (c *Checks) ValidateReferences(references []Reference) error {
+	seen := make(map[Reference]bool, len(references))
+	for _, reference := range references {
+		if seen[reference] {
+			return fmt.Errorf("duplicate reference receipt: %+v", reference)
+		}
+		seen[reference] = true
+		found := false
+		for _, check := range c.RefKey {
+			if check.Reference == reference {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return fmt.Errorf("unknown reference receipt: %+v", reference)
+		}
+	}
+	return nil
+}
+
 func schema(db string) string {
 	if db == "" {
 		return db
 	}
-	return "." + db
+	return db + "."
 }
