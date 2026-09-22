@@ -68,10 +68,13 @@ type (
 		ErrorType      string           `json:",omitempty"`
 		ErrorCode      types.ResultCode `json:",omitempty"`
 		ExpiryTime     *time.Time
+		CreatedTime    *time.Time `json:",omitempty"`
 	}
 )
 
 func (s *Stats) Init() {
+	s.CreatedTime = nil
+	s.ExpiryTime = nil
 	s.Type = TypeNone
 	s.RecordsCounter = 0
 	s.WarmupKey = ""

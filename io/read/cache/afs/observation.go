@@ -2,7 +2,6 @@ package afs
 
 import (
 	"github.com/viant/sqlx/io/read/cache"
-	"time"
 )
 
 // observeEntry reports the actual source decision without reading extra rows.
@@ -24,10 +23,8 @@ func (c *Cache) observeEntry(stats *cache.Stats, entry *cache.Entry, err error) 
 	if stats.Key == "" || stats.FoundWarmup {
 		stats.Key = entry.Meta.URL
 	}
-	if entry.Meta.ExpiryTimeMs > 0 {
-		expiry := time.UnixMilli(int64(entry.Meta.ExpiryTimeMs))
-		stats.ExpiryTime = &expiry
-	}
+	entry.Meta.ObserveTimes(stats)
+
 	if entry.Has() {
 		if !stats.FoundWarmup {
 			stats.Type = cache.TypeReadSingle

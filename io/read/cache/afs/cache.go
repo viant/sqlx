@@ -26,6 +26,7 @@ const (
 
 type (
 	Cache struct {
+		cache.CreationMetrics
 		storage   string
 		afs       afs.Service
 		ttl       time.Duration
@@ -88,7 +89,12 @@ func (c *Cache) Get(ctx context.Context, SQL string, args []interface{}, options
 			*stats = cache.Stats{}
 		}
 	}
-	defer func() { c.observeEntry(stats, result, readErr) }()
+	defer func() {
+		if result != nil {
+			result.Stats = stats
+		}
+		c.observeEntry(stats, result, readErr)
+	}()
 	var refresh bool
 	var readOnly bool
 	for _, option := range options {
@@ -286,6 +292,8 @@ func (c *Cache) checkMeta(dataReader cache.LineReader, entryMeta *cache.Meta) (b
 		return false, nil
 	}
 
+	entryMeta.CreatedTimeMs = meta.CreatedTimeMs
+	entryMeta.ExpiryTimeMs = meta.ExpiryTimeMs
 	entryMeta.Type = meta.Type
 	entryMeta.Fields = meta.Fields
 	entryMeta.StoredFields = meta.StoredFields
@@ -352,7 +360,9 @@ func (c *Cache) writeMeta(ctx context.Context, m *cache.Entry) error {
 	bufioWriter := bufio.NewWriterSize(writer, 2048)
 	m.WriteCloser = cache.NewWriteCloser(cache.NewLineWriter(bufioWriter), writer)
 
-	m.Meta.ExpiryTimeMs = int(cache.Now().Add(c.ttl).UnixMilli())
+	now := cache.Now()
+	m.Meta.CreatedTimeMs = now.UnixMilli()
+	m.Meta.ExpiryTimeMs = int(now.Add(c.ttl).UnixMilli())
 	data, err := json.Marshal(m.Meta)
 	if err != nil {
 		return err
@@ -428,7 +438,11 @@ func (c *Cache) Close(ctx context.Context, e *cache.Entry) error {
 	if err = c.moveIfNeeded(ctx, e, actualURL); err != nil {
 		return err
 	}
-
+	e.Meta.ObserveTimes(e.Stats)
+	if !e.Has() && !e.WarmupPublication && !e.CreationReported {
+		e.CreationReported = true
+		c.RecordCreation(cache.CreationLazy, 1)
+	}
 	return nil
 }
 

@@ -172,7 +172,7 @@ func (c *Rows) Close(ctx context.Context) error {
 		errMessage += err.Error()
 	}
 
-	return fmt.Errorf(errMessage)
+	return fmt.Errorf("%s", errMessage)
 }
 
 func (c *Rows) Next() bool {

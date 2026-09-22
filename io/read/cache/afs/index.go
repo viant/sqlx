@@ -49,6 +49,7 @@ func (c *Cache) IndexBy(ctx context.Context, db *sql.DB, column, SQL string, arg
 	if entry.Has() {
 		return 1, c.Close(ctx, entry)
 	}
+	entry.WarmupPublication = true
 	committed := false
 	defer func() {
 		if !committed {
@@ -89,5 +90,6 @@ func (c *Cache) IndexBy(ctx context.Context, db *sql.DB, column, SQL string, arg
 		return 0, err
 	}
 	committed = true
+	c.RecordCreation(cache.CreationWarmup, 1)
 	return 1, nil
 }

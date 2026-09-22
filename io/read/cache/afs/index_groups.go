@@ -34,6 +34,7 @@ func (c *Cache) indexGroups(ctx context.Context, db *sql.DB, column string, quer
 		}
 		return count, c.Close(ctx, marker)
 	}
+	marker.WarmupPublication = true
 	entries := map[string]*cache.Entry{}
 	counts := map[string]int{}
 	committed := false
@@ -100,6 +101,7 @@ func (c *Cache) indexGroups(ctx context.Context, db *sql.DB, column string, quer
 			if entry == nil {
 				return 0, fmt.Errorf("cache warmup group is already being written")
 			}
+			entry.WarmupPublication = true
 			entry.Meta.Fields = marker.Meta.Fields
 			entries[string(key)] = entry
 		}
@@ -128,6 +130,7 @@ func (c *Cache) indexGroups(ctx context.Context, db *sql.DB, column string, quer
 		return 0, err
 	}
 	committed = true
+	c.RecordCreation(cache.CreationWarmup, len(entries)+1)
 	return len(entries), nil
 }
 

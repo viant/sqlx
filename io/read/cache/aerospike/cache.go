@@ -31,6 +31,8 @@ import (
 
 const (
 	sqlBin          = "SQL"
+	createdBin      = "CreatedTimeMs"
+	expiryBin       = "ExpiryTimeMs"
 	argsBin         = "Args"
 	dataBin         = "Data"
 	compDataBin     = "CData"
@@ -41,10 +43,11 @@ const (
 	columnBin       = "Column"
 )
 
-var cachedBins = []string{typesBin, argsBin, sqlBin, dataBin, fieldsBin, storedFieldsBin, compDataBin}
+var cachedBins = []string{createdBin, expiryBin, typesBin, argsBin, sqlBin, dataBin, fieldsBin, storedFieldsBin, compDataBin}
 
 type (
 	Cache struct {
+		cache.CreationMetrics
 		recorder        cache.Recorder
 		identityPrefix  string
 		client          *as.Client
@@ -145,10 +148,11 @@ func (a *Cache) IndexByWithResult(ctx context.Context, db *sql.DB, column, SQL s
 			return result, err
 		}
 		result.GroupsWritten = inserted
+		a.RecordCreation(cache.CreationWarmup, inserted+1)
 		return result, nil
 	}
-
 	result.GroupsWritten = inserted
+	a.RecordCreation(cache.CreationWarmup, 1)
 	return result, nil
 }
 
@@ -433,8 +437,25 @@ func (a *Cache) Get(ctx context.Context, SQL string, args []interface{}, options
 func (a *Cache) get(ctx context.Context, SQL string, args []interface{}, columnsInMatcher *cache.ParmetrizedQuery, cacheStats *cache.Stats, refresh bool) (*cache.Entry, error) {
 	lazyMatch, warmupMatch, err := a.readRecords(SQL, args, columnsInMatcher, cacheStats)
 	if refresh {
-		lazyMatch.hasKey = false
-		lazyMatch.record = nil
+		if lazyMatch == nil {
+			return nil, err
+		}
+		// Retire both candidates before querying SQL. Merely clearing the lazy
+		// match allows a stale warmup to satisfy the forced refresh.
+		seen := map[string]bool{}
+		for _, match := range []*RecordMatched{warmupMatch, lazyMatch} {
+			if match == nil {
+				continue
+			}
+			if match.hasKey && match.key != nil && !seen[match.keyValue] {
+				if _, deleteErr := a.client.Delete(a.writePolicy(), match.key); deleteErr != nil {
+					return nil, deleteErr
+				}
+				seen[match.keyValue] = true
+			}
+			match.hasKey = false
+			match.record = nil
+		}
 	}
 	a.updateCacheStats(lazyMatch, warmupMatch, cacheStats)
 	cacheStats.ErrorType, cacheStats.ErrorCode, err = a.findActualError(err)
@@ -470,6 +491,16 @@ func (a *Cache) get(ctx context.Context, SQL string, args []interface{}, columns
 	}
 	if err = a.applyWarmupProjection(anEntry, columnsInMatcher, cacheStats); err != nil {
 		return nil, err
+	}
+	anEntry.Stats = cacheStats
+	if anEntry.Has() {
+		match := lazyMatch
+		if cacheStats.Type == cache.TypeReadMulti {
+			match = warmupMatch
+		}
+		if match != nil {
+			a.observeRecordTimes(anEntry, match.record, cacheStats)
+		}
 	}
 	anEntry.Windowed = cacheStats.Type == cache.TypeReadMulti && (columnsInMatcher == nil || len(columnsInMatcher.ByColumns) == 0)
 
@@ -742,12 +773,18 @@ func (a *Cache) UpdateType(ctx context.Context, entry *cache.Entry, args []inter
 }
 
 func (a *Cache) Close(ctx context.Context, entry *cache.Entry) error {
+	writing := !entry.Has() && !entry.ReadOnly && entry.WriteCloser != nil
 	err := entry.Close()
 	if err != nil {
 		_ = a.Delete(ctx, entry)
 		return err
 	}
 
+	entry.Meta.ObserveTimes(entry.Stats)
+	if writing && !entry.CreationReported && len(entry.Meta.Fields) > 0 {
+		entry.CreationReported = true
+		a.RecordCreation(cache.CreationLazy, 1)
+	}
 	return nil
 }
 
@@ -1507,6 +1544,13 @@ func (a *Cache) getRecord(key *as.Key, bins ...string) (*as.Record, error) {
 }
 
 func (a *Cache) put(key *as.Key, binMap as.BinMap) error {
+	if _, metadata := binMap[sqlBin]; metadata {
+		now := cache.Now()
+		binMap[createdBin] = now.UnixMilli()
+		if a.timeToLiveInSec > 0 && a.timeToLiveInSec < ^uint32(0)-1 {
+			binMap[expiryBin] = now.Add(time.Duration(a.timeToLiveInSec) * time.Second).UnixMilli()
+		}
+	}
 	if a.putFn != nil {
 		return a.putFn(key, binMap)
 	}
@@ -1552,4 +1596,24 @@ func New(namespace string, setName string, client *as.Client, timeToLiveInSec ui
 		timeoutConfig:   timeoutConfig,
 		failureHandler:  globalFailureHandler,
 	}, nil
+}
+
+func (a *Cache) observeRecordTimes(entry *cache.Entry, record *as.Record, stats *cache.Stats) {
+	entry.Meta.CreatedTimeMs = 0
+	entry.Meta.ExpiryTimeMs = 0
+	if record != nil {
+		entry.Meta.CreatedTimeMs = timestampBin(record.Bins[createdBin])
+		entry.Meta.ExpiryTimeMs = int(timestampBin(record.Bins[expiryBin]))
+	}
+	entry.Meta.ObserveTimes(stats)
+}
+func timestampBin(value interface{}) int64 {
+	switch actual := value.(type) {
+	case int:
+		return int64(actual)
+	case int64:
+		return actual
+	default:
+		return 0
+	}
 }

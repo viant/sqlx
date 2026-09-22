@@ -45,6 +45,10 @@ func (w *Writer) Flush() error {
 			w.delete(childKey)
 			return err
 		}
+		if i == 0 {
+			w.entry.Meta.CreatedTimeMs = timestampBin(binMap[createdBin])
+			w.entry.Meta.ExpiryTimeMs = int(timestampBin(binMap[expiryBin]))
+		}
 		childKey = key
 		previousKeyValue = childKeyValue
 	}

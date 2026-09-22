@@ -7,17 +7,21 @@ import (
 )
 
 type Entry struct {
-	ReadOnly    bool // invocation-only lookup mode, never persisted
-	Meta        Meta
-	Data        []byte // Entry is used as Iterator, Data is last streamed line.
-	Id          string
-	WriteCloser *WriteCloser
-	ReadCloser  *ReadCloser
-	Refresh     bool
-	index       int
-	RowAdded    bool
-	ScanTypes   *ScanTypeHolder // invocation-local destination types, never persisted
-	Windowed    bool            // native indexed source already applied the matcher window
+	Stats *Stats `json:"-"` // invocation-local observation target
+	// WarmupPublication defers creation metrics until the warmup marker commits.
+	WarmupPublication bool
+	CreationReported  bool // invocation-local, never persisted
+	ReadOnly          bool // invocation-only lookup mode, never persisted
+	Meta              Meta
+	Data              []byte // Entry is used as Iterator, Data is last streamed line.
+	Id                string
+	WriteCloser       *WriteCloser
+	ReadCloser        *ReadCloser
+	Refresh           bool
+	index             int
+	RowAdded          bool
+	ScanTypes         *ScanTypeHolder // invocation-local destination types, never persisted
+	Windowed          bool            // native indexed source already applied the matcher window
 }
 
 func (e *Entry) Next() bool {

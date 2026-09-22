@@ -1,15 +1,18 @@
 package cache
 
+import "time"
+
 type Meta struct {
-	SQL          string
-	Args         []byte
-	Type         []string
-	Signature    string
-	ExpiryTimeMs int
-	Fields       []*Field
-	StoredFields []ProjectionField
-	Partial      bool   // bounded indexed warmup cannot prove missing groups are empty
-	Generation   string // atomically published indexed dataset generation
+	SQL           string
+	Args          []byte
+	Type          []string
+	Signature     string
+	ExpiryTimeMs  int
+	CreatedTimeMs int64 `json:",omitempty"`
+	Fields        []*Field
+	StoredFields  []ProjectionField
+	Partial       bool   // bounded indexed warmup cannot prove missing groups are empty
+	Generation    string // atomically published indexed dataset generation
 	// ProjectedIndexes maps requested result columns to stored cached row ordinals.
 	// It is runtime-only metadata used when reading a warmup superset as a subset.
 	ProjectedIndexes []int `json:"-" yaml:"-"`
@@ -69,4 +72,21 @@ func (m *Meta) EffectiveType() []string {
 	result := make([]string, len(m.Type))
 	copy(result, m.Type)
 	return result
+}
+
+// ObserveTimes copies persisted entry timestamps into request-local statistics.
+func (m *Meta) ObserveTimes(stats *Stats) {
+	if stats == nil {
+		return
+	}
+	stats.CreatedTime = nil
+	stats.ExpiryTime = nil
+	if m.CreatedTimeMs > 0 {
+		created := time.UnixMilli(m.CreatedTimeMs)
+		stats.CreatedTime = &created
+	}
+	if m.ExpiryTimeMs > 0 {
+		expiry := time.UnixMilli(int64(m.ExpiryTimeMs))
+		stats.ExpiryTime = &expiry
+	}
 }

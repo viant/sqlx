@@ -45,8 +45,8 @@ func (c Config) validate() (*provider, error) {
 	}
 	// Zero and 0xffffffff have special server meanings; never silently turn a
 	// fractional TTL into namespace-default expiry or an eternal cache entry.
-	if c.TTL <= 0 || c.TTL%time.Second != 0 || c.TTL/time.Second >= time.Duration(^uint32(0)) {
-		return nil, fmt.Errorf("aerospike TTL must be whole positive seconds below 4294967295")
+	if c.TTL <= 0 || c.TTL%time.Second != 0 || c.TTL/time.Second >= time.Duration(^uint32(0)-1) {
+		return nil, fmt.Errorf("aerospike TTL must be whole positive seconds below 4294967294")
 	}
 	for name, value := range map[string]int{"maxRetries": c.Timeout.MaxRetries, "totalTimeoutInMs": c.Timeout.TotalTimeoutMs, "socketTimeoutInMs": c.Timeout.SocketTimeoutMs, "sleepBetweenRetriesInMs": c.Timeout.SleepBetweenRetriesMs, "failedRequestLimit": c.FailedRequestLimit, "resetFailuresInMs": c.ResetFailuresInMs} {
 		if value < 0 || name != "maxRetries" && name != "failedRequestLimit" && uint64(value) > uint64((1<<63-1)/int64(time.Millisecond)) {

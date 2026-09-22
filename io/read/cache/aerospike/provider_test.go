@@ -30,6 +30,7 @@ func TestConfiguredProviderValidation(t *testing.T) {
 		{"set_long", func(c *Config) { c.Location = strings.Repeat("a", 64) }},
 		{"ttl_fraction", func(c *Config) { c.TTL = 1500 * time.Millisecond }},
 		{"ttl_zero", func(c *Config) { c.TTL = 0 }},
+		{"ttl_preserve", func(c *Config) { c.TTL = time.Duration(^uint32(0)-1) * time.Second }},
 		{"ttl_special", func(c *Config) { c.TTL = time.Duration(^uint32(0)) * time.Second }},
 		{"timeout_negative", func(c *Config) { c.Timeout.SocketTimeoutMs = -1 }},
 		{"timeout_overflow", func(c *Config) { c.Timeout.TotalTimeoutMs = int(^uint(0) >> 1) }},
