@@ -79,7 +79,7 @@ func (a *Cache) IndexByWithResult(ctx context.Context, db *sql.DB, column, SQL s
 	}
 
 	querySQL, isOrdered := tryOrderedSQL(SQL, column)
-	rows, err := db.Query(querySQL, args...)
+	rows, err := db.QueryContext(ctx, querySQL, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -1424,6 +1424,9 @@ func (a *Cache) fetchAndIndexValues(ctx context.Context, fields []*cache.Field, 
 	placeholders := NewPlaceholders(columnIndex, fields)
 
 	for rows.Next() {
+		if err = ctx.Err(); err != nil {
+			return indexSource.Count(), err
+		}
 		processed++
 		if err = rows.Scan(placeholders.ScanPlaceholders()...); err != nil {
 			return indexSource.Count(), err
@@ -1452,6 +1455,10 @@ func (a *Cache) fetchAndIndexValues(ctx context.Context, fields []*cache.Field, 
 			lastProgress = time.Now()
 			lastProgressRows = processed
 		}
+	}
+
+	if err = ctx.Err(); err != nil {
+		return indexSource.Count(), err
 	}
 
 	if err = indexSource.Close(); err != nil {

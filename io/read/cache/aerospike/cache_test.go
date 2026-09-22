@@ -8,9 +8,11 @@ import (
 	as "github.com/aerospike/aerospike-client-go"
 	"github.com/aerospike/aerospike-client-go/types"
 	_ "github.com/mattn/go-sqlite3"
+	"github.com/viant/sqlx/io"
 	"github.com/viant/sqlx/io/read/cache"
 	"reflect"
 	"testing"
+	"time"
 )
 
 func TestWarmupDebugEnabled(t *testing.T) {
@@ -495,6 +497,46 @@ func TestCacheIndexBy_LegacyCountIncludesMarkerForIndexedWarmup(t *testing.T) {
 	}
 }
 
+func TestCacheIndexBy_UsesQueryContextCancellation(t *testing.T) {
+	db, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("sql.Open() error = %v", err)
+	}
+	defer db.Close()
+
+	if _, err = db.Exec(`CREATE TABLE metrics (order_id INTEGER, name TEXT)`); err != nil {
+		t.Fatalf("CREATE TABLE error = %v", err)
+	}
+	if _, err = db.Exec(`INSERT INTO metrics(order_id, name) VALUES (7, 'alpha')`); err != nil {
+		t.Fatalf("INSERT error = %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	aCache := &Cache{
+		namespace: "ns_memory",
+		set:       "sqlx_test",
+		putFn: func(key *as.Key, binMap as.BinMap) error {
+			return nil
+		},
+	}
+
+	result, err := aCache.IndexByWithResult(
+		ctx,
+		db,
+		"order_id",
+		"SELECT order_id, name FROM metrics",
+		nil,
+	)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("IndexByWithResult() error = %v, want %v", err, context.Canceled)
+	}
+	if result != nil {
+		t.Fatalf("expected nil result on canceled query, got %+v", result)
+	}
+}
+
 func TestCacheUpdateMetaFields_LoadsStoredFieldsFromWarmupMarker(t *testing.T) {
 	fieldsJSON := `[{"ColumnName":"order_id","ColumnScanType":"int","ColumnDatabaseName":"INTEGER"}]`
 	storedFieldsJSON := `[{"Name":"order_id","ColumnName":"order_id"}]`
@@ -520,6 +562,61 @@ func TestCacheUpdateMetaFields_LoadsStoredFieldsFromWarmupMarker(t *testing.T) {
 	}
 	if entry.Meta.StoredFields[0].Name != "order_id" {
 		t.Fatalf("unexpected stored field %+v", entry.Meta.StoredFields[0])
+	}
+}
+
+func TestFetchAndIndexValues_StopsWhenContextCanceled(t *testing.T) {
+	db, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatalf("sql.Open() error = %v", err)
+	}
+	defer db.Close()
+
+	if _, err = db.Exec(`CREATE TABLE metrics (order_id INTEGER, name TEXT)`); err != nil {
+		t.Fatalf("CREATE TABLE error = %v", err)
+	}
+	for i := 0; i < 100; i++ {
+		if _, err = db.Exec(`INSERT INTO metrics(order_id, name) VALUES (?, ?)`, i, "alpha"); err != nil {
+			t.Fatalf("INSERT error = %v", err)
+		}
+	}
+
+	rows, err := db.Query(`SELECT order_id, name FROM metrics ORDER BY order_id`)
+	if err != nil {
+		t.Fatalf("Query() error = %v", err)
+	}
+	defer rows.Close()
+
+	columnTypes, err := rows.ColumnTypes()
+	if err != nil {
+		t.Fatalf("ColumnTypes() error = %v", err)
+	}
+	fields, err := cache.ColumnsToFields(io.TypesToColumns(columnTypes))
+	if err != nil {
+		t.Fatalf("ColumnsToFields() error = %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	writes := 0
+	aCache := &Cache{
+		namespace: "ns_memory",
+		set:       "sqlx_test",
+		putFn: func(key *as.Key, binMap as.BinMap) error {
+			writes++
+			if writes == 1 {
+				cancel()
+				time.Sleep(1 * time.Millisecond)
+			}
+			return nil
+		},
+	}
+
+	count, err := aCache.fetchAndIndexValues(ctx, fields, "order_id", rows, true, "warmup", as.BinMap{})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("fetchAndIndexValues() error = %v, want %v", err, context.Canceled)
+	}
+	if count == 0 {
+		t.Fatalf("expected at least one indexed group before cancellation")
 	}
 }
 

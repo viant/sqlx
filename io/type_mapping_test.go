@@ -59,6 +59,7 @@ func TestNormalizeColumnType(t *testing.T) {
 		{name: "JSONB uses RawMessage", scanType: reflect.TypeOf([]byte{}), dbType: "JSONB", expected: reflect.TypeOf(json.RawMessage{})},
 		{name: "REAL uses float64", scanType: reflect.TypeOf(float32(0)), dbType: "REAL", expected: reflect.TypeOf(float64(0))},
 		{name: "TIMESTAMPTZ uses time", scanType: reflect.TypeOf(""), dbType: "TIMESTAMPTZ", expected: reflect.TypeOf(time.Time{})},
+		{name: "slice scan type beats scalar db type", scanType: reflect.TypeOf([]int{}), dbType: "INTEGER", expected: reflect.TypeOf([]int{})},
 	}
 
 	for _, testCase := range testCases {

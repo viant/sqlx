@@ -120,20 +120,40 @@ func ParseType(columnType string) (reflect.Type, bool) {
 }
 
 func NormalizeColumnType(scanType reflect.Type, name string) reflect.Type {
+	normalized := normalizeScanType(scanType)
+
 	rType, ok := ParseType(name)
 	if ok {
+		if preferNormalizedScanType(normalized, rType) {
+			return normalizeTypeRange(normalized)
+		}
 		return normalizeTypeRange(rType)
 	}
 
 	// Some database drivers do not expose scan metadata for derived or
 	// expression columns. Keep the mapper usable instead of passing a nil
 	// reflect.Type to normalizeTypeRange.
-	normalized := normalizeScanType(scanType)
 	if normalized == nil {
 		return xreflect.InterfaceType
 	}
 
 	return normalizeTypeRange(normalized)
+}
+
+func preferNormalizedScanType(scanType reflect.Type, dbType reflect.Type) bool {
+	if scanType == nil || dbType == nil {
+		return false
+	}
+	for scanType.Kind() == reflect.Ptr {
+		scanType = scanType.Elem()
+	}
+	for dbType.Kind() == reflect.Ptr {
+		dbType = dbType.Elem()
+	}
+	if scanType.Kind() == reflect.Slice && scanType.Elem().Kind() != reflect.Uint8 && dbType.Kind() != reflect.Slice {
+		return true
+	}
+	return false
 }
 
 func normalizeScanType(scanType reflect.Type) reflect.Type {
