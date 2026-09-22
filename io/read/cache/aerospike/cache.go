@@ -148,11 +148,11 @@ func (a *Cache) IndexByWithResult(ctx context.Context, db *sql.DB, column, SQL s
 			return result, err
 		}
 		result.GroupsWritten = inserted
-		a.RecordCreation(cache.CreationWarmup, inserted+1)
+		a.RecordCreationContext(ctx, cache.CreationWarmup, inserted+1)
 		return result, nil
 	}
 	result.GroupsWritten = inserted
-	a.RecordCreation(cache.CreationWarmup, 1)
+	a.RecordCreationContext(ctx, cache.CreationWarmup, 1)
 	return result, nil
 }
 
@@ -783,7 +783,7 @@ func (a *Cache) Close(ctx context.Context, entry *cache.Entry) error {
 	entry.Meta.ObserveTimes(entry.Stats)
 	if writing && !entry.CreationReported && len(entry.Meta.Fields) > 0 {
 		entry.CreationReported = true
-		a.RecordCreation(cache.CreationLazy, 1)
+		a.RecordCreationContext(ctx, cache.CreationLazy, 1)
 	}
 	return nil
 }

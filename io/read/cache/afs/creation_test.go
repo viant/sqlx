@@ -15,7 +15,8 @@ import (
 )
 
 func TestNativeCreationMetrics(t *testing.T) {
-	ctx := context.Background()
+	var observed atomic.Int64
+	ctx := cache.WithCreationObserver(context.Background(), func(_ string, count int) { observed.Add(int64(count)) })
 	h := sqlite.New(t, "CREATE TABLE items(id INTEGER)", "INSERT INTO items VALUES(1)")
 	c, err := afs.NewCache(t.TempDir(), time.Minute, "metrics", nil)
 	require.NoError(t, err)
@@ -78,4 +79,5 @@ func TestNativeCreationMetrics(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, int64(5), warm.Load(), "empty query result publishes an entry")
 	require.Equal(t, int64(1), lazy.Load(), "warmups must not inflate lazy counts")
+	require.Equal(t, int64(6), observed.Load())
 }

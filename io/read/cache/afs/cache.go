@@ -441,7 +441,7 @@ func (c *Cache) Close(ctx context.Context, e *cache.Entry) error {
 	e.Meta.ObserveTimes(e.Stats)
 	if !e.Has() && !e.WarmupPublication && !e.CreationReported {
 		e.CreationReported = true
-		c.RecordCreation(cache.CreationLazy, 1)
+		c.RecordCreationContext(ctx, cache.CreationLazy, 1)
 	}
 	return nil
 }

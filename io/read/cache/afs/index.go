@@ -90,6 +90,6 @@ func (c *Cache) IndexBy(ctx context.Context, db *sql.DB, column, SQL string, arg
 		return 0, err
 	}
 	committed = true
-	c.RecordCreation(cache.CreationWarmup, 1)
+	c.RecordCreationContext(ctx, cache.CreationWarmup, 1)
 	return 1, nil
 }

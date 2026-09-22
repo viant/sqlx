@@ -1,6 +1,9 @@
 package cache
 
-import "sync"
+import (
+	"context"
+	"sync"
+)
 
 const (
 	CreationLazy   = "lazy"
@@ -30,6 +33,23 @@ func (m *CreationMetrics) RecordCreation(kind string, entries int) {
 	observer := m.observer
 	m.mu.RUnlock()
 	if observer != nil {
+		observer(kind, entries)
+	}
+}
+
+type creationObserverKey struct{}
+
+// WithCreationObserver adds an invocation-local observer without changing the
+// cache's configured observer or ownership. Both observers receive publications.
+func WithCreationObserver(ctx context.Context, observer func(string, int)) context.Context {
+	return context.WithValue(ctx, creationObserverKey{}, observer)
+}
+func (m *CreationMetrics) RecordCreationContext(ctx context.Context, kind string, entries int) {
+	m.RecordCreation(kind, entries)
+	if entries <= 0 || ctx == nil {
+		return
+	}
+	if observer, ok := ctx.Value(creationObserverKey{}).(func(string, int)); ok && observer != nil {
 		observer(kind, entries)
 	}
 }

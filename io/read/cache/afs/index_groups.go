@@ -130,7 +130,7 @@ func (c *Cache) indexGroups(ctx context.Context, db *sql.DB, column string, quer
 		return 0, err
 	}
 	committed = true
-	c.RecordCreation(cache.CreationWarmup, len(entries)+1)
+	c.RecordCreationContext(ctx, cache.CreationWarmup, len(entries)+1)
 	return len(entries), nil
 }
 
