@@ -149,3 +149,12 @@ func (m *ParmetrizedQuery) WarmupIdentityResolved() (string, []interface{}, []by
 	}
 	return m.IdentitySQL, m.IdentityArgs, marshalArgs, WarmupIdentityMeta{Source: "explicit", Detail: "identity_fields_present"}, nil
 }
+
+// CreatedAt exposes creation time as an optional capability for consumers that
+// support both older and newer native cache implementations.
+func (s *Stats) CreatedAt() *time.Time {
+	if s == nil {
+		return nil
+	}
+	return s.CreatedTime
+}
