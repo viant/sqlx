@@ -231,11 +231,7 @@ func (s *Service) runQuery(ctx context.Context, db *sql.DB, query *info.Query, s
 	defer stmt.Close()
 
 	var rows *sql.Rows
-	if len(params) > 0 {
-		rows, err = stmt.Query(params...)
-	} else {
-		rows, err = stmt.Query()
-	}
+	rows, err = stmt.QueryContext(ctx, params...)
 	if err != nil {
 		return err
 	}
