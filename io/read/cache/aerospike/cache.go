@@ -211,7 +211,7 @@ func warmupOuterOrderTerms(SQL string) ([]string, bool) {
 	return result, len(result) > 0
 }
 
-func warmupOuterOrderTerm(item *query.Item, visible map[string]string) (string, bool) {
+func warmupOuterOrderTerm(item *query.Item, visible map[string]warmupVisibleOrderTerm) (string, bool) {
 	if item == nil || item.Expr == nil {
 		return "", false
 	}
@@ -239,43 +239,98 @@ func warmupFirstOrderMatches(sel *query.Select, column string) bool {
 		return false
 	}
 
-	switch {
-	case first.Expr != nil:
-		return normalizeWarmupOrderExpr(sqlparser.Stringify(first.Expr)) == normalizeWarmupOrderExpr(column)
-	case first.Raw != "":
-		return normalizeWarmupOrderExpr(first.Raw) == normalizeWarmupOrderExpr(column)
-	default:
+	columnKey := normalizeWarmupOrderExpr(column)
+	if columnKey == "" {
 		return false
 	}
+	identity := expr.Identity(first.Expr)
+	if first.Expr == nil && first.Raw != "" {
+		identity = expr.NewSelector(first.Raw)
+	}
+	if output, ok := warmupVisibleOrderMatch(identity, warmupOuterVisibleOrderTerms(sel.List)); ok {
+		return normalizeWarmupOrderExpr(output) == columnKey
+	}
+	// A sole wildcard exposes source names unchanged. Explicit projections
+	// must resolve through their outputs, since an alias can hide the index name.
+	if len(sel.List) == 1 && sel.List[0] != nil {
+		if _, star := sel.List[0].Expr.(*expr.Star); star {
+			if path, ok := warmupIdentityPath(identity); ok {
+				return normalizeWarmupOrderExpr(path) == columnKey
+			}
+		}
+	}
+	return false
 }
 
 func normalizeWarmupOrderExpr(value string) string {
-	value = strings.TrimSpace(strings.ToLower(value))
-	if index := strings.LastIndex(value, "."); index != -1 {
-		value = value[index+1:]
+	parts, err := sqlparser.TableIdentifierParts(value)
+	if err != nil || len(parts) == 0 {
+		return ""
 	}
-	return strings.Trim(value, "`\"")
+	return strings.ToLower(parts[len(parts)-1])
 }
 
-func warmupOuterVisibleOrderTerms(items query.List) map[string]string {
-	result := map[string]string{}
-	ambiguous := map[string]bool{}
+// Keys contain decoded identifier segments, while output retains SQL quoting.
+// Encoding the segment list keeps a literal `a.b` distinct from qualified a.b.
+func warmupOrderIdentifierKey(value string) string {
+	parts, err := sqlparser.TableIdentifierParts(value)
+	if err != nil || len(parts) == 0 {
+		return ""
+	}
+	for i := range parts {
+		parts[i] = strings.ToLower(parts[i])
+	}
+	key, _ := json.Marshal(parts)
+	return string(key)
+}
+
+type warmupVisibleOrderTerm struct {
+	output               string
+	unqualifiedSourceKey string
+}
+
+func warmupOuterVisibleOrderTerms(items query.List) map[string]warmupVisibleOrderTerm {
+	type projection struct {
+		term      warmupVisibleOrderTerm
+		outputKey string
+		keys      []string
+	}
+	var projections []projection
+	outputCounts := map[string]int{}
 	for _, item := range items {
 		output, keys, ok := warmupVisibleOrderProjection(item)
 		if !ok {
 			continue
 		}
-		for _, key := range keys {
-			key = strings.ToLower(strings.TrimSpace(key))
-			if key == "" || ambiguous[key] {
+		outputKey := warmupOrderIdentifierKey(output)
+		if outputKey == "" {
+			continue
+		}
+		term := warmupVisibleOrderTerm{output: output}
+		if path, ok := warmupIdentityPath(expr.Identity(item.Expr)); ok {
+			if parts, err := sqlparser.TableIdentifierParts(path); err == nil && len(parts) == 1 {
+				term.unqualifiedSourceKey = warmupOrderIdentifierKey(path)
+			}
+		}
+		projections = append(projections, projection{term: term, outputKey: outputKey, keys: keys})
+		outputCounts[outputKey]++
+	}
+	result := map[string]warmupVisibleOrderTerm{}
+	for _, projection := range projections {
+		seen := map[string]bool{}
+		for _, rawKey := range projection.keys {
+			key := warmupOrderIdentifierKey(rawKey)
+			if key == "" || seen[key] {
 				continue
 			}
-			if previous, exists := result[key]; exists && previous != output {
-				delete(result, key)
-				ambiguous[key] = true
+			seen[key] = true
+			if _, exists := result[key]; exists || outputCounts[projection.outputKey] != 1 {
+				// Retain an ambiguity marker so lookup cannot fall back from
+				// a conflicting full path to a less specific name.
+				result[key] = warmupVisibleOrderTerm{}
 				continue
 			}
-			result[key] = output
+			result[key] = projection.term
 		}
 	}
 	return result
@@ -306,10 +361,14 @@ func warmupVisibleOrderProjection(item *query.Item) (string, []string, bool) {
 	return output, keys, true
 }
 
-func warmupVisibleOrderMatch(identity node.Node, visible map[string]string) (string, bool) {
-	for _, key := range warmupOrderLookupKeys(identity) {
-		if matched := visible[strings.ToLower(strings.TrimSpace(key))]; matched != "" {
-			return matched, true
+func warmupVisibleOrderMatch(identity node.Node, visible map[string]warmupVisibleOrderTerm) (string, bool) {
+	for i, rawKey := range warmupOrderLookupKeys(identity) {
+		key := warmupOrderIdentifierKey(rawKey)
+		if matched, exists := visible[key]; exists {
+			if matched.output == "" || i > 0 && matched.unqualifiedSourceKey != key {
+				return "", false
+			}
+			return matched.output, true
 		}
 	}
 	return "", false
