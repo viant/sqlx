@@ -12,6 +12,8 @@ import (
 const (
 	EncodingJSON = "JSON"
 	EncodingCSV  = "CSV"
+	// EncodingRAW preserves the database driver's scalar and NULL semantics.
+	EncodingRAW = "RAW"
 	//TagSqlx defines sqlx annotation
 
 	TagSqlx = "sqlx"

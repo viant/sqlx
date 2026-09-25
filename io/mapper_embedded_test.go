@@ -34,6 +34,10 @@ type EmbeddedEncoded struct {
 	CSV  []string `sqlx:"csv_value,enc=CSV"`
 }
 
+type rawJSONScalar struct {
+	Failure *string `sqlx:"failure_json,enc=RAW"`
+}
+
 func TestStructColumnMapperEmbeddedHolderValues(t *testing.T) {
 	for _, test := range []struct {
 		name    string
@@ -61,6 +65,8 @@ func TestStructColumnMapperEmbeddedHolderValues(t *testing.T) {
 			Ignored int `sqlx:"-"`
 			*EmbeddedEncoded
 		}{99, &EmbeddedEncoded{[]int{2, 7}, []string{"a", "b"}}}, []string{"json_value", "csv_value"}, []driver.Value{"[2,7]", "a,b"}},
+		{"raw nil", &rawJSONScalar{}, []string{"failure_json"}, []driver.Value{nil}},
+		{"raw scalar", &rawJSONScalar{Failure: func() *string { value := `[]`; return &value }()}, []string{"failure_json"}, []driver.Value{`[]`}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			columns, binder, err := io.StructColumnMapper(reflect.TypeOf(test.record), option.StructOrderedColumns(true))

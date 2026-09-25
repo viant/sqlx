@@ -180,7 +180,7 @@ func ExtractColumnNames(recordType reflect.Type) []string {
 }
 
 func fieldGetter(tag *Tag, field *xunsafe.Field, recordType reflect.Type) (xunsafe.Getter, error) {
-	if tag == nil || tag.Encoding == "" {
+	if tag == nil || tag.Encoding == "" || tag.Encoding == EncodingRAW {
 		return field.Addr, nil
 	}
 
