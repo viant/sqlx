@@ -11,7 +11,11 @@ import (
 
 // ErrRetryUnsafe marks a recoverable error that cannot be replayed without
 // repeating row callbacks or replacing a caller-owned statement/transaction.
-var ErrRetryUnsafe = errors.New("read retry is unsafe after row materialization or with a supplied statement")
+var ErrRetryUnsafe = errors.New("read retry is unsafe after row materialization or with a caller-owned statement or transaction")
+
+// ErrTransactionCache rejects cache-backed reads inside a caller-owned
+// transaction: cached rows could hide that transaction's uncommitted writes.
+var ErrTransactionCache = errors.New("read cache is unsafe with a caller-owned transaction")
 
 // RetryPolicy applies only to QueryAll's database reads. Attempts includes the
 // initial attempt. Reconnect resolves the same configured source; it must not
@@ -43,7 +47,7 @@ func (r *Reader) QueryAll(ctx context.Context, emit func(interface{}) error, arg
 			r.retry.Attempts <= 1 || r.retry.Recoverable == nil || !r.retry.Recoverable(err) {
 			return err
 		}
-		if r.materialized || r.suppliedStmt {
+		if r.materialized || r.suppliedStmt || r.tx != nil {
 			return errors.Join(ErrRetryUnsafe, err)
 		}
 		if !r.sourceFailed || attempt >= r.retry.Attempts || r.retry.Reconnect == nil {

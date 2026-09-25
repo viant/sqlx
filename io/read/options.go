@@ -23,6 +23,7 @@ type options struct {
 	mapperCache        *MapperCache
 	disableMapperCache DisableMapperCache
 	db                 *sql.DB
+	tx                 *sql.Tx
 	inMatcher          *cache.ParmetrizedQuery
 	cacheStats         *cache.Stats
 	cacheRefresh       cache.Refresh
@@ -77,6 +78,12 @@ func WithDB(db *sql.DB) Option {
 	return func(o *options) {
 		o.db = db
 	}
+}
+
+// WithTx prepares database reads on a caller-owned transaction. The caller
+// commits or rolls it back; Reader never closes the transaction.
+func WithTx(tx *sql.Tx) Option {
+	return func(o *options) { o.tx = tx }
 }
 
 func WithInlineType(inlineType bool) Option {

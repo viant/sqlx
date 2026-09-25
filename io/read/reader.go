@@ -36,6 +36,9 @@ type (
 
 // QuerySingle returns single row
 func (r *Reader) QuerySingle(ctx context.Context, emit func(row interface{}) error, args ...interface{}) error {
+	if r.tx != nil && (r.cache != nil || r.cacheOnly) {
+		return ErrTransactionCache
+	}
 	if r.cacheOnly {
 		return fmt.Errorf("cache-only reading requires QueryAll")
 	}
@@ -67,6 +70,9 @@ func (r *Reader) QuerySingle(ctx context.Context, emit func(row interface{}) err
 }
 
 func (r *Reader) queryAll(ctx context.Context, emit func(row interface{}) error, args ...interface{}) error {
+	if r.tx != nil && (r.cache != nil || r.cacheOnly) {
+		return ErrTransactionCache
+	}
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -408,7 +414,13 @@ func (r *Reader) ensureStmt(ctx context.Context) error {
 		return nil
 	}
 
-	stmt, err := r.db.PrepareContext(ctx, r.query)
+	var stmt *sql.Stmt
+	var err error
+	if r.tx != nil {
+		stmt, err = r.tx.PrepareContext(ctx, r.query)
+	} else {
+		stmt, err = r.db.PrepareContext(ctx, r.query)
+	}
 	if showSQL {
 		fmt.Println(r.query)
 	}
