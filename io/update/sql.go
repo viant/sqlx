@@ -3,11 +3,13 @@ package update
 import (
 	"bytes"
 	"fmt"
+	"strings"
+	"unsafe"
+
 	"github.com/viant/sqlx/io/errx"
 	"github.com/viant/sqlx/metadata/info"
 	"github.com/viant/sqlx/option"
 	"github.com/viant/xunsafe"
-	"strings"
 )
 
 const (
@@ -16,21 +18,24 @@ const (
 
 // Builder represent update DML builder
 type Builder struct {
-	id                  string
-	identityIndex       int
-	fragments           []string
-	sqlPrefix           string
-	sqlSuffix           string
-	estimatedBufferSize int
+	table         string
+	columns       []string
+	identityIndex int
+	dialect       *info.Dialect
 }
 
 // Build builds update statement
 func (b *Builder) Build(record interface{}, options ...option.Option) string {
 	presenceProvider := option.Options(options).SetMarker()
 	buffer := bytes.Buffer{}
-	buffer.Grow(b.estimatedBufferSize)
-	ptr := xunsafe.AsPointer(record)
-	buffer.WriteString(b.sqlPrefix)
+	var ptr unsafe.Pointer
+	if presenceProvider != nil && presenceProvider.Marker != nil {
+		ptr = xunsafe.AsPointer(record)
+	}
+	buffer.WriteString("UPDATE ")
+	buffer.WriteString(b.table)
+	buffer.WriteString(" SET ")
+	getter := b.dialect.PlaceholderGetter()
 	hasCount := 0
 	presenceAware := presenceProvider != nil && presenceProvider.Marker != nil
 	for i := 0; i < b.identityIndex; i++ {
@@ -40,13 +45,39 @@ func (b *Builder) Build(record interface{}, options ...option.Option) string {
 		if hasCount > 0 {
 			buffer.WriteString(columnSeparator)
 		}
-		buffer.WriteString(b.fragments[i])
+		buffer.WriteString(b.columns[i])
+		buffer.WriteString(" = ")
+		buffer.WriteString(getter())
 		hasCount++
 	}
-	if presenceAware && hasCount == 0 { //record has no changes no point to run update
+	if hasCount == 0 {
 		return ""
 	}
-	buffer.WriteString(b.sqlSuffix)
+	buffer.WriteString(" WHERE ")
+	for i := b.identityIndex; i < len(b.columns); i++ {
+		if i > b.identityIndex {
+			buffer.WriteString(" AND ")
+		}
+		buffer.WriteString(b.columns[i])
+		buffer.WriteString(" = ")
+		buffer.WriteString(getter())
+	}
+	if match := option.Options(options).IfMatch(); match != nil {
+		column := ""
+		for i := 0; i < b.identityIndex; i++ {
+			if strings.EqualFold(b.columns[i], strings.TrimSpace(match.Column)) {
+				column = b.columns[i]
+				break
+			}
+		}
+		if column == "" {
+			return ""
+		}
+		buffer.WriteString(" AND ")
+		buffer.WriteString(column)
+		buffer.WriteString(" = ")
+		buffer.WriteString(getter())
+	}
 	return buffer.String()
 }
 
@@ -58,21 +89,12 @@ func NewBuilder(table string, columns []string, identityIndex int, dialect *info
 	if identityIndex <= 0 {
 		return nil, errx.MissingIdentity("update", table, columns, identityIndex)
 	}
-	var fragments = make([]string, len(columns))
-	getter := dialect.PlaceholderGetter()
-	fragmentSize := 0
-	for i, name := range columns {
-		fragments[i] = name + " = " + getter()
-		fragmentSize += len(fragments[i])
-	}
-	criteria := strings.Join(fragments[identityIndex:], " AND ")
 	result := &Builder{
-		sqlPrefix:     "UPDATE " + table + " SET ",
-		sqlSuffix:     " WHERE " + criteria,
+		table:         table,
+		columns:       append([]string(nil), columns...),
 		identityIndex: identityIndex,
-		fragments:     fragments,
+		dialect:       dialect,
 	}
-	result.estimatedBufferSize = len(result.sqlPrefix) + len(result.sqlSuffix) + fragmentSize + (3 * len(fragments))
 	return result, nil
 }
 

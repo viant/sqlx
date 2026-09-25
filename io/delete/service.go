@@ -3,11 +3,14 @@ package delete
 import (
 	"context"
 	"database/sql"
+	"fmt"
+	"reflect"
+	"strings"
+	"sync"
+
 	"github.com/viant/sqlx/io"
 	"github.com/viant/sqlx/io/config"
 	"github.com/viant/sqlx/option"
-	"reflect"
-	"sync"
 )
 
 // Service represents deleter
@@ -20,6 +23,9 @@ type Service struct {
 
 // Exec runs delete statements
 func (s *Service) Exec(ctx context.Context, any interface{}, options ...option.Option) (int64, error) {
+	if match := option.Options(options).IfMatch(); match != nil {
+		return s.execIfMatch(ctx, any, match, options)
+	}
 	recordsFn, cnt, err := io.Iterator(any)
 	if cnt == 0 {
 		return 0, nil
@@ -47,6 +53,89 @@ func (s *Service) Exec(ctx context.Context, any interface{}, options ...option.O
 	err = sess.end(err)
 	return rowsAffected, err
 
+}
+
+func (s *Service) execIfMatch(ctx context.Context, input interface{}, match *option.IfMatch, options []option.Option) (int64, error) {
+	inputType := reflect.TypeOf(input)
+	if inputType == nil {
+		return 0, fmt.Errorf("delete if-match requires one record")
+	}
+	for inputType.Kind() == reflect.Ptr {
+		inputType = inputType.Elem()
+	}
+	if inputType.Kind() == reflect.Slice || inputType.Kind() == reflect.Array {
+		return 0, fmt.Errorf("delete if-match requires one record, not a list")
+	}
+	valueAt, count, err := io.Values(input)
+	if err != nil {
+		return 0, err
+	}
+	if count != 1 {
+		return 0, fmt.Errorf("delete if-match requires one record")
+	}
+	record := valueAt(0)
+	if record == nil || (reflect.ValueOf(record).Kind() == reflect.Ptr && reflect.ValueOf(record).IsNil()) {
+		return 0, fmt.Errorf("delete if-match requires a non-nil record")
+	}
+	if match.Value == nil {
+		return 0, fmt.Errorf("delete if-match value is nil")
+	}
+	value := reflect.ValueOf(match.Value)
+	switch value.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Ptr, reflect.Slice:
+		if value.IsNil() {
+			return 0, fmt.Errorf("delete if-match value is nil")
+		}
+	}
+	sess, err := s.ensureSession(record, 1)
+	if err != nil {
+		return 0, err
+	}
+	mapped, _, err := s.Mapper(record)
+	if err != nil {
+		return 0, err
+	}
+	column := ""
+	for _, candidate := range mapped {
+		if strings.EqualFold(candidate.Name(), strings.TrimSpace(match.Column)) {
+			column = candidate.Name()
+			break
+		}
+	}
+	for _, key := range sess.columns {
+		if strings.EqualFold(key.Name(), column) {
+			column = ""
+			break
+		}
+	}
+	if column == "" {
+		return 0, fmt.Errorf("delete if-match column %q is not a mapped non-key column", match.Column)
+	}
+	getter := s.Dialect.PlaceholderGetter()
+	for range sess.columns {
+		getter()
+	}
+	query := sess.Builder.Build(nil, option.BatchSize(1)) + " AND " + column + " = " + getter()
+	values := make([]interface{}, len(sess.columns)+1)
+	sess.binder(record, values, 0, len(sess.columns))
+	values[len(sess.columns)] = match.Value
+	if err := sess.begin(ctx, s.db, options); err != nil {
+		return 0, err
+	}
+	var result sql.Result
+	if sess.Transaction != nil {
+		result, err = sess.Transaction.ExecContext(ctx, query, values...)
+	} else {
+		result, err = s.db.ExecContext(ctx, query, values...)
+	}
+	if err != nil {
+		return 0, sess.end(err)
+	}
+	affected, err := result.RowsAffected()
+	if err == nil && affected != 1 {
+		err = option.ErrNoMatch
+	}
+	return affected, sess.end(err)
 }
 
 func (s *Service) ensureSession(record interface{}, batchSize int) (*session, error) {

@@ -2,6 +2,7 @@ package option
 
 import (
 	"database/sql"
+	"errors"
 	"strings"
 	"sync"
 	"unsafe"
@@ -27,6 +28,30 @@ type Option interface{}
 
 // Options represents generic options
 type Options []Option
+
+// ErrNoMatch means an IfMatch update or delete did not affect exactly one row.
+var ErrNoMatch = errors.New("if-match write did not affect exactly one row")
+
+// IfMatch adds an expected column value to an update or delete predicate.
+// It is an execution option: the expected value belongs to one write, not to
+// the reusable service. A missing or ambiguous row returns ErrNoMatch.
+type IfMatch struct {
+	Column string
+	Value  any
+}
+
+// IfMatch returns the optional atomic match condition for this execution.
+func (o Options) IfMatch() *IfMatch {
+	for _, candidate := range o {
+		switch actual := candidate.(type) {
+		case IfMatch:
+			return &actual
+		case *IfMatch:
+			return actual
+		}
+	}
+	return nil
+}
 
 // LoadFormat represents the format of data loaded
 type LoadFormat string

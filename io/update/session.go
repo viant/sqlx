@@ -9,6 +9,7 @@ import (
 	"github.com/viant/sqlx/io/errx"
 	"github.com/viant/sqlx/option"
 	"reflect"
+	"strings"
 )
 
 type session struct {
@@ -58,8 +59,35 @@ func (s *session) begin(ctx context.Context, db *sql.DB, options []option.Option
 	return nil
 }
 
-func (s *session) prepare(ctx context.Context, record interface{}, dml *string) (bool, error) {
-	SQL := s.Builder.Build(record, s.setMarker)
+func (s *session) prepare(ctx context.Context, record interface{}, dml *string, match *option.IfMatch) (bool, error) {
+	buildOptions := []option.Option{s.setMarker}
+	if match != nil {
+		if match.Value == nil {
+			return false, fmt.Errorf("update if-match value is nil")
+		}
+		value := reflect.ValueOf(match.Value)
+		switch value.Kind() {
+		case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
+			if value.IsNil() {
+				return false, fmt.Errorf("update if-match value is nil")
+			}
+		}
+		column := ""
+		for i := 0; i < s.identityIndex; i++ {
+			if strings.EqualFold(s.columns[i].Name(), strings.TrimSpace(match.Column)) {
+				column = s.columns[i].Name()
+				break
+			}
+		}
+		if column == "" {
+			return false, fmt.Errorf("update if-match column %q is not a mapped non-key column", match.Column)
+		}
+		if _, ok := s.Builder.(*Builder); !ok {
+			return false, fmt.Errorf("update if-match requires the standard SQL builder")
+		}
+		buildOptions = append(buildOptions, option.IfMatch{Column: column, Value: match.Value})
+	}
+	SQL := s.Builder.Build(record, buildOptions...)
 	if SQL == "" {
 		return false, nil
 	}
@@ -84,12 +112,15 @@ func (s *session) prepare(ctx context.Context, record interface{}, dml *string) 
 	return err == nil, err
 }
 
-func (s *session) update(ctx context.Context, record interface{}) (int64, error) {
+func (s *session) update(ctx context.Context, record interface{}, match *option.IfMatch) (int64, error) {
 
 	var placeholders = make([]interface{}, len(s.columns))
 	s.binder(record, placeholders, 0, len(s.columns))
 
 	placeholders = s.setMarker.Placeholders(record, placeholders)
+	if match != nil {
+		placeholders = append(placeholders, match.Value)
+	}
 	result, err := s.stmt.ExecContext(ctx, placeholders...)
 	if err != nil {
 		if errx.IsDuplicateKey(err) {

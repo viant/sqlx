@@ -3,6 +3,8 @@ package update
 import (
 	"context"
 	"database/sql"
+	"fmt"
+
 	"github.com/viant/sqlx/io"
 	"github.com/viant/sqlx/io/config"
 	"github.com/viant/sqlx/option"
@@ -19,9 +21,19 @@ type Service struct {
 }
 
 func (s *Service) Exec(ctx context.Context, any interface{}, options ...option.Option) (int64, error) {
+	match := option.Options(options).IfMatch()
 	valueAt, count, err := io.Values(any)
-	if err != nil || count == 0 {
+	if err != nil {
 		return 0, err
+	}
+	if count == 0 {
+		if match != nil {
+			return 0, option.ErrNoMatch
+		}
+		return 0, nil
+	}
+	if match != nil && count != 1 {
+		return 0, fmt.Errorf("update if-match requires one record")
 	}
 	record := valueAt(0)
 	var sess *session
@@ -35,7 +47,10 @@ func (s *Service) Exec(ctx context.Context, any interface{}, options ...option.O
 	dml := ""
 	for i := 0; i < count; i++ {
 		aRecord := valueAt(i)
-		changed, e := s.tryUpdate(ctx, sess, aRecord, &dml)
+		changed, e := s.tryUpdate(ctx, sess, aRecord, &dml, match)
+		if e == nil && match != nil && changed != 1 {
+			e = option.ErrNoMatch
+		}
 		if e != nil {
 			err = e
 			break
@@ -46,8 +61,8 @@ func (s *Service) Exec(ctx context.Context, any interface{}, options ...option.O
 	return rowsAffected, err
 }
 
-func (s *Service) tryUpdate(ctx context.Context, sess *session, record interface{}, dml *string) (int64, error) {
-	ok, err := sess.prepare(ctx, record, dml)
+func (s *Service) tryUpdate(ctx context.Context, sess *session, record interface{}, dml *string, match *option.IfMatch) (int64, error) {
+	ok, err := sess.prepare(ctx, record, dml, match)
 	if err != nil {
 		return 0, err
 	}
@@ -59,7 +74,7 @@ func (s *Service) tryUpdate(ctx context.Context, sess *session, record interface
 			return 0, err
 		}
 	}
-	return sess.update(ctx, record)
+	return sess.update(ctx, record, match)
 }
 
 func (s *Service) ensureSession(record interface{}, options ...option.Option) (*session, error) {
