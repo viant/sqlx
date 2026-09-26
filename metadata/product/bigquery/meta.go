@@ -1,6 +1,8 @@
 package bigquery
 
 import (
+	"context"
+	"database/sql"
 	"github.com/viant/sqlx/metadata/database"
 	"github.com/viant/sqlx/metadata/info"
 	"github.com/viant/sqlx/metadata/info/dialect"
@@ -24,6 +26,15 @@ var bigQuery = database.Product{
 // BigQuery return BigQuery product
 func BigQuery() *database.Product {
 	return &bigQuery
+}
+
+func emptyForeignKeysHandler() info.Handler {
+	return info.NewHandler(func(ctx context.Context, _ *sql.DB, _ interface{}, _ ...interface{}) (bool, error) {
+		if err := ctx.Err(); err != nil {
+			return false, err
+		}
+		return false, nil
+	})
 }
 
 func init() {
@@ -180,7 +191,7 @@ SELECT
 			info.NewCriterion(info.Catalog, ""),
 			info.NewCriterion(info.Schema, ""),
 			info.NewCriterion(info.Table, ""),
-		),
+		).OnPre(emptyForeignKeysHandler()),
 
 		info.NewQuery(info.KindSession, `SELECT /*+ {"ExpandDSN": true} +*/ 
 '' AS PID,
