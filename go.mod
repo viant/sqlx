@@ -18,7 +18,7 @@ require (
 	github.com/viant/aerospike v0.2.7
 	github.com/viant/afs v1.30.1-0.20260914155934-90e95d483861
 	github.com/viant/assertly v0.9.1-0.20220620174148-bab013f93a60
-	github.com/viant/bigquery v0.5.2-0.20260927115958-cd0c68eb30ea
+	github.com/viant/bigquery v0.5.4-0.20260927120042-a47888f8d2cc
 	github.com/viant/parsly v0.3.3
 	github.com/viant/sqlparser v0.13.1-0.20260921232033-929f6f50ccce
 	github.com/viant/structology v0.10.1-0.20260915165514-89d421971772
@@ -63,6 +63,7 @@ require (
 	github.com/pierrec/lz4/v4 v4.1.18 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/segmentio/encoding v0.3.5 // indirect
+	github.com/viant/afsc v1.18.0 // indirect
 	github.com/viant/scy v0.25.0 // indirect
 	github.com/viant/x v0.5.1-0.20260915043005-1bc42b9eef47 // indirect
 	github.com/yuin/gopher-lua v1.1.1 // indirect
