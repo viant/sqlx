@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"github.com/viant/sqlx"
 	"github.com/viant/sqlx/io"
 	"github.com/viant/sqlx/io/config"
 	"github.com/viant/sqlx/option"
@@ -11,6 +12,7 @@ import (
 )
 
 type session struct {
+	criteria *sqlx.Criteria
 	*io.Transaction
 	rType     reflect.Type
 	batchSize int
@@ -51,6 +53,19 @@ func (s *session) begin(ctx context.Context, db *sql.DB, options []option.Option
 
 func (s *session) prepare(ctx context.Context, batchSize int) error {
 	SQL := s.Builder.Build(nil, option.BatchSize(batchSize))
+	if s.criteria != nil {
+		getter := s.Dialect.PlaceholderGetter()
+		for index := 0; index < batchSize*len(s.columns); index++ {
+			getter()
+		}
+		expression, err := s.criteria.SQL(getter)
+		if err != nil {
+			return err
+		}
+		if expression != "" {
+			SQL += " AND (" + expression + ")"
+		}
+	}
 	var err error
 	if s.stmt != nil {
 		if err = s.stmt.Close(); err != nil {
@@ -90,11 +105,11 @@ func (s *session) delete(ctx context.Context, record interface{}, recordsFn func
 	if inBatchCount > 0 { //overflow
 		err := s.prepare(ctx, inBatchCount)
 		if err != nil {
-			return 0, nil
+			return 0, err
 		}
 		rowsAffected, err := s.flush(ctx, recValues[0:inBatchCount*len(s.columns)])
 		if err != nil {
-			return 0, nil
+			return 0, err
 		}
 		totalRowsAffected += rowsAffected
 	}
@@ -120,6 +135,9 @@ func (s *session) end(err error) error {
 }
 
 func (s *session) flush(ctx context.Context, values []interface{}) (int64, error) {
+	if s.criteria != nil {
+		values = append(append([]interface{}(nil), values...), s.criteria.Placeholders...)
+	}
 	result, err := s.stmt.ExecContext(ctx, values...)
 	if err != nil {
 		return 0, err

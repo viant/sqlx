@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 
+	"github.com/viant/sqlx"
 	"github.com/viant/sqlx/io"
 	"github.com/viant/sqlx/io/config"
 	"github.com/viant/sqlx/option"
@@ -22,6 +23,7 @@ type Service struct {
 
 func (s *Service) Exec(ctx context.Context, any interface{}, options ...option.Option) (int64, error) {
 	match := option.Options(options).IfMatch()
+	criteria := option.Options(options).Criteria()
 	valueAt, count, err := io.Values(any)
 	if err != nil {
 		return 0, err
@@ -47,7 +49,7 @@ func (s *Service) Exec(ctx context.Context, any interface{}, options ...option.O
 	dml := ""
 	for i := 0; i < count; i++ {
 		aRecord := valueAt(i)
-		changed, e := s.tryUpdate(ctx, sess, aRecord, &dml, match)
+		changed, e := s.tryUpdate(ctx, sess, aRecord, &dml, match, criteria)
 		if e == nil && match != nil && changed != 1 {
 			e = option.ErrNoMatch
 		}
@@ -61,8 +63,8 @@ func (s *Service) Exec(ctx context.Context, any interface{}, options ...option.O
 	return rowsAffected, err
 }
 
-func (s *Service) tryUpdate(ctx context.Context, sess *session, record interface{}, dml *string, match *option.IfMatch) (int64, error) {
-	ok, err := sess.prepare(ctx, record, dml, match)
+func (s *Service) tryUpdate(ctx context.Context, sess *session, record interface{}, dml *string, match *option.IfMatch, criteria *sqlx.Criteria) (int64, error) {
+	ok, err := sess.prepare(ctx, record, dml, match, criteria)
 	if err != nil {
 		return 0, err
 	}
@@ -74,7 +76,7 @@ func (s *Service) tryUpdate(ctx context.Context, sess *session, record interface
 			return 0, err
 		}
 	}
-	return sess.update(ctx, record, match)
+	return sess.update(ctx, record, match, criteria)
 }
 
 func (s *Service) ensureSession(record interface{}, options ...option.Option) (*session, error) {

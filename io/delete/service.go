@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/viant/sqlx"
 	"github.com/viant/sqlx/io"
 	"github.com/viant/sqlx/io/config"
 	"github.com/viant/sqlx/option"
@@ -23,9 +24,11 @@ type Service struct {
 
 // Exec runs delete statements
 func (s *Service) Exec(ctx context.Context, any interface{}, options ...option.Option) (int64, error) {
+	criteria := option.Options(options).Criteria()
 	if match := option.Options(options).IfMatch(); match != nil {
-		return s.execIfMatch(ctx, any, match, options)
+		return s.execIfMatch(ctx, any, match, criteria, options)
 	}
+
 	recordsFn, cnt, err := io.Iterator(any)
 	if cnt == 0 {
 		return 0, nil
@@ -41,6 +44,12 @@ func (s *Service) Exec(ctx context.Context, any interface{}, options ...option.O
 	if sess, err = s.ensureSession(record, batchSize); err != nil {
 		return 0, err
 	}
+	sess.criteria = criteria
+	if criteria != nil {
+		if _, err := criteria.SQL(func() string { return "?" }); err != nil {
+			return 0, err
+		}
+	}
 	if err = sess.begin(ctx, s.db, options); err != nil {
 		return 0, err
 	}
@@ -55,7 +64,7 @@ func (s *Service) Exec(ctx context.Context, any interface{}, options ...option.O
 
 }
 
-func (s *Service) execIfMatch(ctx context.Context, input interface{}, match *option.IfMatch, options []option.Option) (int64, error) {
+func (s *Service) execIfMatch(ctx context.Context, input interface{}, match *option.IfMatch, criteria *sqlx.Criteria, options []option.Option) (int64, error) {
 	inputType := reflect.TypeOf(input)
 	if inputType == nil {
 		return 0, fmt.Errorf("delete if-match requires one record")
@@ -119,6 +128,16 @@ func (s *Service) execIfMatch(ctx context.Context, input interface{}, match *opt
 	values := make([]interface{}, len(sess.columns)+1)
 	sess.binder(record, values, 0, len(sess.columns))
 	values[len(sess.columns)] = match.Value
+	if criteria != nil {
+		expression, err := criteria.SQL(getter)
+		if err != nil {
+			return 0, err
+		}
+		if expression != "" {
+			query += " AND (" + expression + ")"
+			values = append(values, criteria.Placeholders...)
+		}
+	}
 	if err := sess.begin(ctx, s.db, options); err != nil {
 		return 0, err
 	}

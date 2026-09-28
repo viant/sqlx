@@ -78,6 +78,17 @@ func (b *Builder) Build(record interface{}, options ...option.Option) string {
 		buffer.WriteString(" = ")
 		buffer.WriteString(getter())
 	}
+	if criteria := option.Options(options).Criteria(); criteria != nil {
+		expression, err := criteria.SQL(getter)
+		if err != nil {
+			return ""
+		}
+		if expression != "" {
+			buffer.WriteString(" AND (")
+			buffer.WriteString(expression)
+			buffer.WriteByte(')')
+		}
+	}
 	return buffer.String()
 }
 

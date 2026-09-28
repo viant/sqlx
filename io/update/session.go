@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"github.com/viant/sqlx"
 	"github.com/viant/sqlx/io"
 	"github.com/viant/sqlx/io/config"
 	"github.com/viant/sqlx/io/errx"
@@ -59,7 +60,7 @@ func (s *session) begin(ctx context.Context, db *sql.DB, options []option.Option
 	return nil
 }
 
-func (s *session) prepare(ctx context.Context, record interface{}, dml *string, match *option.IfMatch) (bool, error) {
+func (s *session) prepare(ctx context.Context, record interface{}, dml *string, match *option.IfMatch, criteria *sqlx.Criteria) (bool, error) {
 	buildOptions := []option.Option{s.setMarker}
 	if match != nil {
 		if match.Value == nil {
@@ -87,6 +88,15 @@ func (s *session) prepare(ctx context.Context, record interface{}, dml *string, 
 		}
 		buildOptions = append(buildOptions, option.IfMatch{Column: column, Value: match.Value})
 	}
+	if criteria != nil {
+		if _, err := criteria.SQL(func() string { return "?" }); err != nil {
+			return false, err
+		}
+		if _, ok := s.Builder.(*Builder); !ok {
+			return false, fmt.Errorf("update predicate requires standard SQL builder")
+		}
+		buildOptions = append(buildOptions, criteria)
+	}
 	SQL := s.Builder.Build(record, buildOptions...)
 	if SQL == "" {
 		return false, nil
@@ -112,7 +122,7 @@ func (s *session) prepare(ctx context.Context, record interface{}, dml *string, 
 	return err == nil, err
 }
 
-func (s *session) update(ctx context.Context, record interface{}, match *option.IfMatch) (int64, error) {
+func (s *session) update(ctx context.Context, record interface{}, match *option.IfMatch, criteria *sqlx.Criteria) (int64, error) {
 
 	var placeholders = make([]interface{}, len(s.columns))
 	s.binder(record, placeholders, 0, len(s.columns))
@@ -120,6 +130,9 @@ func (s *session) update(ctx context.Context, record interface{}, match *option.
 	placeholders = s.setMarker.Placeholders(record, placeholders)
 	if match != nil {
 		placeholders = append(placeholders, match.Value)
+	}
+	if criteria != nil {
+		placeholders = append(placeholders, criteria.Placeholders...)
 	}
 	result, err := s.stmt.ExecContext(ctx, placeholders...)
 	if err != nil {
