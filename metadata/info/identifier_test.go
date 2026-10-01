@@ -31,3 +31,22 @@ func TestTableIdentifierDialectAuthority(t *testing.T) {
 		require.Error(t, err, "%+v", tc)
 	}
 }
+
+func TestColumnIdentifier(t *testing.T) {
+	for _, tc := range []struct{ product, source, want string }{
+		{"MySQL", "sc.KEY", "`sc`.`KEY`"},
+		{"SQLite", "record.select", `"record"."select"`},
+		{"PostgreSQL", "Record.KEY", `"record"."key"`},
+		{"PostgreSQL", `Record."KEY"`, `"record"."KEY"`},
+		{"SQLite", `"a.b"."a""b"`, `"a.b"."a""b"`},
+		{"MySQL", "`sc`.`KEY`", "`sc`.`KEY`"},
+	} {
+		got, err := (&info.Dialect{Product: database.Product{Name: tc.product}}).ColumnIdentifier(tc.source)
+		require.NoError(t, err)
+		require.Equal(t, tc.want, got)
+	}
+	for _, source := range []string{"", "KEY; DROP TABLE t", "COALESCE(KEY, '')", "KEY AS value"} {
+		_, err := (&info.Dialect{Product: database.Product{Name: "MySQL"}}).ColumnIdentifier(source)
+		require.Error(t, err)
+	}
+}

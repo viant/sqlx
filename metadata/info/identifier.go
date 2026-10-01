@@ -6,6 +6,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/viant/sqlparser"
+	sqltext "github.com/viant/sqlparser/source"
 )
 
 // TableIdentifier validates and renders a table path and optional namespace.
@@ -83,4 +84,41 @@ func (d *Dialect) MappedColumnIdentifier(name string) (string, error) {
 		name = strings.ToLower(name)
 	}
 	return d.QuoteIdentifier(name)
+}
+
+// ColumnIdentifier renders a qualified identifier without changing quoted
+// spelling or PostgreSQL's folding of unquoted names. It never accepts SQL expressions.
+func (d *Dialect) ColumnIdentifier(source string) (string, error) {
+	if d == nil {
+		return "", fmt.Errorf("identifier dialect is required")
+	}
+	parts, err := sqlparser.TableIdentifierParts(source)
+	if err != nil {
+		return "", err
+	}
+	raw := []string{}
+	start := 0
+	scanner := sqltext.NewCodeScanner(source, 0)
+	for at, ok := scanner.Next(); ok; at, ok = scanner.Next() {
+		if source[at] == '.' {
+			raw = append(raw, strings.TrimSpace(source[start:at]))
+			start = at + 1
+		}
+	}
+	raw = append(raw, strings.TrimSpace(source[start:]))
+	for i, part := range parts {
+		quoted := strings.ContainsAny(raw[i][:1], "\"`['")
+		if quoted {
+			parts[i] = raw[i]
+			continue
+		}
+		if strings.EqualFold(d.Name, "postgresql") {
+			part = strings.ToLower(part)
+		}
+		parts[i], err = d.QuoteIdentifier(part)
+		if err != nil {
+			return "", err
+		}
+	}
+	return strings.Join(parts, "."), nil
 }
