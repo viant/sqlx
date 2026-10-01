@@ -107,7 +107,10 @@ func (d *Dialect) ColumnIdentifier(source string) (string, error) {
 	}
 	raw = append(raw, strings.TrimSpace(source[start:]))
 	for i, part := range parts {
-		quoted := strings.ContainsAny(raw[i][:1], "\"`['")
+		if raw[i][0] == '\'' {
+			return "", fmt.Errorf("string literal is not a column identifier")
+		}
+		quoted := strings.ContainsAny(raw[i][:1], "\"`[")
 		if quoted {
 			parts[i] = raw[i]
 			continue

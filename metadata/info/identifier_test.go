@@ -45,7 +45,7 @@ func TestColumnIdentifier(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, tc.want, got)
 	}
-	for _, source := range []string{"", "KEY; DROP TABLE t", "COALESCE(KEY, '')", "KEY AS value"} {
+	for _, source := range []string{"", "KEY; DROP TABLE t", "COALESCE(KEY, '')", "KEY AS value", "'KEY'"} {
 		_, err := (&info.Dialect{Product: database.Product{Name: "MySQL"}}).ColumnIdentifier(source)
 		require.Error(t, err)
 	}
