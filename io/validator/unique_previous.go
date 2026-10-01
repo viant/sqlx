@@ -81,7 +81,10 @@ func (s *Service) checkUniquePrevious(ctx context.Context, path *Path, db *sql.D
 		if dependencyIndex >= 0 {
 			dependencySet = options.includesAt(i, current, dependencyField)
 		}
-		if !valueSet && (dependencyIndex < 0 || !dependencySet) {
+		// Inserts validate supplied unique values against their current dependency,
+		// including an omitted dependency's request default. Updates still hydrate
+		// omitted tuple members from genuine Previous evidence.
+		if !valueSet && (prior == nil || dependencyIndex < 0 || !dependencySet) {
 			continue
 		}
 		if dialect == nil {
@@ -112,7 +115,7 @@ func (s *Service) checkUniquePrevious(ctx context.Context, path *Path, db *sql.D
 		if dependencyIndex >= 0 {
 			column := check.columns[dependencyIndex]
 			dependencySource := current
-			if !dependencySet {
+			if !dependencySet && prior != nil {
 				dependencySource = prior
 			}
 			if dependencySource == nil {
