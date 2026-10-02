@@ -44,3 +44,16 @@ func TestPointerByteSliceScanner_RejectsNonByteSlice(t *testing.T) {
 		t.Fatal("expected scan to reject non-byte-slice source")
 	}
 }
+
+func TestPointerByteSliceScanner_ScanGenericByteSlice(t *testing.T) {
+	bytes := []byte{4, 5, 6}
+	var actual []byte
+	scanner := newPointerByteSliceScanner(&actual)
+
+	if err := scanner.Scan(&bytes); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(bytes, actual) {
+		t.Fatalf("bytes = %v, want %v", actual, bytes)
+	}
+}

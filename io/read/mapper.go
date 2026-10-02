@@ -293,6 +293,11 @@ func newScanValue(scanType reflect.Type) func(index int, values []interface{}) {
 				val := ""
 				values[index] = &val
 			}
+		case reflect.Uint8:
+			return func(index int, values []interface{}) {
+				var val []byte
+				values[index] = newPointerByteSliceScanner(&val)
+			}
 		}
 	}
 

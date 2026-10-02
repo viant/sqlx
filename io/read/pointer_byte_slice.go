@@ -29,11 +29,14 @@ func (s *pointerByteSliceScanner) Destination() any {
 
 func (s *pointerByteSliceScanner) Scan(source any) error {
 	destination := reflect.ValueOf(s.destination)
-	if destination.Kind() != reflect.Ptr || destination.IsNil() || destination.Elem().Kind() != reflect.Ptr {
-		return fmt.Errorf("expected pointer to pointer-to-byte-slice destination, got %T", s.destination)
+	if destination.Kind() != reflect.Ptr || destination.IsNil() {
+		return fmt.Errorf("expected pointer-to-byte-slice destination, got %T", s.destination)
 	}
 
 	field := destination.Elem()
+	if field.Kind() != reflect.Slice && field.Kind() != reflect.Ptr {
+		return fmt.Errorf("expected pointer-to-byte-slice destination, got %T", s.destination)
+	}
 	if source == nil {
 		field.SetZero()
 		return nil
@@ -48,12 +51,20 @@ func (s *pointerByteSliceScanner) Scan(source any) error {
 		value = value.Elem()
 	}
 
-	byteSliceType := field.Type().Elem()
+	byteSliceType := field.Type()
+	if field.Kind() == reflect.Ptr {
+		byteSliceType = byteSliceType.Elem()
+	}
 	if value.Type().AssignableTo(byteSliceType) {
 		bytes := append([]byte(nil), value.Bytes()...)
-		assigned := reflect.New(byteSliceType)
-		assigned.Elem().Set(reflect.ValueOf(bytes).Convert(byteSliceType))
-		field.Set(assigned)
+		assigned := reflect.ValueOf(bytes).Convert(byteSliceType)
+		if field.Kind() == reflect.Ptr {
+			pointer := reflect.New(byteSliceType)
+			pointer.Elem().Set(assigned)
+			field.Set(pointer)
+		} else {
+			field.Set(assigned)
+		}
 		return nil
 	}
 
@@ -62,12 +73,18 @@ func (s *pointerByteSliceScanner) Scan(source any) error {
 
 func (s *pointerByteSliceScanner) MarshalJSON() ([]byte, error) {
 	destination := reflect.ValueOf(s.destination)
-	if destination.Kind() != reflect.Ptr || destination.IsNil() || destination.Elem().Kind() != reflect.Ptr {
-		return nil, fmt.Errorf("expected pointer to pointer-to-byte-slice destination, got %T", s.destination)
+	if destination.Kind() != reflect.Ptr || destination.IsNil() {
+		return nil, fmt.Errorf("expected pointer-to-byte-slice destination, got %T", s.destination)
 	}
 	field := destination.Elem()
-	if field.IsNil() {
+	if field.Kind() == reflect.Ptr {
+		if field.IsNil() {
+			return []byte("null"), nil
+		}
+		field = field.Elem()
+	}
+	if field.Kind() != reflect.Slice || field.IsNil() {
 		return []byte("null"), nil
 	}
-	return json.Marshal(field.Elem().Interface())
+	return json.Marshal(field.Interface())
 }
