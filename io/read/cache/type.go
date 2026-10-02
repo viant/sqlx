@@ -36,6 +36,9 @@ func (t *ScanTypeHolder) InitType(values []interface{}) {
 	t.scanTypes = make([]reflect.Type, len(values))
 	t.dataTypes = make([]string, len(values))
 	for i, value := range values {
+		if destination, ok := value.(interface{ Destination() any }); ok {
+			value = destination.Destination()
+		}
 		rValue := reflect.ValueOf(value)
 		valueType := rValue.Type()
 		t.scanTypes[i] = valueType.Elem()
