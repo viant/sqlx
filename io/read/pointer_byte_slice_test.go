@@ -57,3 +57,17 @@ func TestPointerByteSliceScanner_ScanGenericByteSlice(t *testing.T) {
 		t.Fatalf("bytes = %v, want %v", actual, bytes)
 	}
 }
+
+func TestGenericRowMapper_UsesByteSliceScannerForPointerScanType(t *testing.T) {
+	values := make([]interface{}, 1)
+	newScanValue(reflect.TypeOf((*[]byte)(nil)))(0, values)
+	scanner, ok := values[0].(*pointerByteSliceScanner)
+	if !ok {
+		t.Fatalf("scan destination = %T, want *pointerByteSliceScanner", values[0])
+	}
+
+	bytes := []byte{7, 8, 9}
+	if err := scanner.Scan(&bytes); err != nil {
+		t.Fatal(err)
+	}
+}
