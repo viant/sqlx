@@ -36,6 +36,9 @@ func SQLiteMaj3Min33() *database.Product {
 }
 
 func init() {
+	if err := registry.RegisterDriver(sqLite3, "modernc.org/sqlite", "Driver"); err != nil {
+		panic(err)
+	}
 	registerProduct(sqLite333, "sqlite_master")
 	registerProduct(sqLite3, "sqlite_schema")
 }
