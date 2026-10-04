@@ -3,13 +3,14 @@ package sequence
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"reflect"
 	"sync"
 	"testing"
 
-	_ "github.com/mattn/go-sqlite3"
+	sqlite3 "github.com/mattn/go-sqlite3"
 )
 
 func fixture(t *testing.T) (*sql.DB, string) {
@@ -27,6 +28,38 @@ func fixture(t *testing.T) (*sql.DB, string) {
 		t.Fatal(err)
 	}
 	return db, dsn
+}
+
+func TestScopedSequencePreservesContentionAfterCreateFallback(t *testing.T) {
+	db, dsn := fixture(t)
+	other, err := sql.Open("sqlite3", dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer other.Close()
+	ctx := context.Background()
+	reader, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reader.Rollback()
+	var count int
+	if err = reader.QueryRowContext(ctx, "SELECT COUNT(*) FROM messages").Scan(&count); err != nil {
+		t.Fatal(err)
+	}
+	writer, err := other.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer writer.Rollback()
+	if _, err = writer.ExecContext(ctx, "UPDATE messages SET sequence=sequence WHERE id='a'"); err != nil {
+		t.Fatal(err)
+	}
+	_, err = Reserve(ctx, reader, Request{Dialect: "sqlite", Table: "messages", Column: "sequence", Scope: []Scope{{"turn_id", "t1"}}, Count: 1})
+	var sqliteErr sqlite3.Error
+	if !errors.As(err, &sqliteErr) || (sqliteErr.Code != sqlite3.ErrBusy && sqliteErr.Code != sqlite3.ErrLocked) {
+		t.Fatalf("expected original lock error, got %v", err)
+	}
 }
 func TestScopedSequencePartitionsAndPresence(t *testing.T) {
 	type useCase struct {
