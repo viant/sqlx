@@ -130,6 +130,7 @@ func (r *Reader) createSource(ctx context.Context, entry *cache.Entry, args []in
 		if err != nil {
 			return nil, nil, err
 		}
+		source.cleanupErrorProvenance = r.cleanupErrorProvenance
 
 		return rows, withWindow(source, matcher, entry), nil
 	}
@@ -149,6 +150,7 @@ func (r *Reader) ReadAll(ctx context.Context, rows *sql.Rows, emit func(row inte
 	if err != nil {
 		return err
 	}
+	readerRows.cleanupErrorProvenance = r.cleanupErrorProvenance
 
 	if err = r.readAll(ctx, emit, cacheEntry, withWindow(readerRows, r.inMatcher, cacheEntry)); err != nil {
 		return err
@@ -190,6 +192,9 @@ func (r *Reader) readAll(ctx context.Context, emit func(row interface{}) error, 
 	}
 	if err == nil || errors.Is(err, goIo.EOF) {
 		err = source.Close(ctx)
+		if r.cleanupErrorProvenance {
+			err = cleanupError(err)
+		}
 		closed = err == nil
 		return err
 	}
