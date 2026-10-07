@@ -467,12 +467,15 @@ func (a *Cache) Get(ctx context.Context, SQL string, args []interface{}, options
 	var query *cache.ParmetrizedQuery
 	var cacheStats *cache.Stats
 	var refresh bool
+	var indexedOnly bool
 	for _, option := range options {
 		switch actual := option.(type) {
 		case *cache.ParmetrizedQuery:
 			query = actual
 		case *cache.Stats:
 			cacheStats = actual
+		case cache.IndexedOnly:
+			indexedOnly = bool(actual)
 		case cache.Refresh:
 			refresh = bool(actual)
 		}
@@ -482,6 +485,12 @@ func (a *Cache) Get(ctx context.Context, SQL string, args []interface{}, options
 		cacheStats = &cache.Stats{}
 	}
 	cacheStats.Init()
+	if indexedOnly && refresh {
+		return nil, cache.ErrIndexedRefresh
+	}
+	if indexedOnly && (query == nil || query.By == "" || len(query.In) == 0) {
+		return nil, nil
+	}
 	if query != nil {
 		query.Init()
 	}
@@ -490,11 +499,11 @@ func (a *Cache) Get(ctx context.Context, SQL string, args []interface{}, options
 		cacheStats.ErrorType = cache.ErrorTypeCurrentlyNotAvailable
 		return nil, nil
 	}
-	return a.get(ctx, SQL, args, query, cacheStats, refresh)
+	return a.get(ctx, SQL, args, query, cacheStats, refresh, indexedOnly)
 }
 
-func (a *Cache) get(ctx context.Context, SQL string, args []interface{}, columnsInMatcher *cache.ParmetrizedQuery, cacheStats *cache.Stats, refresh bool) (*cache.Entry, error) {
-	lazyMatch, warmupMatch, err := a.readRecords(SQL, args, columnsInMatcher, cacheStats)
+func (a *Cache) get(ctx context.Context, SQL string, args []interface{}, columnsInMatcher *cache.ParmetrizedQuery, cacheStats *cache.Stats, refresh bool, indexedOnly bool) (*cache.Entry, error) {
+	lazyMatch, warmupMatch, err := a.readRecords(SQL, args, columnsInMatcher, cacheStats, indexedOnly)
 	if refresh {
 		if lazyMatch == nil {
 			return nil, err
@@ -561,8 +570,18 @@ func (a *Cache) get(ctx context.Context, SQL string, args []interface{}, columns
 			a.observeRecordTimes(anEntry, match.record, cacheStats)
 		}
 	}
+	if indexedOnly {
+		if !anEntry.Has() {
+			_ = anEntry.Close()
+			return nil, nil
+		}
+		anEntry.ReadOnly = true
+	}
 	anEntry.Windowed = cacheStats.Type == cache.TypeReadMulti && (columnsInMatcher == nil || len(columnsInMatcher.ByColumns) == 0)
 
+	if indexedOnly {
+		return anEntry, nil
+	}
 	return anEntry, a.updateWriter(anEntry, lazyMatch, SQL, jsonEncodedArgs, cacheStats)
 }
 
@@ -699,13 +718,17 @@ func (a *Cache) findActualError(err error) (string, types.ResultCode, error) {
 	return "", types.OK, nil
 }
 
-func (a *Cache) readRecords(SQL string, args []interface{}, query *cache.ParmetrizedQuery, stats *cache.Stats) (lazyMatch *RecordMatched, warmupMatch *RecordMatched, err error) {
+func (a *Cache) readRecords(SQL string, args []interface{}, query *cache.ParmetrizedQuery, stats *cache.Stats, indexedOnly ...bool) (lazyMatch *RecordMatched, warmupMatch *RecordMatched, err error) {
 	var errors = make([]error, 2)
 	wg := sync.WaitGroup{}
 
 	wg.Add(2)
 	go func(SQL string, args []interface{}, wg *sync.WaitGroup) {
 		defer wg.Done()
+		if len(indexedOnly) > 0 && indexedOnly[0] {
+			lazyMatch = &RecordMatched{}
+			return
+		}
 		lazyMatch, errors[0] = a.readRecord(SQL, args, nil)
 	}(SQL, args, &wg)
 
@@ -848,6 +871,9 @@ func (a *Cache) Close(ctx context.Context, entry *cache.Entry) error {
 }
 
 func (a *Cache) Delete(ctx context.Context, entry *cache.Entry) error {
+	if entry != nil && entry.ReadOnly {
+		return entry.Close()
+	}
 	key, err := a.key(entry.Id)
 	if err != nil {
 		return err
@@ -1431,7 +1457,7 @@ func asAerospikeErr(err error) (types.AerospikeError, bool) {
 }
 
 func (a *Cache) entryId(fullMatch *RecordMatched, columnsInMatch *RecordMatched) string {
-	if fullMatch != nil {
+	if fullMatch != nil && fullMatch.keyValue != "" {
 		return fullMatch.keyValue
 	}
 

@@ -21,3 +21,11 @@ func (c *Cache) Lookup(ctx context.Context, SQL string, args []interface{}, opti
 	}
 	return entry, err
 }
+
+// LookupIndexed bypasses exact-query reads and writers even on an index miss.
+func (c *Cache) LookupIndexed(ctx context.Context, SQL string, args []interface{}, options ...interface{}) (*cache.Entry, error) {
+	options = append(append([]interface{}(nil), options...), cache.IndexedOnly(true))
+	return c.Lookup(ctx, SQL, args, options...)
+}
+
+var _ cache.IndexedLookup = (*Cache)(nil)
