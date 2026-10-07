@@ -88,7 +88,8 @@ t.seq AS INDEX_POSITION,
 t.name AS INDEX_NAME,
 t.origin AS INDEX_ORIGIN,
 t.partial AS INDEX_PARTIAL,
-group_concat(i.NAME) AS INDEX_COLUMNS
+group_concat(i.NAME) AS INDEX_COLUMNS,
+COUNT(*) AS INDEX_COLUMN_COUNT
 FROM `+schemaTable+` AS m,
 pragma_index_list(m.name) AS t,
 pragma_index_info(t.name) i

@@ -1,7 +1,8 @@
 package sink
 
-//Index  represent index metadata
+// Index  represent index metadata
 type Index struct {
+	ColumnCount *int64 `sqlx:"INDEX_COLUMN_COUNT" json:"-"`
 	Catalog     string `sqlx:"TABLE_CATALOG"`
 	Table       string `sqlx:"TABLE_NAME"`
 	Type        string `sqlx:"INDEX_TYPE"`
