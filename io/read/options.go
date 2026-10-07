@@ -28,7 +28,6 @@ type options struct {
 	inMatcher              *cache.ParmetrizedQuery
 	cacheStats             *cache.Stats
 	cacheRefresh           cache.Refresh
-	cacheIndexedOnly       cache.IndexedOnly
 	inlineType             bool
 	dialect                *info.Dialect
 	options                []option.Option
@@ -112,11 +111,6 @@ func WithCacheStats(stats *cache.Stats) Option {
 	}
 }
 
-// WithCacheIndexedOnly restricts cache replay to indexed warmup entries.
-func WithCacheIndexedOnly(enabled bool) Option {
-	return func(o *options) { o.cacheIndexedOnly = cache.IndexedOnly(enabled) }
-}
-
 func WithCacheRefresh(refresh cache.Refresh) Option {
 	return func(o *options) {
 		o.cacheRefresh = refresh
@@ -177,8 +171,6 @@ func (o *options) applyOptions(opts []option.Option) {
 			o.inMatcher = *actual
 		case *sql.DB:
 			o.db = actual
-		case cache.IndexedOnly:
-			o.cacheIndexedOnly = actual
 		case cache.Refresh:
 			o.cacheRefresh = actual
 		case *cache.Stats:

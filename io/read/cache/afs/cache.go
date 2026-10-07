@@ -96,23 +96,16 @@ func (c *Cache) Get(ctx context.Context, SQL string, args []interface{}, options
 		c.observeEntry(stats, result, readErr)
 	}()
 	var refresh bool
-	var indexedOnly bool
 	var readOnly bool
 	for _, option := range options {
 		if only, ok := option.(lookupOnly); ok {
 			readOnly = bool(only)
-		}
-		if requested, ok := option.(cache.IndexedOnly); ok {
-			indexedOnly = bool(requested)
 		}
 		if requested, ok := option.(cache.Refresh); ok {
 			refresh = bool(requested)
 		}
 	}
 
-	if indexedOnly && refresh {
-		return nil, cache.ErrIndexedRefresh
-	}
 	if refresh {
 		for _, option := range options {
 			if matcher, ok := option.(*cache.ParmetrizedQuery); ok && matcher != nil {
@@ -127,7 +120,7 @@ func (c *Cache) Get(ctx context.Context, SQL string, args []interface{}, options
 		if refresh {
 			break
 		}
-		if matcher, ok := option.(*cache.ParmetrizedQuery); ok && !indexedOnly && matcher != nil && matcher.IdentitySQL != "" && matcher.By == "" && len(matcher.ByColumns) == 0 {
+		if matcher, ok := option.(*cache.ParmetrizedQuery); ok && matcher != nil && matcher.IdentitySQL != "" && matcher.By == "" && len(matcher.ByColumns) == 0 {
 			entry, err := c.queryEntry(ctx, matcher)
 			if err != nil || entry != nil {
 				if stats != nil && entry != nil && entry.Has() {
@@ -150,9 +143,6 @@ func (c *Cache) Get(ctx context.Context, SQL string, args []interface{}, options
 				return entry, err
 			}
 		}
-	}
-	if indexedOnly {
-		return nil, nil
 	}
 	URL, err := hash.GenerateURL(SQL, c.storage, c.extension, args)
 	if err != nil {

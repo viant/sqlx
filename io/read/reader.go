@@ -246,11 +246,6 @@ func (r *Reader) read(ctx context.Context, source cache.Source, mapperPtr *RowMa
 		return fmt.Errorf("failed to check cache type: %w", err)
 	}
 	if !typeMatches {
-		if cacheEntry != nil && cacheEntry.ScanTypes != nil {
-			if mismatch := cacheEntry.ScanTypes.Mismatch(cacheEntry); mismatch != nil {
-				return fmt.Errorf("invalid cache type: column %d, reason %s, destination %s, stored %s", mismatch.Index, mismatch.Reason, mismatch.NormalizedDestType, mismatch.NormalizedCachedType)
-			}
-		}
 		return fmt.Errorf("invalid cache type")
 	}
 
@@ -393,16 +388,6 @@ func (r *Reader) Stmt() *sql.Stmt {
 }
 
 func (r *Reader) cacheEntry(ctx context.Context, sql string, args []interface{}) (*cache.Entry, error) {
-	if r.cacheIndexedOnly && r.cache != nil {
-		if r.cacheRefresh {
-			return nil, cache.ErrIndexedRefresh
-		}
-		lookup, ok := r.cache.(cache.IndexedLookup)
-		if !ok {
-			return nil, cache.ErrIndexedLookupUnsupported
-		}
-		return lookup.LookupIndexed(ctx, sql, args, r.inMatcher, r.cacheStats)
-	}
 	if r.cacheOnly {
 		if r.cache == nil {
 			return nil, cache.ErrMiss
