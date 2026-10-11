@@ -114,7 +114,7 @@ func (s *Service) Exec(ctx context.Context, any interface{}, options ...option.O
 		db = s.db
 	}
 
-	sess, err := s.NewSession(ctx, record, db, batchSize, options...)
+	sess, err := s.newSession(ctx, record, db, batchSize, false, options...)
 	if err != nil {
 		return 0, 0, err
 	}
@@ -132,13 +132,26 @@ func (s *Service) Exec(ctx context.Context, any interface{}, options ...option.O
 
 	var batchRecordBuffer = make([]interface{}, batchSize*len(sess.columns))
 	var identities = make([]interface{}, batchSize*len(sess.recordUpdaters))
-	defGenerator, err := generator.NewDefault(ctx, sess.Dialect, sess.db, sess.info, s.metaSessionCacheKey, s.metaSessionCache)
-	if err != nil {
-		return 0, 0, err
+	needsDefaults := generator.HasDefaults(sess.rType)
+	needsInfo := needsDefaults
+	for _, updater := range sess.recordUpdaters {
+		if numeric, ok := updater.(*numericSequencer); ok && numeric.presetRecordCount > 0 {
+			needsInfo = true
+		}
 	}
-
-	if err = defGenerator.Apply(ctx, any, sess.TableName, batchSize); err != nil {
-		return 0, 0, err
+	if needsInfo {
+		if err = s.loadSessionInfo(ctx, sess, options); err != nil {
+			return 0, 0, err
+		}
+	}
+	if needsDefaults {
+		defGenerator, genErr := generator.NewDefault(ctx, sess.Dialect, sess.db, sess.info, s.metaSessionCacheKey, s.metaSessionCache)
+		if genErr != nil {
+			return 0, 0, genErr
+		}
+		if err = defGenerator.Apply(ctx, any, sess.TableName, batchSize); err != nil {
+			return 0, 0, err
+		}
 	}
 
 	if err = sess.begin(ctx, sess.db, options); err != nil {
@@ -160,6 +173,12 @@ func (s *Service) Exec(ctx context.Context, any interface{}, options ...option.O
 
 // NewSession creates a new session
 func (s *Service) NewSession(ctx context.Context, record interface{}, db *sql.DB, batchSize int, options ...option.Option) (*session, error) {
+	return s.newSession(ctx, record, db, batchSize, true, options...)
+}
+
+// Exec discovers session metadata only when identity allocation or tagged defaults
+// need it. Explicit allocator APIs retain their ordinary eager discovery.
+func (s *Service) newSession(ctx context.Context, record interface{}, db *sql.DB, batchSize int, discoverInfo bool, options ...option.Option) (*session, error) {
 	s.mux.Lock()
 	defer s.mux.Unlock()
 	if db == nil {
@@ -192,6 +211,11 @@ func (s *Service) NewSession(ctx context.Context, record interface{}, db *sql.DB
 			}
 			newSess.recordUpdaters = append(newSess.recordUpdaters, ru)
 		}
+		if discoverInfo && newSess.db != nil {
+			if err := s.loadSessionInfo(ctx, newSess, options); err != nil {
+				return nil, err
+			}
+		}
 		return newSess, nil
 	}
 
@@ -209,16 +233,6 @@ func (s *Service) NewSession(ctx context.Context, record interface{}, db *sql.DB
 	if err != nil {
 		return nil, err
 	}
-	var metaSession *sink.Session
-	if s.metaSessionCacheKey != "" {
-		metaSession, err = config.SessionCached(ctx, db, aDialect, s.metaSessionCacheKey, s.metaSessionCache, metadataOptions...)
-	} else {
-		metaSession, err = config.Session(ctx, db, append(metadataOptions, aDialect)...)
-	}
-
-	if err != nil {
-		return nil, err
-	}
 
 	conf := config.New(s.tableName)
 	conf.Dialect = aDialect
@@ -227,7 +241,6 @@ func (s *Service) NewSession(ctx context.Context, record interface{}, db *sql.DB
 		rType:     rType,
 		batchSize: batchSize,
 		Config:    conf,
-		info:      metaSession,
 		db:        db,
 	}
 	if err = result.ApplyOption(ctx, db, s.options...); err != nil {
@@ -235,9 +248,41 @@ func (s *Service) NewSession(ctx context.Context, record interface{}, db *sql.DB
 	}
 
 	err = result.init(record)
+	if err == nil && discoverInfo {
+		err = s.loadSessionInfo(ctx, result, options)
+	}
 	if err == nil {
-		s.cachedSession = result
+		// Keep metadata loaded later by Exec on its invocation session.
+		// The immutable cache must not observe that concurrent write.
+		cached := *result
+		s.cachedSession = &cached
 	}
 
 	return result, err
+}
+
+// loadSessionInfo uses the existing metadata owner and optional caller cache.
+func (s *Service) loadSessionInfo(ctx context.Context, sess *session, options []option.Option) error {
+	if sess.info != nil {
+		return nil
+	}
+	effective := option.Options(append(append([]option.Option(nil), options...), s.options...))
+	var metadataOptions []option.Option
+	if product := effective.Product(); product != nil {
+		metadataOptions = append(metadataOptions, product)
+	}
+	if tx := effective.Tx(); tx != nil {
+		metadataOptions = append(metadataOptions, tx)
+	}
+	var metaSession *sink.Session
+	var err error
+	if s.metaSessionCacheKey != "" {
+		metaSession, err = config.SessionCached(ctx, sess.db, sess.Dialect, s.metaSessionCacheKey, s.metaSessionCache, metadataOptions...)
+	} else {
+		metaSession, err = config.Session(ctx, sess.db, append(metadataOptions, sess.Dialect)...)
+	}
+	if err == nil {
+		sess.info = metaSession
+	}
+	return err
 }
