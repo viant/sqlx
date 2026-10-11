@@ -39,8 +39,8 @@ func init() {
 	if err := registry.RegisterDriver(sqLite3, "modernc.org/sqlite", "Driver"); err != nil {
 		panic(err)
 	}
-	registerProduct(sqLite333, "sqlite_master")
-	registerProduct(sqLite3, "sqlite_schema")
+	registerProduct(sqLite333, "sqlite_schema")
+	registerProduct(sqLite3, "sqlite_master")
 }
 
 func registerProduct(product database.Product, schemaTable string) {

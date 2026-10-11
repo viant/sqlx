@@ -3,16 +3,34 @@ package sqlite_test
 import (
 	"context"
 	"database/sql"
+	"strings"
 	"testing"
 
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/require"
 	"github.com/viant/sqlx/metadata"
+	"github.com/viant/sqlx/metadata/database"
 	"github.com/viant/sqlx/metadata/info"
 	_ "github.com/viant/sqlx/metadata/product/sqlite"
+	"github.com/viant/sqlx/metadata/registry"
 	"github.com/viant/sqlx/metadata/sink"
 	"github.com/viant/sqlx/option"
 )
+
+func TestSQLiteSchemaMetadataRespectsEngineVersion(t *testing.T) {
+	for _, minor := range []int{22, 32, 33, 50} {
+		for _, kind := range []info.Kind{info.KindTables, info.KindTable, info.KindIndexes, info.KindPrimaryKeys} {
+			query := registry.Lookup("SQLite", kind).Match(&database.Product{Name: "SQLite", Major: 3, Minor: minor})
+			require.NotNil(t, query)
+			if minor < 33 {
+				require.True(t, strings.Contains(query.SQL, "sqlite_master"), "SQLite 3.%d %v: %s", minor, kind, query.SQL)
+				require.False(t, strings.Contains(query.SQL, "sqlite_schema"), "SQLite 3.%d does not expose sqlite_schema", minor)
+			} else {
+				require.True(t, strings.Contains(query.SQL, "sqlite_schema"), "SQLite 3.%d %v: %s", minor, kind, query.SQL)
+			}
+		}
+	}
+}
 
 func TestSQLitePrimaryKeyMetadata(t *testing.T) {
 	tests := []struct {
