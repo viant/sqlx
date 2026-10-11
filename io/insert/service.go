@@ -195,10 +195,14 @@ func (s *Service) NewSession(ctx context.Context, record interface{}, db *sql.DB
 		return newSess, nil
 	}
 
-	// Session/version discovery only needs the connection owner. Statement Args,
-	// columns and mapper options belong to the insert operation, not metadata SQL.
+	// Metadata discovery retains the connection owner and supplied product.
+	// Statement Args, columns and mapper options belong to the insert operation.
+	effective := option.Options(append(append([]option.Option(nil), options...), s.options...))
 	var metadataOptions []option.Option
-	if tx := option.Options(append(append([]option.Option(nil), options...), s.options...)).Tx(); tx != nil {
+	if product := effective.Product(); product != nil {
+		metadataOptions = append(metadataOptions, product)
+	}
+	if tx := effective.Tx(); tx != nil {
 		metadataOptions = append(metadataOptions, tx)
 	}
 	aDialect, err := config.Dialect(ctx, db, metadataOptions...)
