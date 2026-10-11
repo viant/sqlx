@@ -104,6 +104,10 @@ func (s *Service) Exec(ctx context.Context, any interface{}, options ...option.O
 		return 0, 0, nil
 	}
 	batchSize := option.Options(options).BatchSize()
+	// BatchSize is a maximum; preparing unused rows also wastes a database round trip.
+	if recordCount < batchSize {
+		batchSize = recordCount
+	}
 
 	record := valueAt(0)
 	if record == nil {
