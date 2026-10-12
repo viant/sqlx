@@ -100,6 +100,10 @@ func (s *Service) Info(ctx context.Context, db *sql.DB, kind info.Kind, sink Sin
 		return fmt.Errorf("unsupported kind: %s, for: %sv%v", kind, product.Name, product.Major)
 	}
 
+	return s.infoQuery(ctx, db, query, sink, options...)
+}
+
+func (s *Service) infoQuery(ctx context.Context, db *sql.DB, query *info.Query, sink Sink, options ...option.Option) error {
 	done, err := s.runHandler(ctx, db, query.PreHandlers, sink, options)
 	if done || err != nil {
 		return err
@@ -161,7 +165,7 @@ func (s *Service) matchVersion(ctx context.Context, db *sql.DB, product *databas
 	var err error
 	for _, query := range versionQueries {
 		var version string
-		if err = s.runQuery(ctx, db, query, &version, versionOptions...); err == nil {
+		if err = s.infoQuery(ctx, db, query, &version, versionOptions...); err == nil {
 			productTmp, err := database.Parse([]byte(version))
 			if err == nil && productTmp != nil {
 				if productTmp.Name != "" {
