@@ -141,7 +141,12 @@ func (a *Cache) IndexByWithResult(ctx context.Context, db *sql.DB, column, SQL s
 		return nil, err
 	}
 	metaBin := a.metaBin(identitySQL, argsStringified, fieldsStringified, storedFieldsStringified, column)
-	metaBin[completeBin] = complete
+	// The native v4 Aerospike client cannot encode a bool bin. Completeness is
+	// cache metadata, not row data; persist it as a portable integer marker.
+	metaBin[completeBin] = 0
+	if complete {
+		metaBin[completeBin] = 1
+	}
 
 	inserted, err := a.fetchAndIndexValues(ctx, fields, column, rows, isOrdered, URL, metaBin)
 	if err != nil {
@@ -1307,8 +1312,7 @@ func (a *Cache) updateColumnsInMatchEntry(entry *cache.Entry, match *RecordMatch
 	}
 	if scalarComposite {
 		// Legacy markers cannot prove complete scalar groups; rewarm before reuse.
-		complete, _ := match.record.Bins[completeBin].(bool)
-		if !complete {
+		if !isCompleteWarmup(match.record.Bins[completeBin]) {
 			return nil
 		}
 	}
@@ -1378,6 +1382,22 @@ func (a *Cache) updateColumnsInMatchEntry(entry *cache.Entry, match *RecordMatch
 	stats.RecordsCounter = counter
 	stats.Key = match.keyValue
 	return nil
+}
+
+// isCompleteWarmup accepts the native integer marker and legacy Boolean
+// markers. Missing, partial or malformed metadata must never prove a complete
+// scalar group for composite replay.
+func isCompleteWarmup(value interface{}) bool {
+	switch actual := value.(type) {
+	case int:
+		return actual == 1
+	case int64:
+		return actual == 1
+	case bool:
+		return actual
+	default:
+		return false
+	}
 }
 
 func (a *Cache) updateWriter(anEntry *cache.Entry, fullMatch *RecordMatched, SQL string, argsMarshal []byte, stats *cache.Stats) error {

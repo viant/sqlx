@@ -78,7 +78,7 @@ func assertScalarCompositeRows(t *testing.T, rows []scalarCompositeRow) {
 // Exercise actual native index publication, marker lookup, group streaming,
 // projection and typed SQLX row windows with an in-memory Aerospike transport.
 func TestScalarWarmupCompositeReplay(t *testing.T) {
-	for _, publication := range []string{"complete", "partial", "unknown"} {
+	for _, publication := range []string{"complete", "partial", "unknown", "legacy_bool", "int64", "invalid"} {
 		t.Run(publication, func(t *testing.T) {
 			db := scalarCompositeDatabase(t)
 			var mu sync.Mutex
@@ -87,7 +87,18 @@ func TestScalarWarmupCompositeReplay(t *testing.T) {
 			native.putFn = func(key *as.Key, bins as.BinMap) error {
 				mu.Lock()
 				defer mu.Unlock()
-				records[key.String()] = cloneBinMap(bins)
+				// Exercise the real v4 bin encoder before storing a transport fixture.
+				// A plain map copy hides unsupported wire types such as bool.
+				encoded := as.BinMap{}
+				for name, value := range bins {
+					require.NotPanics(t, func() {
+						bin := as.NewBin(name, value)
+						_, err := bin.Value.EstimateSize()
+						require.NoError(t, err)
+						encoded[name] = bin.Value.GetObject()
+					}, "bin %s", name)
+				}
+				records[key.String()] = encoded
 				return nil
 			}
 			native.getRecordFn = func(key *as.Key, bins ...string) (*as.Record, error) {
@@ -110,13 +121,25 @@ func TestScalarWarmupCompositeReplay(t *testing.T) {
 			if publication == "unknown" {
 				delete(records[markerKey.String()], completeBin)
 			} else {
-				require.Equal(t, publication == "complete", records[markerKey.String()][completeBin])
+				wantMarker := 1
+				if publication == "partial" {
+					wantMarker = 0
+				}
+				require.Equal(t, wantMarker, records[markerKey.String()][completeBin])
+			}
+			switch publication {
+			case "legacy_bool":
+				records[markerKey.String()][completeBin] = true
+			case "int64":
+				records[markerKey.String()][completeBin] = int64(1)
+			case "invalid":
+				records[markerKey.String()][completeBin] = 2
 			}
 			_, err = db.Exec("DROP TABLE facts")
 			require.NoError(t, err)
 			matcher := scalarCompositeMatcher()
 			rows, stats, err := scalarCompositeRead(t, db, native, matcher)
-			if publication != "complete" {
+			if publication == "partial" || publication == "unknown" || publication == "invalid" {
 				require.Error(t, err)
 				require.False(t, stats.FoundWarmup)
 				scalar := scalarCompositeMatcher()
