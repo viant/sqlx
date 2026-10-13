@@ -162,10 +162,11 @@ func mismatchIndex(mismatch *cache.TypeMismatch) int {
 }
 
 func mismatchFieldName(entry *cache.Entry, mismatch *cache.TypeMismatch) string {
-	if entry == nil || mismatch == nil || mismatch.Index < 0 || mismatch.Index >= len(entry.Meta.Fields) {
+	index := mismatchStoredIndex(entry, mismatch)
+	if index < 0 || index >= len(entry.Meta.Fields) {
 		return ""
 	}
-	field := entry.Meta.Fields[mismatch.Index]
+	field := entry.Meta.Fields[index]
 	if field == nil {
 		return ""
 	}
@@ -173,13 +174,28 @@ func mismatchFieldName(entry *cache.Entry, mismatch *cache.TypeMismatch) string 
 }
 
 func mismatchStoredFieldName(entry *cache.Entry, mismatch *cache.TypeMismatch) string {
-	if entry == nil || mismatch == nil || mismatch.Index < 0 {
+	index := mismatchStoredIndex(entry, mismatch)
+	if index < 0 {
 		return ""
 	}
-	if mismatch.Index < len(entry.Meta.StoredFields) {
-		return entry.Meta.StoredFields[mismatch.Index].Name
+	if index < len(entry.Meta.StoredFields) {
+		return entry.Meta.StoredFields[index].Name
 	}
 	return ""
+}
+
+func mismatchStoredIndex(entry *cache.Entry, mismatch *cache.TypeMismatch) int {
+	if entry == nil || mismatch == nil || mismatch.Index < 0 {
+		return -1
+	}
+	index := mismatch.Index
+	if entry.Meta.Projected() {
+		if index >= len(entry.Meta.ProjectedIndexes) {
+			return -1
+		}
+		index = entry.Meta.ProjectedIndexes[index]
+	}
+	return index
 }
 
 func mismatchDestinationType(mismatch *cache.TypeMismatch) string {
