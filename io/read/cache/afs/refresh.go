@@ -30,7 +30,18 @@ func (c *Cache) refreshWarmup(ctx context.Context, query *cache.ParmetrizedQuery
 		if err != nil {
 			return err
 		}
-		SQL = indexSQL(SQL, query.By, query.ByColumns)
+		lookup, scalarComposite, err := query.ScalarIndexMatcher()
+		if err != nil {
+			return err
+		}
+		if scalarComposite {
+			tuple := *query
+			tuple.By = ""
+			if err := c.refreshWarmup(ctx, &tuple, stats); err != nil {
+				return err
+			}
+		}
+		SQL = indexSQL(SQL, lookup.By, lookup.ByColumns)
 	} else if SQL == "" {
 		return nil
 	}

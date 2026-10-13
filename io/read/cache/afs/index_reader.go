@@ -11,11 +11,24 @@ import (
 )
 
 func (c *Cache) indexedEntry(ctx context.Context, matcher *cache.ParmetrizedQuery) (*cache.Entry, error) {
-	SQL, args, _, err := matcher.WarmupIdentity()
+	lookup, scalarComposite, err := matcher.ScalarIndexMatcher()
 	if err != nil {
 		return nil, err
 	}
-	markerSQL := indexSQL(SQL, matcher.By, matcher.ByColumns)
+	if scalarComposite {
+		// Prefer a native exact tuple publication when present; scalar groups are
+		// compatible broader candidates, not replacements for composite indexes.
+		tuple := *matcher
+		tuple.By = ""
+		if entry, err := c.indexedEntry(ctx, &tuple); entry != nil || err != nil {
+			return entry, err
+		}
+	}
+	SQL, args, _, err := lookup.WarmupIdentity()
+	if err != nil {
+		return nil, err
+	}
+	markerSQL := indexSQL(SQL, lookup.By, lookup.ByColumns)
 	marker, err := c.Get(ctx, markerSQL, args)
 	if err != nil || marker == nil {
 		return nil, err
@@ -24,7 +37,10 @@ func (c *Cache) indexedEntry(ctx context.Context, matcher *cache.ParmetrizedQuer
 	if !marker.Has() {
 		return nil, nil
 	}
-	if !marker.Meta.ApplyProjection(matcher.RequestedFields) {
+	if scalarComposite && marker.Meta.Partial {
+		return nil, nil
+	}
+	if !marker.Meta.ApplyProjection(matcher.RequestedFields) || scalarComposite && !matcher.MatchColumnsAvailable(&marker.Meta) {
 		return nil, nil
 	}
 	keys := map[string]int{}
@@ -40,10 +56,10 @@ func (c *Cache) indexedEntry(ctx context.Context, matcher *cache.ParmetrizedQuer
 		}
 		keys[key] = count
 	}
-	reader := &indexedReader{offset: matcher.Offset, limit: matcher.Limit}
+	reader := &indexedReader{offset: lookup.Offset, limit: lookup.Limit}
 	seen := map[string]bool{}
-	requested := matcher.In
-	if len(matcher.ByColumns) > 0 {
+	requested := lookup.In
+	if len(lookup.ByColumns) > 0 {
 		requested = make([]any, len(matcher.InTuples))
 		for i, tuple := range matcher.InTuples {
 			if len(tuple) != len(matcher.ByColumns) {
@@ -75,7 +91,7 @@ func (c *Cache) indexedEntry(ctx context.Context, matcher *cache.ParmetrizedQuer
 		}
 		reader.entries = append(reader.entries, entry)
 	}
-	result := &cache.Entry{Meta: marker.Meta, Windowed: true}
+	result := &cache.Entry{Meta: marker.Meta, Windowed: !scalarComposite}
 	result.SetReader(bufio.NewReader(reader), reader)
 	return result, nil
 }

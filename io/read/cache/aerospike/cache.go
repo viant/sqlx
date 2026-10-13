@@ -41,9 +41,10 @@ const (
 	storedFieldsBin = "StoredFields"
 	childBin        = "Child"
 	columnBin       = "Column"
+	completeBin     = "Complete"
 )
 
-var cachedBins = []string{createdBin, expiryBin, typesBin, argsBin, sqlBin, dataBin, fieldsBin, storedFieldsBin, compDataBin}
+var cachedBins = []string{createdBin, expiryBin, typesBin, argsBin, sqlBin, dataBin, fieldsBin, storedFieldsBin, compDataBin, completeBin}
 
 type (
 	Cache struct {
@@ -105,6 +106,11 @@ func (a *Cache) IndexByWithResult(ctx context.Context, db *sql.DB, column, SQL s
 	if err != nil {
 		return nil, err
 	}
+	executionArgs, err := json.Marshal(args)
+	if err != nil {
+		return nil, err
+	}
+	complete := SQL == identitySQL && bytes.Equal(executionArgs, argsMarshal)
 	canonicalization := "exact_query"
 	// A non-indexed warmup populates the ordinary query cache, whose metadata
 	// is matched against the original SQL. Indexed warmup has its own canonical
@@ -135,6 +141,7 @@ func (a *Cache) IndexByWithResult(ctx context.Context, db *sql.DB, column, SQL s
 		return nil, err
 	}
 	metaBin := a.metaBin(identitySQL, argsStringified, fieldsStringified, storedFieldsStringified, column)
+	metaBin[completeBin] = complete
 
 	inserted, err := a.fetchAndIndexValues(ctx, fields, column, rows, isOrdered, URL, metaBin)
 	if err != nil {
@@ -545,11 +552,23 @@ func (a *Cache) get(ctx context.Context, SQL string, args []interface{}, columns
 		return nil, err
 	}
 
+	if cacheStats.Type != cache.TypeReadMulti {
+		cacheStats.FoundWarmup = false
+		warmupMatch = nil
+	}
 	if err = a.updateMetaFields(anEntry, lazyMatch, warmupMatch); err != nil {
 		return nil, err
 	}
 	if err = a.applyWarmupProjection(anEntry, columnsInMatcher, cacheStats); err != nil {
 		return nil, err
+	}
+	if cacheStats.Type == cache.TypeReadMulti && columnsInMatcher != nil && !columnsInMatcher.MatchColumnsAvailable(&anEntry.Meta) {
+		_ = anEntry.Close()
+		anEntry.ReadCloser = nil
+		anEntry.Meta.Fields, anEntry.Meta.StoredFields, anEntry.Meta.Type, anEntry.Meta.ProjectedIndexes = nil, nil, nil, nil
+		cacheStats.RecordsCounter = 0
+		cacheStats.FoundWarmup = false
+		cacheStats.Type = cache.TypeNone
 	}
 	anEntry.Stats = cacheStats
 	if anEntry.Has() {
@@ -1282,7 +1301,18 @@ func (a *Cache) updateColumnsInMatchEntry(entry *cache.Entry, match *RecordMatch
 		return nil
 	}
 
-	multiReader := NewMultiReader(matcher)
+	lookup, scalarComposite, err := matcher.ScalarIndexMatcher()
+	if err != nil {
+		return err
+	}
+	if scalarComposite {
+		// Legacy markers cannot prove complete scalar groups; rewarm before reuse.
+		complete, _ := match.record.Bins[completeBin].(bool)
+		if !complete {
+			return nil
+		}
+	}
+	multiReader := NewMultiReader(lookup)
 
 	if matcher.By == "" {
 		reader, err := a.reader(match.key, match.record)
@@ -1299,9 +1329,9 @@ func (a *Cache) updateColumnsInMatchEntry(entry *cache.Entry, match *RecordMatch
 
 	// IN is a membership predicate: duplicate keys must not duplicate rows.
 	// Fetch concurrently, but assemble in the same first-key order as AFS.
-	values := make([]interface{}, 0, len(matcher.In))
-	seen := make(map[string]bool, len(matcher.In))
-	for _, value := range matcher.In {
+	values := make([]interface{}, 0, len(lookup.In))
+	seen := make(map[string]bool, len(lookup.In))
+	for _, value := range lookup.In {
 		encoded, err := json.Marshal(value)
 		if err != nil {
 			return err
@@ -1318,7 +1348,7 @@ func (a *Cache) updateColumnsInMatchEntry(entry *cache.Entry, match *RecordMatch
 	for i, value := range values {
 		go func(index int, value interface{}) {
 			defer pending.Done()
-			readers[index].reader, readers[index].err = a.newReader(matcher, warmupURL, value)
+			readers[index].reader, readers[index].err = a.newReader(lookup, warmupURL, value)
 		}(i, value)
 	}
 	pending.Wait()
@@ -1333,6 +1363,10 @@ func (a *Cache) updateColumnsInMatchEntry(entry *cache.Entry, match *RecordMatch
 		} else {
 			childRowMiss = true
 		}
+	}
+	if childRowMiss && scalarComposite {
+		_ = multiReader.Close()
+		return nil
 	}
 	if childRowMiss {
 		a.logWarmupFailure(matcher.By, warmupURL, markerKey, "child_row_miss")
