@@ -146,6 +146,12 @@ func isCompatibleCacheType(destinationType string, cachedType string) bool {
 	if destinationType == cachedType {
 		return true
 	}
+	// SQL temporal fields may use a textual intermediate scanner. Warmed
+	// time.Time values are JSON strings, just as database/sql converts times
+	// into RFC3339Nano text for a string destination.
+	if destinationType == "string" && cachedType == "time.Time" {
+		return true
+	}
 	if destinationType == "bool" && cachedType == "int" {
 		return true
 	}
