@@ -1,11 +1,14 @@
 package aerospike
 
 import (
+	"database/sql"
+	"fmt"
+	"reflect"
+	"time"
+
 	"github.com/viant/sqlx/converter"
 	"github.com/viant/sqlx/io/read/cache"
 	"github.com/viant/xunsafe"
-	"reflect"
-	"time"
 )
 
 type Placeholders struct {
@@ -118,6 +121,9 @@ func (p *Placeholders) ColumnValue() (interface{}, bool) {
 }
 
 func (p *Placeholders) derefValue(value interface{}, dereferencer ...*xunsafe.Type) interface{} {
+	if destination, ok := value.(interface{ Destination() any }); ok {
+		value = destination.Destination()
+	}
 	rValue := reflect.ValueOf(value)
 	for rValue.IsValid() {
 		switch rValue.Kind() {
@@ -140,7 +146,56 @@ func (p *Placeholders) derefValue(value interface{}, dereferencer ...*xunsafe.Ty
 }
 
 func (p *Placeholders) CreatePlaceholderAt(i int) {
-	p.ptrs[i] = reflect.New(scanPlaceholderType(p.fields[i])).Interface()
+	scanType := scanPlaceholderType(p.fields[i])
+	byteSliceType := scanType
+	if byteSliceType != nil && byteSliceType.Kind() == reflect.Ptr {
+		byteSliceType = byteSliceType.Elem()
+	}
+	if byteSliceType != nil && byteSliceType.Kind() == reflect.Slice && byteSliceType.Elem().Kind() == reflect.Uint8 {
+		p.ptrs[i] = &byteSlicePlaceholder{}
+		return
+	}
+	p.ptrs[i] = reflect.New(scanType).Interface()
+}
+
+// byteSlicePlaceholder accepts the pointer-valued byte slices returned by
+// some drivers while retaining the native *[]byte value for cache indexing.
+type byteSlicePlaceholder struct {
+	value *[]byte
+}
+
+var _ sql.Scanner = (*byteSlicePlaceholder)(nil)
+
+func (p *byteSlicePlaceholder) Destination() any {
+	return &p.value
+}
+
+func (p *byteSlicePlaceholder) Scan(source any) error {
+	var data []byte
+	switch value := source.(type) {
+	case nil:
+		p.value = nil
+		return nil
+	case string:
+		data = []byte(value)
+	case []byte:
+		data = value
+	case *[]byte:
+		if value == nil {
+			p.value = nil
+			return nil
+		}
+		data = *value
+	default:
+		return fmt.Errorf("unsupported Scan, storing driver.Value type %T into type *[]byte", source)
+	}
+	if data == nil {
+		p.value = nil
+		return nil
+	}
+	copyOfData := append([]byte{}, data...)
+	p.value = &copyOfData
+	return nil
 }
 
 func (p *Placeholders) ScanPlaceholders() []interface{} {

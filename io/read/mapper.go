@@ -5,6 +5,7 @@ import (
 	"github.com/viant/sqlx/types"
 	"github.com/viant/xunsafe"
 	"reflect"
+	"unsafe"
 )
 
 // RowMapper represents a target values mapped to pointer of slice
@@ -32,7 +33,7 @@ func NewMapper(fields []io.Field) *Mapper {
 func (m *Mapper) MapToRow(target interface{}) ([]interface{}, error) {
 	ptr := xunsafe.AsPointer(target)
 	for i, mapped := range m.fields {
-		m.record[i] = mapped.Addr(ptr)
+		m.record[i] = scanDestination(mapped, ptr)
 	}
 
 	return m.record, nil
@@ -41,7 +42,7 @@ func (m *Mapper) MapToRow(target interface{}) ([]interface{}, error) {
 func (m *Mapper) MapToSQLRow(target interface{}) ([]interface{}, error) {
 	ptr := xunsafe.AsPointer(target)
 	for i, mapped := range m.fields {
-		m.record[i] = mapped.Addr(ptr)
+		m.record[i] = scanDestination(mapped, ptr)
 		if mapped.Tag.Encoding == io.EncodingJSON {
 			m.record[i] = &io.JSONEncodedValue{Val: m.record[i]}
 		} else if mapped.Tag.Encoding == io.EncodingCSV {
@@ -49,6 +50,20 @@ func (m *Mapper) MapToSQLRow(target interface{}) ([]interface{}, error) {
 		}
 	}
 	return m.record, nil
+}
+
+func scanDestination(field io.Field, pointer unsafe.Pointer) interface{} {
+	destination := field.Addr(pointer)
+	if isPointerToByteSlice(field.Type) {
+		return newPointerByteSliceScanner(destination)
+	}
+	return destination
+}
+
+func isPointerToByteSlice(fieldType reflect.Type) bool {
+	return fieldType.Kind() == reflect.Ptr &&
+		fieldType.Elem().Kind() == reflect.Slice &&
+		fieldType.Elem().Elem().Kind() == reflect.Uint8
 }
 
 func (m *Mapper) init() {
@@ -226,6 +241,11 @@ func newScanValue(scanType reflect.Type) func(index int, values []interface{}) {
 					val := ""
 					values[index] = &val
 				}
+			case reflect.Uint8:
+				return func(index int, values []interface{}) {
+					var val []byte
+					values[index] = newPointerByteSliceScanner(&val)
+				}
 			}
 
 		default:
@@ -277,6 +297,11 @@ func newScanValue(scanType reflect.Type) func(index int, values []interface{}) {
 			return func(index int, values []interface{}) {
 				val := ""
 				values[index] = &val
+			}
+		case reflect.Uint8:
+			return func(index int, values []interface{}) {
+				var val []byte
+				values[index] = newPointerByteSliceScanner(&val)
 			}
 		}
 	}
