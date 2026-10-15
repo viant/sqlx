@@ -121,10 +121,11 @@ func Reserve(ctx context.Context, tx *sql.Tx, r Request) ([]int64, error) {
 		// CREATE's non-no-op path acquires write intent; the ordinary path UPDATE
 		// does so before any read, avoiding deferred-transaction upgrade races.
 		if _, err = tx.ExecContext(ctx, "UPDATE "+ledger+" SET value=value WHERE 0"); err != nil {
-			if _, createErr := tx.ExecContext(ctx, "CREATE TABLE "+ledger+" (scope_key TEXT PRIMARY KEY,value INTEGER NOT NULL CHECK(value>=0))"); createErr != nil {
-				if _, err = tx.ExecContext(ctx, "UPDATE "+ledger+" SET value=value WHERE 0"); err != nil {
-					return nil, fmt.Errorf("lock scoped sequence: %w", createErr)
-				}
+			if _, createErr := tx.ExecContext(ctx, "CREATE TABLE IF NOT EXISTS "+ledger+" (scope_key TEXT PRIMARY KEY,value INTEGER NOT NULL CHECK(value>=0))"); createErr != nil {
+				return nil, fmt.Errorf("create scoped sequence ledger: %w", createErr)
+			}
+			if _, err = tx.ExecContext(ctx, "UPDATE "+ledger+" SET value=value WHERE 0"); err != nil {
+				return nil, fmt.Errorf("lock scoped sequence: %w", err)
 			}
 		}
 		if _, err = tx.ExecContext(ctx, "INSERT INTO "+ledger+" (scope_key,value) VALUES (?,0) ON CONFLICT(scope_key) DO NOTHING", key); err != nil {

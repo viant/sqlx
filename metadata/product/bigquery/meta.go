@@ -28,6 +28,21 @@ func BigQuery() *database.Product {
 	return &bigQuery
 }
 
+// BigQuery's registered version is fixed rather than reported by the service.
+// Preserve the SQL fallback for callers using other metadata sink shapes.
+func fixedVersionHandler() info.Handler {
+	return info.NewHandler(func(ctx context.Context, _ *sql.DB, target interface{}, _ ...interface{}) (bool, error) {
+		if err := ctx.Err(); err != nil {
+			return false, err
+		}
+		if version, ok := target.(*string); ok && version != nil {
+			*version = "BigQuery 0.0.0"
+			return false, nil
+		}
+		return true, nil
+	})
+}
+
 func emptyForeignKeysHandler() info.Handler {
 	return info.NewHandler(func(ctx context.Context, _ *sql.DB, _ interface{}, _ ...interface{}) (bool, error) {
 		if err := ctx.Err(); err != nil {
@@ -39,7 +54,7 @@ func emptyForeignKeysHandler() info.Handler {
 
 func init() {
 	err := registry.Register(
-		info.NewQuery(info.KindVersion, "SELECT 'BigQuery 0.0.0'", bigQuery), // Parsing the version gives an error if the version number doesn't exist
+		info.NewQuery(info.KindVersion, "SELECT 'BigQuery 0.0.0'", bigQuery).OnPre(fixedVersionHandler()),
 		info.NewQuery(info.KindSchemas, `SELECT
 CATALOG_NAME, 
 SCHEMA_NAME,
@@ -107,7 +122,7 @@ CAST(NULL AS INT64) NUMERIC_SCALE,
 IS_NULLABLE,
 '' COLUMN_DEFAULT,
 '' COLUMN_KEY
-FROM $Args[1].INFORMATION_SCHEMA.COLUMNS
+FROM $Args[0].$Args[1].INFORMATION_SCHEMA.COLUMNS
 `,
 			bigQuery,
 			info.NewCriterion(info.Catalog, ""),

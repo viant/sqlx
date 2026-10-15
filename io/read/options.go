@@ -13,23 +13,30 @@ import (
 type Option func(o *options)
 
 type options struct {
-	retry              RetryPolicy
-	cacheOnly          bool
-	queryScope         *QueryScope
-	getRowMapper       NewRowMapper
-	columnsObserver    func([]io.Column) error
-	unmappedFn         io.Resolve
-	cache              cache.Cache
-	mapperCache        *MapperCache
-	disableMapperCache DisableMapperCache
-	db                 *sql.DB
-	tx                 *sql.Tx
-	inMatcher          *cache.ParmetrizedQuery
-	cacheStats         *cache.Stats
-	cacheRefresh       cache.Refresh
-	inlineType         bool
-	dialect            *info.Dialect
-	options            []option.Option
+	cleanupErrorProvenance bool
+	retry                  RetryPolicy
+	cacheOnly              bool
+	queryScope             *QueryScope
+	getRowMapper           NewRowMapper
+	columnsObserver        func([]io.Column) error
+	unmappedFn             io.Resolve
+	cache                  cache.Cache
+	mapperCache            *MapperCache
+	disableMapperCache     DisableMapperCache
+	db                     *sql.DB
+	tx                     *sql.Tx
+	inMatcher              *cache.ParmetrizedQuery
+	cacheStats             *cache.Stats
+	cacheRefresh           cache.Refresh
+	inlineType             bool
+	dialect                *info.Dialect
+	options                []option.Option
+}
+
+// WithCleanupErrorProvenance preserves the causes of returned source-close
+// failures. It does not observe discarded cleanup or certify transaction health.
+func WithCleanupErrorProvenance() Option {
+	return func(o *options) { o.cleanupErrorProvenance = true }
 }
 
 func WithRowMapper(mapper NewRowMapper) Option {

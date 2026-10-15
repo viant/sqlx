@@ -9,6 +9,41 @@ import (
 	"github.com/viant/sqlx/io/read/cache"
 )
 
+func TestMismatchFieldNamesFollowProjection(t *testing.T) {
+	entry := &cache.Entry{Meta: cache.Meta{
+		Fields: []*cache.Field{
+			{ColumnName: "DOOH_BUDGET"},
+			{ColumnName: "PRIMARY_START_DATE"},
+		},
+		StoredFields: []cache.ProjectionField{
+			{Name: "DOOH_BUDGET"},
+			{Name: "PRIMARY_START_DATE"},
+		},
+		ProjectedIndexes: []int{1, 0},
+	}}
+	for _, test := range []struct {
+		index int
+		want  string
+	}{
+		{0, "PRIMARY_START_DATE"}, {1, "DOOH_BUDGET"}, {-1, ""}, {2, ""},
+	} {
+		mismatch := &cache.TypeMismatch{Index: test.index}
+		if got := mismatchFieldName(entry, mismatch); got != test.want {
+			t.Errorf("field at %d = %q, want %q", test.index, got, test.want)
+		}
+		if got := mismatchStoredFieldName(entry, mismatch); got != test.want {
+			t.Errorf("stored field at %d = %q, want %q", test.index, got, test.want)
+		}
+	}
+	entry.Meta.ProjectedIndexes = nil
+	if got := mismatchFieldName(entry, &cache.TypeMismatch{Index: 0}); got != "DOOH_BUDGET" {
+		t.Fatalf("unprojected field = %q", got)
+	}
+	if mismatchFieldName(nil, nil) != "" || mismatchStoredFieldName(nil, nil) != "" {
+		t.Fatal("absent mismatch must have no field name")
+	}
+}
+
 func TestSourcesKeepIndependentScanTypes(t *testing.T) {
 	service := &Cache{}
 	var workers sync.WaitGroup

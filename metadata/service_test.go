@@ -536,7 +536,7 @@ func TestAbstractService_Info(t *testing.T) {
 	for _, testCase := range testCases {
 		//fmt.Printf("===%v\n", testCase.description)
 		if testCase.skip {
-			t.Skipf("skipped " + testCase.description)
+			t.Skipf("skipped %s", testCase.description)
 			continue
 		}
 		db, err := prepareDbs(testCase.prepare)
@@ -613,7 +613,7 @@ func TestAbstractService_Execute(t *testing.T) {
 
 	for _, testCase := range testCases {
 		if testCase.skip {
-			t.Skipf("skipped " + testCase.description)
+			t.Skipf("skipped %s", testCase.description)
 			continue
 		}
 		db, err := prepareDbs(testCase.prepare)

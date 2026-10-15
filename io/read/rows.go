@@ -3,6 +3,7 @@ package read
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"github.com/viant/sqlx/io"
 	"github.com/viant/sqlx/io/read/cache"
@@ -12,16 +13,38 @@ import (
 )
 
 type Rows struct {
-	rows                *sql.Rows
-	columns             []io.Column
-	xTypes              []*xunsafe.Type
-	cache               cache.Cache
-	entry               *cache.Entry
-	matcher             *cache.ParmetrizedQuery
-	occurIndex          map[interface{}]int
-	columnIndex         int
-	matcherColumnDerefs []*xunsafe.Type
-	exhausted           int
+	cleanupErrorProvenance bool
+	rows                   *sql.Rows
+	columns                []io.Column
+	xTypes                 []*xunsafe.Type
+	cache                  cache.Cache
+	entry                  *cache.Entry
+	matcher                *cache.ParmetrizedQuery
+	occurIndex             map[interface{}]int
+	columnIndex            int
+	matcherColumnDerefs    []*xunsafe.Type
+	exhausted              int
+}
+
+// CleanupError identifies an actually returned close failure, preserving its
+// original display text and causes. It grants no continuation authority.
+type CleanupError struct {
+	Cause   error
+	message string
+}
+
+func (e *CleanupError) Error() string { return e.message }
+func (e *CleanupError) Unwrap() error { return e.Cause }
+
+func cleanupError(cause error) error {
+	if cause == nil {
+		return nil
+	}
+	var existing *CleanupError
+	if errors.As(cause, &existing) {
+		return cause
+	}
+	return &CleanupError{Cause: cause, message: cause.Error()}
 }
 
 func (c *Rows) Rollback(ctx context.Context) error {
@@ -152,26 +175,29 @@ func (c *Rows) initXTypes() {
 }
 
 func (c *Rows) Close(ctx context.Context) error {
-	var errors []error
+	var failures []error
 	if c.entry != nil {
 		if err := c.cache.Close(ctx, c.entry); err != nil {
-			errors = append(errors, err)
+			failures = append(failures, err)
 		}
 	}
 
 	if err := c.rows.Close(); err != nil {
-		errors = append(errors, err)
+		failures = append(failures, err)
 	}
 
-	if len(errors) == 0 {
+	if len(failures) == 0 {
 		return nil
 	}
 
 	var errMessage string
-	for _, err := range errors {
+	for _, err := range failures {
 		errMessage += err.Error()
 	}
 
+	if c.cleanupErrorProvenance {
+		return &CleanupError{Cause: errors.Join(failures...), message: errMessage}
+	}
 	return fmt.Errorf("%s", errMessage)
 }
 

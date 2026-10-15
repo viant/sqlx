@@ -17,6 +17,9 @@ func DetectColumns(ctx context.Context, db *sql.DB, query string, args ...interf
 
 // ColumnDetector discovers SQL projection metadata without consuming rows.
 type ColumnDetector struct {
+	// Tx borrows a caller-owned transaction for discovery. Detect closes its
+	// statement and rows, but never commits or rolls back the transaction.
+	Tx *sql.Tx
 	// UnmappedColumns identifies outputs that the caller will not scan into
 	// fields. Missing database types are permitted only for these names, matched
 	// case-insensitively. Their reported metadata is retained without inventing
@@ -35,7 +38,13 @@ type ColumnDetector struct {
 // Detect discovers columns without sampling values. Missing driver types need
 // an explicit declaration, unmapped policy, or a caller-supplied type.
 func (d ColumnDetector) Detect(ctx context.Context, db *sql.DB, query string, args ...interface{}) ([]*sink.Column, error) {
-	stmt, err := db.PrepareContext(ctx, query)
+	var stmt *sql.Stmt
+	var err error
+	if d.Tx != nil {
+		stmt, err = d.Tx.PrepareContext(ctx, query)
+	} else {
+		stmt, err = db.PrepareContext(ctx, query)
+	}
 	if err != nil {
 		return nil, err
 	}

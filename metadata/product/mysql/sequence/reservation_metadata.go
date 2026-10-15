@@ -84,9 +84,12 @@ func (*ReservationMetadata) resolve(ctx context.Context, q queryer, options opti
 		tableMatch = "LOWER(c.TABLE_SCHEMA)=LOWER(?) AND LOWER(c.TABLE_NAME)=LOWER(?)"
 	}
 	var kind, columnType, extra, engine string
+	// Direct predicates let MySQL narrow its dictionary views before the
+	// binary/case guards and join. Keep those guards as physical authority.
 	err = q.QueryRowContext(ctx, `SELECT c.TABLE_SCHEMA,c.TABLE_NAME,c.COLUMN_NAME,c.DATA_TYPE,c.COLUMN_TYPE,c.EXTRA,t.ENGINE
  FROM information_schema.COLUMNS c JOIN information_schema.TABLES t ON BINARY t.TABLE_SCHEMA=BINARY c.TABLE_SCHEMA AND BINARY t.TABLE_NAME=BINARY c.TABLE_NAME
- WHERE `+tableMatch+` AND LOWER(c.COLUMN_NAME)=LOWER(?)`, schema.String, table, colParts[0]).Scan(
+ WHERE c.TABLE_SCHEMA=? AND c.TABLE_NAME=? AND t.TABLE_SCHEMA=? AND t.TABLE_NAME=? AND c.COLUMN_NAME=?
+ AND `+tableMatch+` AND LOWER(c.COLUMN_NAME)=LOWER(?)`, schema.String, table, schema.String, table, colParts[0], schema.String, table, colParts[0]).Scan(
 		&result.sequence.Schema, &result.table, &result.column, &kind, &columnType, &extra, &engine)
 	if err != nil {
 		return result, fmt.Errorf("resolve MySQL sequence column %s.%s: %w", options.SequenceTable(), column, err)

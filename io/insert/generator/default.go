@@ -114,7 +114,7 @@ func (d *Default) prepare(ctx context.Context, rType reflect.Type, table string)
 		return d.columns, d.queryMapper, nil
 	}
 
-	if !d.shouldLoadColumnInfo(rType) {
+	if !HasDefaults(rType) {
 		d.columns = []sink.Column{}
 		d.queryMapper = func(target interface{}) ([]interface{}, error) {
 			return []interface{}{}, nil
@@ -176,7 +176,8 @@ func (d *Default) flush(ctx context.Context, values []interface{}, offset int, l
 	return err
 }
 
-func (d *Default) shouldLoadColumnInfo(rType reflect.Type) bool {
+// HasDefaults reports whether tagged fields require native default generation.
+func HasDefaults(rType reflect.Type) bool {
 	if rType.Kind() == reflect.Ptr {
 		rType = rType.Elem()
 	}
