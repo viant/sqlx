@@ -3,6 +3,7 @@ package cache
 import (
 	"database/sql"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"github.com/francoispqt/gojay"
 	"github.com/viant/xunsafe"
@@ -568,13 +569,24 @@ func stringDecoder(ptr bool) DecoderFn {
 	if !ptr {
 		return func(decoder *gojay.Decoder) (interface{}, error) {
 			aString := ""
-			return &aString, decoder.String(&aString)
+			var raw gojay.EmbeddedJSON
+			if err := decoder.EmbeddedJSON(&raw); err != nil {
+				return nil, err
+			}
+			return &aString, json.Unmarshal(raw, &aString)
 		}
 	}
 
 	return func(decoder *gojay.Decoder) (interface{}, error) {
 		aStringPtr := new(string)
-		return &aStringPtr, decoder.StringNull(&aStringPtr)
+		var raw gojay.EmbeddedJSON
+		if err := decoder.EmbeddedJSON(&raw); err != nil {
+			return nil, err
+		}
+		// GoJay's in-place unescape shifts the remaining buffer for each escape,
+		// making large cached JSON/text strings quadratic. Extract the raw value
+		// without changing it and let the standard decoder unescape linearly.
+		return &aStringPtr, json.Unmarshal(raw, &aStringPtr)
 	}
 }
 
