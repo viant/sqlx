@@ -36,6 +36,7 @@ func WithRetry(policy RetryPolicy) Option {
 func (r *Reader) QueryAll(ctx context.Context, emit func(interface{}) error, args ...interface{}) error {
 	for attempt := 1; ; attempt++ {
 		r.materialized, r.sourceFailed = false, false
+		r.sourceFailure = nil
 		err := r.queryAll(ctx, emit, args...)
 		if err == nil {
 			return nil
@@ -45,13 +46,13 @@ func (r *Reader) QueryAll(ctx context.Context, emit func(interface{}) error, arg
 		}
 		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) ||
 			r.retry.Attempts <= 1 || r.retry.Recoverable == nil || !r.retry.Recoverable(err) {
-			return err
+			return r.withSourceFailure(err)
 		}
 		if r.materialized || r.suppliedStmt || r.tx != nil {
 			return errors.Join(ErrRetryUnsafe, err)
 		}
 		if !r.sourceFailed || attempt >= r.retry.Attempts || r.retry.Reconnect == nil {
-			return err
+			return r.withSourceFailure(err)
 		}
 		if r.stmt != nil {
 			_ = r.stmt.Close()

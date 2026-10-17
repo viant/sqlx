@@ -14,6 +14,7 @@ type Option func(o *options)
 
 type options struct {
 	cleanupErrorProvenance bool
+	sourceErrorProvenance  bool
 	retry                  RetryPolicy
 	cacheOnly              bool
 	queryScope             *QueryScope
@@ -37,6 +38,13 @@ type options struct {
 // failures. It does not observe discarded cleanup or certify transaction health.
 func WithCleanupErrorProvenance() Option {
 	return func(o *options) { o.cleanupErrorProvenance = true }
+}
+
+// WithSourceErrorProvenance identifies terminal database prepare/query-start
+// failures from QueryAll without changing retry predicate inputs. Iteration
+// errors remain unclassified because Rows.Err can include implicit close errors.
+func WithSourceErrorProvenance() Option {
+	return func(o *options) { o.sourceErrorProvenance = true }
 }
 
 func WithRowMapper(mapper NewRowMapper) Option {

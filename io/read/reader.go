@@ -23,6 +23,7 @@ type (
 		shallDeref     bool
 		materialized   bool
 		sourceFailed   bool
+		sourceFailure  *SourceError
 		suppliedStmt   bool
 		targetDatatype string
 		row            *bufferEntry
@@ -117,13 +118,16 @@ func (r *Reader) createSource(ctx context.Context, entry *cache.Entry, args []in
 		}
 		if err := r.ensureStmt(ctx); err != nil {
 			r.sourceFailed = true
+			r.noteSourceFailure("prepare", err)
 			return nil, nil, err
 		}
 
 		rows, err := r.stmt.QueryContext(ctx, args...)
 		if err != nil {
 			r.sourceFailed = true
-			return nil, nil, fmt.Errorf("failed to run query: %v, due to %w", r.query, err)
+			failure := fmt.Errorf("failed to run query: %v, due to %w", r.query, err)
+			r.noteSourceFailure("query", failure)
+			return nil, nil, failure
 		}
 
 		source, err := NewRows(rows, r.cache, entry, nil)
