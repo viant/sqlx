@@ -113,3 +113,29 @@ func TestCleanupErrorReturnedCacheSourceOnly(t *testing.T) {
 		t.Fatal("double-wrapped actual cleanup")
 	}
 }
+
+// database/sql can report an implicit driver Close failure through Rows.Err.
+// Such an error must not acquire prepare/query provenance.
+func TestSourceProvenanceExcludesImplicitClose(t *testing.T) {
+	cause := &cleanupCause{"private close"}
+	db := sql.OpenDB(sourceCloseConnector{cleanupDriver{cause: cause}})
+	defer db.Close()
+	rows, err := db.QueryContext(context.Background(), "SELECT value")
+	if err != nil {
+		t.Fatal(err)
+	}
+	reader := &Reader{options: options{sourceErrorProvenance: true}}
+	err = reader.ReadAll(context.Background(), rows, func(interface{}) error { return nil })
+	if !errors.Is(err, cause) {
+		t.Fatalf("lost close cause: %v", err)
+	}
+	var marked *SourceError
+	if errors.As(reader.withSourceFailure(err), &marked) {
+		t.Fatal("implicit close was classified as SQL source failure")
+	}
+}
+
+type sourceCloseConnector struct{ cleanupDriver }
+
+func (c sourceCloseConnector) Connect(context.Context) (driver.Conn, error) { return c.Open("") }
+func (c sourceCloseConnector) Driver() driver.Driver                        { return c.cleanupDriver }
