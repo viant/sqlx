@@ -44,9 +44,9 @@ func (m *Mapper) MapToSQLRow(target interface{}) ([]interface{}, error) {
 	for i, mapped := range m.fields {
 		m.record[i] = scanDestination(mapped, ptr)
 		if mapped.Tag.Encoding == io.EncodingJSON {
-			m.record[i] = &io.JSONEncodedValue{Val: m.record[i]}
+			m.record[i] = &io.JSONEncodedValue{Val: mapped.Addr(ptr)}
 		} else if mapped.Tag.Encoding == io.EncodingCSV {
-			m.record[i] = &io.CSVEncodedValue{Val: m.record[i]}
+			m.record[i] = &io.CSVEncodedValue{Val: mapped.Addr(ptr)}
 		}
 	}
 	return m.record, nil
