@@ -72,18 +72,22 @@ func (n *Next) Handle(ctx context.Context, db *sql.DB, target interface{}, opts 
 		return false, fmt.Errorf("SQLite sequence identity changed before reservation")
 	}
 	ledger := quoteIdentifier(identity.Schema) + "." + quoteIdentifier(reservationTable)
-	var current int64
-	err = tx.QueryRowContext(ctx, "SELECT value FROM "+ledger+" WHERE table_name=?", identity.Name).Scan(&current)
-	missing := errors.Is(err, sql.ErrNoRows)
-	if err != nil && !missing {
-		return false, err
-	}
-	engineValue, hasEngineCounter, err := n.engineCounter(ctx, tx, identity)
+	current, hasEngineCounter, err := n.engineCounter(ctx, tx, identity)
 	if err != nil {
 		return false, err
 	}
-	if engineValue > current {
-		current = engineValue
+	missing := false
+	if !hasEngineCounter {
+		// Only non-native numeric allocation needs the optional SQLX ledger.
+		// Write intent was acquired above before any sequence reads.
+		if _, err = tx.ExecContext(ctx, "CREATE TABLE IF NOT EXISTS "+ledger+" (table_name TEXT PRIMARY KEY, value INTEGER NOT NULL CHECK(value >= 0))"); err != nil {
+			return false, err
+		}
+		err = tx.QueryRowContext(ctx, "SELECT value FROM "+ledger+" WHERE table_name=?", identity.Name).Scan(&current)
+		missing = errors.Is(err, sql.ErrNoRows)
+		if err != nil && !missing {
+			return false, err
+		}
 	}
 	if !hasEngineCounter && options.MaxIDSQLBuilder() == nil {
 		return false, fmt.Errorf("SQLite numeric reservation requires the insert mapper's maximum-value query")
@@ -108,27 +112,30 @@ func (n *Next) Handle(ctx context.Context, db *sql.DB, target interface{}, opts 
 		return false, fmt.Errorf("sequence range overflows int64")
 	}
 	last := current + count
-	query := "UPDATE " + ledger + " SET value=? WHERE table_name=?"
-	if missing {
-		query = "INSERT INTO " + ledger + " (value,table_name) VALUES (?,?)"
-	}
-	written, err := tx.ExecContext(ctx, query, last, identity.Name)
-	if err != nil {
-		return false, err
-	}
-	affected, err := written.RowsAffected()
-	if err != nil {
-		return false, err
-	}
-	if affected != 1 {
-		return false, fmt.Errorf("SQLite sequence reservation affected %d rows, expected 1", affected)
-	}
-	var stored int64
-	if err := tx.QueryRowContext(ctx, "SELECT value FROM "+ledger+" WHERE table_name=?", identity.Name).Scan(&stored); err != nil {
-		return false, err
-	}
-	if stored != last {
-		return false, fmt.Errorf("SQLite sequence reservation did not persist its counter")
+	if !hasEngineCounter {
+		query := "UPDATE " + ledger + " SET value=? WHERE table_name=?"
+		if missing {
+			query = "INSERT INTO " + ledger + " (value,table_name) VALUES (?,?)"
+		}
+		written, err := tx.ExecContext(ctx, query, last, identity.Name)
+		if err != nil {
+			return false, err
+		}
+		affected, err := written.RowsAffected()
+		if err != nil {
+			return false, err
+		}
+		if affected != 1 {
+			return false, fmt.Errorf("SQLite sequence reservation affected %d rows, expected 1", affected)
+		}
+		var stored int64
+		if err := tx.QueryRowContext(ctx, "SELECT value FROM "+ledger+" WHERE table_name=?", identity.Name).Scan(&stored); err != nil {
+			return false, err
+		}
+		if stored != last {
+			return false, fmt.Errorf("SQLite sequence reservation did not persist its counter")
+		}
+
 	}
 
 	if hasEngineCounter {

@@ -76,6 +76,15 @@ func (*Lock) Handle(ctx context.Context, db *sql.DB, _ interface{}, opts ...inte
 	sort.Slice(databases, func(i, j int) bool { return databases[i].file < databases[j].file })
 
 	for _, item := range databases {
+		// AUTOINCREMENT tables already have an engine-owned allocator. Take
+		// write intent there without creating an application reservation table.
+		native := quoteIdentifier(item.name) + ".sqlite_sequence"
+		if _, err = tx.ExecContext(ctx, "UPDATE "+native+" SET seq=seq WHERE 0"); err == nil {
+			continue
+		}
+		if err.Error() != "no such table: "+item.name+".sqlite_sequence" {
+			return false, errors.Join(fmt.Errorf("acquire SQLite native sequence write intent: %w", err), ctx.Err())
+		}
 		ledger := quoteIdentifier(item.name) + "." + quoteIdentifier(reservationTable)
 		lockSQL := "UPDATE " + ledger + " SET value=value WHERE 0"
 		if _, err = tx.ExecContext(ctx, lockSQL); err == nil {

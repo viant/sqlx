@@ -40,3 +40,51 @@ func TestReservationFailurePreservesTarget(t *testing.T) {
 	}
 	sqlite.AssertRows(t, h, "SELECT seq FROM sqlite_sequence WHERE name='records'", []struct{ Seq int }{{5}})
 }
+
+func TestAutoIncrementReservationUsesOnlyEngineCounter(t *testing.T) {
+	h := sqlite.New(t, "CREATE TABLE records(id INTEGER PRIMARY KEY AUTOINCREMENT, label TEXT NOT NULL)")
+	ctx := context.Background()
+	for i := int64(0); i < 2; i++ {
+		reserved := &sink.Sequence{}
+		if _, err := (&sequence.Next{}).Handle(ctx, h.DB, reserved, option.NewArgs("", "main", "records"), option.RecordCount(3)); err != nil {
+			t.Fatal(err)
+		}
+		if reserved.MinValue(3) != 1+i*3 {
+			t.Fatalf("unexpected allocation: %+v", reserved)
+		}
+	}
+	sqlite.AssertRows(t, h, "SELECT COUNT(*) AS n FROM sqlite_master WHERE name='sqlx_sequence_reservations'", []struct{ N int }{{0}})
+	sqlite.AssertRows(t, h, "SELECT COUNT(*) AS n FROM records", []struct{ N int }{{0}})
+	inserted, err := h.DB.ExecContext(ctx, "INSERT INTO records(label) VALUES('native')")
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, err := inserted.LastInsertId()
+	if err != nil || id != 7 {
+		t.Fatalf("native insert collided with reservation: id=%d err=%v", id, err)
+	}
+}
+
+func TestAutoIncrementReservationKeepsCallerTransactionOwnership(t *testing.T) {
+	h := sqlite.New(t, "CREATE TABLE records(id INTEGER PRIMARY KEY AUTOINCREMENT)", "INSERT INTO records VALUES(10)")
+	h.DB.SetMaxOpenConns(1)
+	ctx := context.Background()
+	tx, err := h.DB.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback()
+	reserved := &sink.Sequence{}
+	if _, err = (&sequence.Next{}).Handle(ctx, h.DB, reserved, tx, option.NewArgs("", "main", "records"), option.RecordCount(2)); err != nil {
+		t.Fatal(err)
+	}
+	var next int64
+	if err = tx.QueryRowContext(ctx, "SELECT seq FROM sqlite_sequence WHERE name='records'").Scan(&next); err != nil || next != 12 {
+		t.Fatalf("pending native counter=%d err=%v", next, err)
+	}
+	if err = tx.Rollback(); err != nil {
+		t.Fatal(err)
+	}
+	sqlite.AssertRows(t, h, "SELECT seq FROM sqlite_sequence WHERE name='records'", []struct{ Seq int }{{10}})
+	sqlite.AssertRows(t, h, "SELECT COUNT(*) AS n FROM sqlite_master WHERE name='sqlx_sequence_reservations'", []struct{ N int }{{0}})
+}
