@@ -62,9 +62,13 @@ func NewBuilder(table string, columns []string, dialect *info.Dialect, identity 
 		sqlBuilder.WriteString(insertIntoFragment)
 	}
 
-	// An explicitly quoted table opts into exact identifier spelling for its
-	// mapped columns. Preserve legacy unquoted-column folding otherwise.
-	quoteColumns := strings.ContainsAny(table, "\"`[")
+	// Normalize explicit identifiers only for identified SQL dialects. ANSI
+	// may be a registry fallback for drivers with their own quoting syntax.
+	quoteColumns := false
+	switch strings.ToLower(dialect.Name) {
+	case "mysql", "bigquery", "postgresql", "sqlite":
+		quoteColumns = strings.ContainsAny(table, "\"`[")
+	}
 	if strings.EqualFold(dialect.Name, "MySQL") || quoteColumns {
 		identifier, err := dialect.TableIdentifier(table, "")
 		if err != nil {
