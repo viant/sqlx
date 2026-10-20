@@ -47,9 +47,9 @@ func TestReservationInsertRendering(t *testing.T) {
 		dialect     *info.Dialect
 		table, want string
 	}{
-		{registry.LookupDialect(mysql.MySQL5()), "`schema`.`records`", "INSERT INTO `schema`.`records`(id) VALUES (?)"},
-		{registry.LookupDialect(pg.PqSQL9()), `"schema"."records"`, `INSERT INTO "schema"."records"(id) VALUES ($1) RETURNING id`},
-		{registry.LookupDialect(&database.Product{Name: "PostgreSQL", Major: 17}), `"schema"."records"`, `INSERT INTO "schema"."records"(id) OVERRIDING SYSTEM VALUE VALUES ($1) RETURNING id`},
+		{registry.LookupDialect(mysql.MySQL5()), "`schema`.`records`", "INSERT INTO `schema`.`records`(`id`) VALUES (?)"},
+		{registry.LookupDialect(pg.PqSQL9()), `"schema"."records"`, `INSERT INTO "schema"."records"("id") VALUES ($1) RETURNING "id"`},
+		{registry.LookupDialect(&database.Product{Name: "PostgreSQL", Major: 17}), `"schema"."records"`, `INSERT INTO "schema"."records"("id") OVERRIDING SYSTEM VALUE VALUES ($1) RETURNING "id"`},
 	} {
 		builder, err := NewBuilder(tc.table, []string{"id"}, tc.dialect, "id", 1)
 		if err != nil {

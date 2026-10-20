@@ -55,20 +55,22 @@ func NewBuilder(table string, columns []string, dialect *info.Dialect, identity 
 
 	sqlBuilder.WriteString(insertIntoFragment)
 
-	if strings.EqualFold(dialect.Name, "MySQL") {
+	// An explicitly quoted table opts into exact identifier spelling for its
+	// mapped columns. Preserve legacy unquoted-column folding otherwise.
+	quoteColumns := strings.ContainsAny(table, "\"`[")
+	if strings.EqualFold(dialect.Name, "MySQL") || quoteColumns {
 		identifier, err := dialect.TableIdentifier(table, "")
 		if err != nil {
 			return nil, err
 		}
 		sqlBuilder.WriteString(identifier)
 	} else {
-		escapeRune := dialect.SpecialKeywordEscapeQuote
-		if escapeRune != 0 {
-			sqlBuilder.WriteByte(escapeRune)
+		if q := dialect.SpecialKeywordEscapeQuote; q != 0 {
+			sqlBuilder.WriteByte(q)
 		}
 		sqlBuilder.WriteString(table)
-		if escapeRune != 0 {
-			sqlBuilder.WriteByte(escapeRune)
+		if q := dialect.SpecialKeywordEscapeQuote; q != 0 {
+			sqlBuilder.WriteByte(q)
 		}
 	}
 	sqlBuilder.WriteString("(")
@@ -76,7 +78,22 @@ func NewBuilder(table string, columns []string, dialect *info.Dialect, identity 
 		if i > 0 {
 			sqlBuilder.WriteString(",")
 		}
-		sqlBuilder.WriteString(column)
+		if quoteColumns {
+			identifier, err := dialect.QuoteIdentifier(column)
+			if err != nil {
+				return nil, err
+			}
+			sqlBuilder.WriteString(identifier)
+		} else {
+			sqlBuilder.WriteString(column)
+		}
+	}
+	if quoteColumns && identity != "" {
+		var err error
+		identity, err = dialect.QuoteIdentifier(identity)
+		if err != nil {
+			return nil, err
+		}
 	}
 	sqlBuilder.WriteString(")")
 	if identity != "" && dialect.InsertIdentityOverride != "" {

@@ -3,6 +3,7 @@ package load
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"github.com/go-sql-driver/mysql"
 	"github.com/google/uuid"
 	"github.com/viant/sqlx/io"
@@ -18,7 +19,8 @@ var mysqlLoadConfig = &csv.Config{
 	ObjectSeparator: `#`,
 	EncloseBy:       `*`,
 	EscapeBy:        `^`,
-	NullValue:       "null",
+	NullValue:       "^N",
+	RawNullValue:    true,
 }
 
 // Session represents MySQL session
@@ -39,7 +41,8 @@ func NewSession(dialect *info.Dialect) io.LoadExecutor {
 // Exec inserts given data to database using "LOAD DATA LOCAL INFILE"
 // note: local_infile=1 must be enabled on database
 func (s *Session) Exec(ctx context.Context, data interface{}, db *sql.DB, tableName string, options ...loption.Option) (sql.Result, error) {
-	dataReader, dataType, err := csv.NewReader(data, mysqlLoadConfig)
+	loadConfig := *mysqlLoadConfig
+	dataReader, dataType, err := csv.NewReader(data, &loadConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -60,13 +63,16 @@ func (s *Session) Exec(ctx context.Context, data interface{}, db *sql.DB, tableN
 		return nil, err
 	}
 
-	SQL := BuildSQL(mysqlLoadConfig, readerID, tableName, columns, options...)
+	SQL := BuildSQL(&loadConfig, readerID, tableName, columns, options...)
 
 	result := &io.QueryResult{}
 	if s.Transaction != nil {
 		result.Result, err = s.Transaction.ExecContext(ctx, SQL)
 	} else {
 		result.Result, err = db.ExecContext(ctx, SQL)
+	}
+	if err == nil {
+		err = s.checkWarnings(ctx, db)
 	}
 	err = s.end(err)
 
@@ -110,4 +116,30 @@ func (s *Session) end(err error) error {
 	}
 
 	return s.Transaction.Commit()
+}
+
+// LOCAL INFILE can downgrade duplicate keys and data coercion to warnings.
+// Read diagnostics on the owning transaction before any commit, and make such
+// partial loads fail rather than claiming successful insertion of every row.
+func (s *Session) checkWarnings(ctx context.Context, db *sql.DB) error {
+	var rows *sql.Rows
+	var err error
+	if s.Transaction != nil {
+		rows, err = s.Transaction.QueryContext(ctx, "SHOW WARNINGS")
+	} else {
+		rows, err = db.QueryContext(ctx, "SHOW WARNINGS")
+	}
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var level, message string
+		var code int
+		if err := rows.Scan(&level, &code, &message); err != nil {
+			return err
+		}
+		return fmt.Errorf("LOAD DATA %s %d: %s", level, code, message)
+	}
+	return rows.Err()
 }
