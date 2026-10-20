@@ -45,7 +45,7 @@ func (b *Builder) Build(record interface{}, options ...option.Option) string {
 }
 
 // NewBuilder return insert builder
-func NewBuilder(table string, columns []string, dialect *info.Dialect, identity string, batchSize int) (io.Builder, error) {
+func NewBuilder(table string, columns []string, dialect *info.Dialect, identity string, batchSize int, options ...option.Option) (io.Builder, error) {
 	if len(columns) == 0 {
 		return nil, fmt.Errorf("columns were empty")
 	}
@@ -53,7 +53,14 @@ func NewBuilder(table string, columns []string, dialect *info.Dialect, identity 
 	sqlBuilder.Grow(estimateBufferSize(table, columns, batchSize))
 	var offsets []uint32
 
-	sqlBuilder.WriteString(insertIntoFragment)
+	if option.Options(options).InsertIgnore() {
+		if dialect == nil || !strings.EqualFold(dialect.Name, "MySQL") {
+			return nil, fmt.Errorf("INSERT IGNORE requires MySQL dialect")
+		}
+		sqlBuilder.WriteString("INSERT IGNORE INTO ")
+	} else {
+		sqlBuilder.WriteString(insertIntoFragment)
+	}
 
 	// An explicitly quoted table opts into exact identifier spelling for its
 	// mapped columns. Preserve legacy unquoted-column folding otherwise.

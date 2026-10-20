@@ -194,14 +194,15 @@ func (s *Service) newSession(ctx context.Context, record interface{}, db *sql.DB
 			db = sess.db
 		}
 		newSess := &session{
-			rType:     rType,
-			Config:    sess.Config,
-			binder:    sess.binder,
-			columns:   sess.columns,
-			db:        db,
-			batchSize: sess.batchSize,
-			info:      sess.info,
-			setMarker: sess.setMarker,
+			rType:        rType,
+			Config:       sess.Config,
+			binder:       sess.binder,
+			columns:      sess.columns,
+			db:           db,
+			batchSize:    sess.batchSize,
+			insertIgnore: sess.insertIgnore,
+			info:         sess.info,
+			setMarker:    sess.setMarker,
 		}
 		// Build fresh recordUpdaters bound to newSess so per-call state
 		// (sequence, sequenceValue, detectedPreset, ...) is not shared
@@ -242,10 +243,11 @@ func (s *Service) newSession(ctx context.Context, record interface{}, db *sql.DB
 	conf.Dialect = aDialect
 
 	result := &session{
-		rType:     rType,
-		batchSize: batchSize,
-		Config:    conf,
-		db:        db,
+		rType:        rType,
+		batchSize:    batchSize,
+		insertIgnore: option.Options(s.options).InsertIgnore(),
+		Config:       conf,
+		db:           db,
 	}
 	if err = result.ApplyOption(ctx, db, s.options...); err != nil {
 		return nil, err

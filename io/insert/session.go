@@ -16,9 +16,10 @@ import (
 
 type session struct {
 	*io.Transaction
-	info      *sink.Session
-	rType     reflect.Type
-	batchSize int
+	info         *sink.Session
+	rType        reflect.Type
+	batchSize    int
+	insertIgnore bool
 	*config.Config
 	binder         io.PlaceholderBinder
 	columns        io.Columns
@@ -44,7 +45,7 @@ func (s *session) init(record interface{}) (err error) {
 			}
 		}
 	}
-	s.Builder, err = NewBuilder(s.TableName, s.columns.Names(), s.Dialect, s.Identity, s.batchSize)
+	s.Builder, err = NewBuilder(s.TableName, s.columns.Names(), s.Dialect, s.Identity, s.batchSize, option.InsertIgnore(s.insertIgnore))
 	return err
 }
 
