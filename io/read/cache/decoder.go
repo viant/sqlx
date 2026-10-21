@@ -15,6 +15,7 @@ import (
 
 var timeType = reflect.TypeOf(time.Time{})
 var rawBytesType = reflect.TypeOf(sql.RawBytes(nil))
+var rawJSONType = reflect.TypeFor[json.RawMessage]()
 var curOffset uintptr
 var dataOffset uintptr
 
@@ -271,6 +272,19 @@ func newDecoderFn(dataType reflect.Type, data []byte) DecoderFn {
 		wasPtr = true
 		dataType = dataType.Elem()
 	}
+	if isSQLNullType(dataType) {
+		return sqlNullDecoder(actualDataType, dataType)
+	}
+	if dataType == rawJSONType {
+		return func(decoder *gojay.Decoder) (interface{}, error) {
+			var raw gojay.EmbeddedJSON
+			if err := decoder.EmbeddedJSON(&raw); err != nil {
+				return nil, err
+			}
+			value := json.RawMessage(append([]byte(nil), raw...))
+			return wrapDecodedValue(actualDataType, reflect.ValueOf(value)), nil
+		}
+	}
 
 	switch dataType.Kind() {
 	case reflect.Int:
@@ -339,6 +353,27 @@ func newDecoderFn(dataType reflect.Type, data []byte) DecoderFn {
 	}
 
 	return interfaceDecoder(actualDataType)
+}
+
+func sqlNullDecoder(actual, valueType reflect.Type) DecoderFn {
+	return func(decoder *gojay.Decoder) (interface{}, error) {
+		var raw gojay.EmbeddedJSON
+		if err := decoder.EmbeddedJSON(&raw); err != nil {
+			return nil, err
+		}
+		value := reflect.New(valueType).Elem()
+		if len(raw) > 0 && raw[0] == '{' {
+			if err := json.Unmarshal(raw, value.Addr().Interface()); err != nil {
+				return nil, err
+			}
+		} else if string(raw) != "null" {
+			if err := json.Unmarshal(raw, value.Field(0).Addr().Interface()); err != nil {
+				return nil, err
+			}
+			value.Field(1).SetBool(true)
+		}
+		return wrapDecodedValue(actual, value), nil
+	}
 }
 
 func bytesDecoder(actualDataType reflect.Type) DecoderFn {

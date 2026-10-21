@@ -84,6 +84,14 @@ func (t *ScanTypeHolder) matchesEntryType(entry *Entry) (bool, *TypeMismatch) {
 
 	for i, dataType := range t.dataTypes {
 		normalizedCachedType := normalizeCompatTypeName(actualTypes[i])
+		if len(entry.Meta.Type) == 0 {
+			normalizedCachedType = normalizeDriverScanTypeName(normalizedCachedType)
+			// SQLX exposes JSON driver columns as RawMessage. The initial DB
+			// scan still owns conversion; persisted rows retain destination type.
+			if normalizedCachedType == "json.RawMessage" && (dataType == "string" || dataType == "[]uint8") {
+				normalizedCachedType = dataType
+			}
+		}
 		if !isCompatibleCacheType(dataType, normalizedCachedType) {
 			return false, &TypeMismatch{
 				Index:                i,
@@ -139,6 +147,38 @@ func normalizeCompatTypeName(typeName string) string {
 	return typeName
 }
 
+func normalizeDriverScanTypeName(typeName string) string {
+	switch typeName {
+	case "sql.NullBool":
+		return "bool"
+	case "sql.NullByte":
+		return "uint8"
+	case "sql.NullInt16":
+		return "int16"
+	case "sql.NullInt32":
+		return "int32"
+	case "sql.NullInt64":
+		return "int64"
+	case "sql.NullFloat64":
+		return "float64"
+	case "sql.NullString":
+		return "string"
+	case "sql.NullTime":
+		return "time.Time"
+	}
+	if strings.HasPrefix(typeName, "sql.Null[") && strings.HasSuffix(typeName, "]") {
+		return strings.TrimSuffix(strings.TrimPrefix(typeName, "sql.Null["), "]")
+	}
+	return typeName
+}
+
+func isSQLNullType(typ reflect.Type) bool {
+	if typ == nil || typ.Kind() != reflect.Struct || typ.PkgPath() != "database/sql" || !strings.HasPrefix(typ.Name(), "Null") || typ.NumField() != 2 {
+		return false
+	}
+	return typ.Field(1).Name == "Valid" && typ.Field(1).Type.Kind() == reflect.Bool
+}
+
 func isCompatibleCacheType(destinationType string, cachedType string) bool {
 	// Interface scan metadata does not identify a concrete SQL result type
 	// (for example SQLite aggregates). The destination scanner validates the
@@ -147,6 +187,11 @@ func isCompatibleCacheType(destinationType string, cachedType string) bool {
 		return true
 	}
 	if destinationType == cachedType {
+		return true
+	}
+	// Nullable destinations can decode both typed nullable objects and scalar
+	// rows. The reverse is not safe: scalar decoders do not consume objects.
+	if normalized := normalizeDriverScanTypeName(destinationType); normalized != destinationType && normalized == cachedType {
 		return true
 	}
 	// SQL temporal fields may use a textual intermediate scanner. Warmed

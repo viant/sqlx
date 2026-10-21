@@ -17,6 +17,9 @@ type (
 
 func Parse(dataType string, extraTypes ...reflect.Type) (reflect.Type, error) {
 	typesIndex := map[string]reflect.Type{}
+	for _, typ := range sqlScanTypes {
+		typesIndex[typ.String()] = typ
+	}
 	for i, extraType := range extraTypes {
 		typesIndex[extraType.String()] = extraTypes[i]
 	}

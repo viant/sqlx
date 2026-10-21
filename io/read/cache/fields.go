@@ -1,6 +1,7 @@
 package cache
 
 import (
+	"fmt"
 	"github.com/viant/sqlx/io"
 	"github.com/viant/sqlx/io/read/cache/ast"
 	"reflect"
@@ -65,12 +66,12 @@ func (f *Field) Init() error {
 		return nil
 	}
 
-	f.initialized = true
 	rType, err := ast.Parse(f.ColumnScanType)
 	if err != nil {
-		return err
+		return fmt.Errorf("cache column %q scan type %q: %w", f.ColumnName, f.ColumnScanType, err)
 	}
 
 	f._columnScanType = rType
+	f.initialized = true
 	return nil
 }
