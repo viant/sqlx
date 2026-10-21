@@ -1,4 +1,4 @@
-// Package schema owns non-destructive table provisioning through SQLX metadata.
+// Package schema provisions tables and extracts/applies explicit native schema artifacts.
 package schema
 
 import (

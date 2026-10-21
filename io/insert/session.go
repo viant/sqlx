@@ -16,9 +16,10 @@ import (
 
 type session struct {
 	*io.Transaction
-	info      *sink.Session
-	rType     reflect.Type
-	batchSize int
+	info         *sink.Session
+	rType        reflect.Type
+	batchSize    int
+	insertIgnore bool
 	*config.Config
 	binder         io.PlaceholderBinder
 	columns        io.Columns
@@ -44,7 +45,7 @@ func (s *session) init(record interface{}) (err error) {
 			}
 		}
 	}
-	s.Builder, err = NewBuilder(s.TableName, s.columns.Names(), s.Dialect, s.Identity, s.batchSize)
+	s.Builder, err = NewBuilder(s.TableName, s.columns.Names(), s.Dialect, s.Identity, s.batchSize, option.InsertIgnore(s.insertIgnore))
 	return err
 }
 
@@ -86,7 +87,7 @@ func (s *session) end(err error) error {
 }
 
 func (s *session) prepare(ctx context.Context, record interface{}, batchSize int) error {
-	if len(s.OnDuplicateKeySql) > 0 && s.Dialect.Upsert != dialect.UpsertTypeInsertOrUpdate {
+	if len(s.OnDuplicateKeySql) > 0 && s.Dialect.Upsert != dialect.UpsertTypeInsertOrUpdate && !strings.EqualFold(s.Dialect.Name, "sqlite") && !strings.EqualFold(s.Dialect.Name, "postgresql") {
 		return fmt.Errorf("upsert by insert with onduplicatekeysql option is supported for dialect with upsert feature: %v (current: %v)", dialect.UpsertTypeInsertOrUpdate, s.Dialect.Upsert)
 	}
 	SQL := s.Builder.Build(record, option.BatchSize(batchSize), option.OnDuplicateKeySql(s.OnDuplicateKeySql))

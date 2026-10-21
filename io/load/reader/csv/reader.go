@@ -103,6 +103,10 @@ func WriteObject(writer *Buffer, config *Config, values []string, wasString []bo
 			writer.writeString(config.FieldSeparator)
 		}
 
+		if config.RawNullValue && !wasString[j] && values[j] == config.NullValue {
+			writer.writeString(config.NullValue)
+			continue
+		}
 		asString := EscapeSpecialChars(values[j], config)
 		if wasString[j] {
 			asString = config.EncloseBy + asString + config.EncloseBy

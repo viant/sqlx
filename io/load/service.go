@@ -8,6 +8,7 @@ import (
 	"github.com/viant/sqlx/loption"
 	"github.com/viant/sqlx/metadata/info"
 	"github.com/viant/sqlx/metadata/sink"
+	"github.com/viant/sqlx/option"
 )
 
 // Service represents service used to
@@ -19,8 +20,8 @@ type Service struct {
 }
 
 // New creates instance of Service
-func New(ctx context.Context, db *sql.DB, tableName string) (*Service, error) {
-	dialect, err := config.Dialect(ctx, db)
+func New(ctx context.Context, db *sql.DB, tableName string, options ...option.Option) (*Service, error) {
+	dialect, err := config.Dialect(ctx, db, options...)
 	if err != nil {
 		return nil, err
 	}
