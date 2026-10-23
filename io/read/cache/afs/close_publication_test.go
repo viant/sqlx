@@ -39,6 +39,12 @@ func TestPublishedCacheCloseIsIdempotent(t *testing.T) {
 			require.JSONEq(t, "[1]", string(hit.Data))
 			require.False(t, hit.Next())
 			require.NoError(t, c.Close(ctx, hit))
+			require.NoError(t, c.Close(ctx, hit), "cached reader cleanup is idempotent too")
+			failed, err := c.Get(ctx, "SELECT missing FROM absent", nil)
+			require.NoError(t, err)
+			require.NotNil(t, failed)
+			require.Error(t, c.Close(ctx, failed), "a first publication failure must not be hidden")
+			require.False(t, failed.CacheClosed)
 		})
 	}
 }
