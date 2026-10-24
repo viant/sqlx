@@ -264,6 +264,13 @@ func prepareSQL(query *info.Query, placeholderGetter func() string, argsOpt *opt
 
 	SQL := query.SQL
 	var expanded = make([]bool, len(args))
+	if strings.EqualFold(query.Name, "BigQuery") {
+		var err error
+		SQL, err = expandBigQueryMetadataSources(SQL, args, expanded)
+		if err != nil {
+			return "", filterArgs, err
+		}
+	}
 	for i, item := range args {
 		if text, ok := item.(string); ok {
 			expr := fmt.Sprintf("$Args[%v]", i)

@@ -102,7 +102,7 @@ CREATION_TIME AS UPDATE_TIME,
 '' VERSION,
 TABLE_TYPE AS ENGINE,
 DDL
-FROM $Args[1].INFORMATION_SCHEMA.TABLES`,
+FROM $Args[0].$Args[1].INFORMATION_SCHEMA.TABLES`,
 			bigQuery,
 			info.NewCriterion(info.Catalog, ""),
 			info.NewCriterion(info.Schema, "TABLE_SCHEMA"),
