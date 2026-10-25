@@ -601,27 +601,18 @@ func decodeBoolLike(decoder *gojay.Decoder) (bool, bool, error) {
 }
 
 func stringDecoder(ptr bool) DecoderFn {
-	if !ptr {
-		return func(decoder *gojay.Decoder) (interface{}, error) {
-			aString := ""
-			var raw gojay.EmbeddedJSON
-			if err := decoder.EmbeddedJSON(&raw); err != nil {
-				return nil, err
-			}
-			return &aString, json.Unmarshal(raw, &aString)
-		}
-	}
-
 	return func(decoder *gojay.Decoder) (interface{}, error) {
-		aStringPtr := new(string)
-		var raw gojay.EmbeddedJSON
-		if err := decoder.EmbeddedJSON(&raw); err != nil {
+		value, err := decodeStringValue(decoder)
+		if err != nil {
 			return nil, err
 		}
-		// GoJay's in-place unescape shifts the remaining buffer for each escape,
-		// making large cached JSON/text strings quadratic. Extract the raw value
-		// without changing it and let the standard decoder unescape linearly.
-		return &aStringPtr, json.Unmarshal(raw, &aStringPtr)
+		if ptr {
+			return &value, nil
+		}
+		if value == nil {
+			value = new(string)
+		}
+		return value, nil
 	}
 }
 
