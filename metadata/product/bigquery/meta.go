@@ -122,7 +122,7 @@ CAST(NULL AS INT64) NUMERIC_SCALE,
 IS_NULLABLE,
 '' COLUMN_DEFAULT,
 '' COLUMN_KEY
-FROM $Args[0].$Args[1].INFORMATION_SCHEMA.COLUMNS
+FROM `+"`$Args[0].$Args[1].INFORMATION_SCHEMA.COLUMNS`"+`
 `,
 			bigQuery,
 			info.NewCriterion(info.Catalog, ""),
