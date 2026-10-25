@@ -102,7 +102,7 @@ CREATION_TIME AS UPDATE_TIME,
 '' VERSION,
 TABLE_TYPE AS ENGINE,
 DDL
-FROM $Args[1].INFORMATION_SCHEMA.TABLES`,
+FROM $Args[0].$Args[1].INFORMATION_SCHEMA.TABLES`,
 			bigQuery,
 			info.NewCriterion(info.Catalog, ""),
 			info.NewCriterion(info.Schema, "TABLE_SCHEMA"),
@@ -122,7 +122,7 @@ CAST(NULL AS INT64) NUMERIC_SCALE,
 IS_NULLABLE,
 '' COLUMN_DEFAULT,
 '' COLUMN_KEY
-FROM `+"`$Args[0].$Args[1].INFORMATION_SCHEMA.COLUMNS`"+`
+FROM $Args[0].$Args[1].INFORMATION_SCHEMA.COLUMNS
 `,
 			bigQuery,
 			info.NewCriterion(info.Catalog, ""),

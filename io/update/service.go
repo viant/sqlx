@@ -22,6 +22,10 @@ type Service struct {
 }
 
 func (s *Service) Exec(ctx context.Context, any interface{}, options ...option.Option) (int64, error) {
+	return s.exec(ctx, any, nil, options...)
+}
+
+func (s *Service) exec(ctx context.Context, any interface{}, runner *StatementRunner, options ...option.Option) (int64, error) {
 	match := option.Options(options).IfMatch()
 	criteria := option.Options(options).Criteria()
 	valueAt, count, err := io.Values(any)
@@ -39,11 +43,24 @@ func (s *Service) Exec(ctx context.Context, any interface{}, options ...option.O
 	}
 	record := valueAt(0)
 	var sess *session
-	if sess, err = s.ensureSession(record, options...); err != nil {
+	if runner == nil {
+		sess, err = s.ensureSession(record, options...)
+	} else {
+		sess, err = s.runnerSession(record, options...)
+	}
+	if err != nil {
 		return 0, err
 	}
+	sess.runner = runner
 	if err = sess.begin(ctx, sess.db, options); err != nil {
 		return 0, err
+	}
+	if runner != nil {
+		defer func() {
+			if value := recover(); value != nil {
+				sess.cleanupPanic(value, err)
+			}
+		}()
 	}
 	var rowsAffected int64
 	dml := ""
@@ -82,6 +99,31 @@ func (s *Service) tryUpdate(ctx context.Context, sess *session, record interface
 func (s *Service) ensureSession(record interface{}, options ...option.Option) (*session, error) {
 	s.mux.Lock()
 	defer s.mux.Unlock()
+	return s.ensureSessionLocked(record, options...)
+}
+
+func (s *Service) runnerSession(record interface{}, options ...option.Option) (*session, error) {
+	s.mux.Lock()
+	defer s.mux.Unlock()
+	if marker := option.Options(options).SetMarker(); marker != nil && s.initSession != nil && marker != s.initSession.setMarker {
+		mapping := &session{rType: reflect.TypeOf(record), Config: s.Config, db: s.db}
+		if err := mapping.init(record, options...); err != nil {
+			return nil, err
+		}
+		s.initSession = mapping
+	}
+	sess, err := s.ensureSessionLocked(record, options...)
+	if err != nil {
+		return nil, err
+	}
+	// Copy under the service lock: another row type may rebuild its builder.
+	result, configuration := *sess, *sess.Config
+	result.Config = &configuration
+	result.service, result.mapping = s, s.initSession
+	return &result, nil
+}
+
+func (s *Service) ensureSessionLocked(record interface{}, options ...option.Option) (*session, error) {
 	rType := reflect.TypeOf(record)
 	if sess := s.initSession; sess != nil && sess.rType == rType {
 		db := option.Options(options).Db()

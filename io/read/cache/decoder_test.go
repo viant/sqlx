@@ -1,14 +1,61 @@
 package cache
 
 import (
+	"bytes"
+	"encoding/json"
 	"github.com/francoispqt/gojay"
 	"github.com/stretchr/testify/assert"
 	"math"
 	"reflect"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 )
+
+func TestDecoderLargeEscapedStringPreservesCacheAndFollowingValues(t *testing.T) {
+	value := strings.Repeat("{\"text\":\"snow 雪 \\\\ path\\n\"}\n", 40000)
+	raw, err := json.Marshal([]any{value, nil, false, 0})
+	assert.NoError(t, err)
+	before := bytes.Clone(raw)
+	for _, ptr := range []bool{false, true} {
+		stringType := reflect.TypeOf("")
+		if ptr {
+			stringType = reflect.TypeOf((*string)(nil))
+		}
+		decoder := NewDecoder([]reflect.Type{stringType, reflect.TypeOf((*string)(nil)), reflect.TypeOf(false), reflect.TypeOf(0)}, raw)
+		assert.NoError(t, gojay.UnmarshalJSONArray(raw, decoder))
+		if ptr {
+			assert.Equal(t, value, **decoder.values[0].(**string))
+		} else {
+			assert.Equal(t, value, *decoder.values[0].(*string))
+		}
+		assert.Nil(t, decoder.values[1])
+		assert.EqualValues(t, boolPtr(false), decoder.values[2])
+		assert.EqualValues(t, intPtr(0), decoder.values[3])
+		assert.True(t, bytes.Equal(before, raw), "cache row bytes must remain unchanged across scalar/pointer decodes")
+	}
+}
+
+func BenchmarkDecoderEscapedString(b *testing.B) {
+	for _, size := range []int{16 << 10, 128 << 10, 1 << 20} {
+		value := strings.Repeat("{\"text\":\"value\\n\"}\n", size/20)
+		raw, err := json.Marshal([]any{value, nil})
+		if err != nil {
+			b.Fatal(err)
+		}
+		b.Run(strconv.Itoa(size), func(b *testing.B) {
+			b.ReportAllocs()
+			b.SetBytes(int64(len(raw)))
+			for i := 0; i < b.N; i++ {
+				decoder := NewDecoder([]reflect.Type{reflect.TypeOf((*string)(nil)), reflect.TypeOf((*string)(nil))}, raw)
+				if err := gojay.UnmarshalJSONArray(raw, decoder); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+	}
+}
 
 func TestDecoder(t *testing.T) {
 	testCases := []struct {

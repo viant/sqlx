@@ -3,6 +3,7 @@ package update
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"github.com/viant/sqlx"
 	"github.com/viant/sqlx/io"
@@ -23,6 +24,10 @@ type session struct {
 	identityIndex int
 	db            *sql.DB
 	stmt          *sql.Stmt
+	runner        *StatementRunner
+	service       *Service
+	mapping       *session
+	retained      bool
 }
 
 func (s *session) init(record interface{}, options ...option.Option) (err error) {
@@ -101,6 +106,17 @@ func (s *session) prepare(ctx context.Context, record interface{}, dml *string, 
 	if SQL == "" {
 		return false, nil
 	}
+	if s.runner != nil {
+		if builder, ok := s.Builder.(*Builder); ok && s.Dialect.Transactional {
+			var err error
+			s.stmt, err = s.runner.prepare(ctx, s, builder, SQL)
+			s.retained = err == nil
+			return err == nil, err
+		}
+		if err := s.runner.reset(); err != nil {
+			return false, err
+		}
+	}
 	if *dml == SQL {
 		return true, nil
 	}
@@ -149,13 +165,20 @@ func (s *session) update(ctx context.Context, record interface{}, match *option.
 }
 
 func (s *session) end(err error) error {
-	if s.stmt != nil {
+	if s.stmt != nil && !s.retained {
 		if sErr := s.stmt.Close(); sErr != nil {
-			err = fmt.Errorf("%w, %v", sErr, err)
+			if s.runner != nil {
+				err = errors.Join(err, sErr)
+			} else {
+				err = fmt.Errorf("%w, %v", sErr, err)
+			}
 		}
 	}
 
 	if s.Transaction == nil {
+		if s.runner != nil {
+			return err
+		}
 		return nil
 	}
 
@@ -164,4 +187,26 @@ func (s *session) end(err error) error {
 	}
 
 	return s.Transaction.Commit()
+}
+
+// Retained statements belong to the runner; fallback statements belong to this
+// execution and must also be closed if a hook or driver unwinds it.
+func (s *session) cleanupPanic(value any, execution error) {
+	cleanup := execution
+	if s.stmt != nil && !s.retained {
+		stmt := s.stmt
+		s.stmt = nil
+		func() {
+			defer func() {
+				if v := recover(); v != nil {
+					cleanup = joinRunnerErrors(cleanup, &RunnerPanicError{Value: v})
+				}
+			}()
+			cleanup = joinRunnerErrors(cleanup, stmt.Close())
+		}()
+	}
+	if cleanup != nil {
+		panic(&RunnerPanicError{Value: value, Cause: cleanup})
+	}
+	panic(value)
 }

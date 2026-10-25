@@ -12,6 +12,7 @@ type Entry struct {
 	WarmupPublication bool
 	CreationReported  bool // invocation-local, never persisted
 	ReadOnly          bool // invocation-only lookup mode, never persisted
+	CacheClosed       bool // invocation-only completed cache close, never persisted
 	Meta              Meta
 	Data              []byte // Entry is used as Iterator, Data is last streamed line.
 	Id                string

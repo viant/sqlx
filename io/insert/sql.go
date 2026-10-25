@@ -45,7 +45,7 @@ func (b *Builder) Build(record interface{}, options ...option.Option) string {
 }
 
 // NewBuilder return insert builder
-func NewBuilder(table string, columns []string, dialect *info.Dialect, identity string, batchSize int) (io.Builder, error) {
+func NewBuilder(table string, columns []string, dialect *info.Dialect, identity string, batchSize int, options ...option.Option) (io.Builder, error) {
 	if len(columns) == 0 {
 		return nil, fmt.Errorf("columns were empty")
 	}
@@ -53,22 +53,35 @@ func NewBuilder(table string, columns []string, dialect *info.Dialect, identity 
 	sqlBuilder.Grow(estimateBufferSize(table, columns, batchSize))
 	var offsets []uint32
 
-	sqlBuilder.WriteString(insertIntoFragment)
+	if option.Options(options).InsertIgnore() {
+		if dialect == nil || !strings.EqualFold(dialect.Name, "MySQL") {
+			return nil, fmt.Errorf("INSERT IGNORE requires MySQL dialect")
+		}
+		sqlBuilder.WriteString("INSERT IGNORE INTO ")
+	} else {
+		sqlBuilder.WriteString(insertIntoFragment)
+	}
 
-	if strings.EqualFold(dialect.Name, "MySQL") {
+	// Normalize explicit identifiers only for identified SQL dialects. ANSI
+	// may be a registry fallback for drivers with their own quoting syntax.
+	quoteColumns := false
+	switch strings.ToLower(dialect.Name) {
+	case "mysql", "bigquery", "postgresql", "sqlite":
+		quoteColumns = strings.ContainsAny(table, "\"`[")
+	}
+	if strings.EqualFold(dialect.Name, "MySQL") || quoteColumns {
 		identifier, err := dialect.TableIdentifier(table, "")
 		if err != nil {
 			return nil, err
 		}
 		sqlBuilder.WriteString(identifier)
 	} else {
-		escapeRune := dialect.SpecialKeywordEscapeQuote
-		if escapeRune != 0 {
-			sqlBuilder.WriteByte(escapeRune)
+		if q := dialect.SpecialKeywordEscapeQuote; q != 0 {
+			sqlBuilder.WriteByte(q)
 		}
 		sqlBuilder.WriteString(table)
-		if escapeRune != 0 {
-			sqlBuilder.WriteByte(escapeRune)
+		if q := dialect.SpecialKeywordEscapeQuote; q != 0 {
+			sqlBuilder.WriteByte(q)
 		}
 	}
 	sqlBuilder.WriteString("(")
@@ -76,7 +89,22 @@ func NewBuilder(table string, columns []string, dialect *info.Dialect, identity 
 		if i > 0 {
 			sqlBuilder.WriteString(",")
 		}
-		sqlBuilder.WriteString(column)
+		if quoteColumns {
+			identifier, err := dialect.QuoteIdentifier(column)
+			if err != nil {
+				return nil, err
+			}
+			sqlBuilder.WriteString(identifier)
+		} else {
+			sqlBuilder.WriteString(column)
+		}
+	}
+	if quoteColumns && identity != "" {
+		var err error
+		identity, err = dialect.QuoteIdentifier(identity)
+		if err != nil {
+			return nil, err
+		}
 	}
 	sqlBuilder.WriteString(")")
 	if identity != "" && dialect.InsertIdentityOverride != "" {

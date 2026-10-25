@@ -1070,3 +1070,22 @@ func float64Ptr(i float64) *float64 {
 func timePtr(i time.Time) *time.Time {
 	return &i
 }
+
+func TestReaderRawNullToken(t *testing.T) {
+	literal := "^N"
+	rows := []*struct {
+		Value *string `sqlx:"value"`
+	}{{}, {Value: &literal}}
+	config := &Config{FieldSeparator: ",", ObjectSeparator: "#", EncloseBy: "*", EscapeBy: "^", NullValue: "^N", RawNullValue: true}
+	reader, _, err := NewReader(rows, config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	content, err := goIo.ReadAll(reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := string(content), "^N#*^^N*"; got != want {
+		t.Fatalf("%q != %q", got, want)
+	}
+}

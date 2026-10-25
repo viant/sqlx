@@ -5,10 +5,13 @@ import "github.com/viant/sqlx/io"
 type (
 	//Config represents reader config
 	Config struct {
-		FieldSeparator    string
-		ObjectSeparator   string
-		EncloseBy         string
-		EscapeBy          string
+		FieldSeparator  string
+		ObjectSeparator string
+		EncloseBy       string
+		EscapeBy        string
+		// RawNullValue emits the null marker as an already encoded wire token.
+		// Literal strings equal to the marker remain enclosed and escaped.
+		RawNullValue      bool
 		NullValue         string
 		Stringify         StringifyConfig
 		UniqueFields      []string

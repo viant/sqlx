@@ -41,6 +41,9 @@ type (
 )
 
 func (c *Cache) Rollback(ctx context.Context, entry *cache.Entry) error {
+	if entry != nil && entry.CacheClosed {
+		return nil
+	}
 	if entry != nil && entry.ReadOnly {
 		return entry.Close()
 	}
@@ -417,8 +420,15 @@ func (c *Cache) scanner(e *cache.Entry) cache.ScannerFn {
 }
 
 func (c *Cache) Close(ctx context.Context, e *cache.Entry) error {
+	if e.CacheClosed {
+		return nil
+	}
 	if e.ReadOnly {
-		return e.Close()
+		err := e.Close()
+		if err == nil {
+			e.CacheClosed = true
+		}
+		return err
 	}
 	actualURL := strings.ReplaceAll(e.Meta.URL, ".json"+e.Id, ".json")
 	if !e.Has() {
@@ -443,6 +453,9 @@ func (c *Cache) Close(ctx context.Context, e *cache.Entry) error {
 		e.CreationReported = true
 		c.RecordCreationContext(ctx, cache.CreationLazy, 1)
 	}
+	// The temporary URL no longer exists after publication. A second close
+	// must neither flush its closed writer nor attempt the move again.
+	e.CacheClosed = true
 	return nil
 }
 
