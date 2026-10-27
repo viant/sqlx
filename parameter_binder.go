@@ -92,7 +92,16 @@ func (b *ParameterBinder) values(value any) []any {
 	actual := reflect.ValueOf(value)
 	for actual.Kind() == reflect.Pointer {
 		if actual.IsNil() {
-			return []any{nil}
+			leaf := actual.Type()
+			for leaf.Kind() == reflect.Pointer {
+				leaf = leaf.Elem()
+			}
+			if leaf.Kind() == reflect.Slice || leaf.Kind() == reflect.Array || leaf.Kind() == reflect.Map {
+				return []any{nil}
+			}
+			// Native drivers may need the declared scalar type to encode a
+			// NULL. Classic database/sql conversion still yields SQL NULL.
+			return []any{value}
 		}
 		actual = actual.Elem()
 	}
