@@ -1,6 +1,7 @@
 package read
 
 import (
+	"bytes"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -50,14 +51,18 @@ func (s *pointerByteSliceScanner) Scan(source any) error {
 		}
 		value = value.Elem()
 	}
+	// Match database/sql's string-to-bytes conversion for TEXT/JSON drivers.
+	if value.Kind() == reflect.String {
+		value = reflect.ValueOf([]byte(value.String()))
+	}
 
 	byteSliceType := field.Type()
 	if field.Kind() == reflect.Ptr {
 		byteSliceType = byteSliceType.Elem()
 	}
 	if value.Type().AssignableTo(byteSliceType) {
-		bytes := append([]byte(nil), value.Bytes()...)
-		assigned := reflect.ValueOf(bytes).Convert(byteSliceType)
+		copied := bytes.Clone(value.Bytes())
+		assigned := reflect.ValueOf(copied).Convert(byteSliceType)
 		if field.Kind() == reflect.Ptr {
 			pointer := reflect.New(byteSliceType)
 			pointer.Elem().Set(assigned)

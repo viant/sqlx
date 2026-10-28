@@ -39,9 +39,30 @@ func TestPointerByteSliceScanner_Scan(t *testing.T) {
 
 func TestPointerByteSliceScanner_RejectsNonByteSlice(t *testing.T) {
 	var actual *[]byte
-	err := newPointerByteSliceScanner(&actual).Scan("not bytes")
+	err := newPointerByteSliceScanner(&actual).Scan(struct{}{})
 	if err == nil {
 		t.Fatal("expected scan to reject non-byte-slice source")
+	}
+}
+
+func TestPointerByteSliceScanner_ScanText(t *testing.T) {
+	// SQL drivers may return TEXT/JSON columns as strings, including when the
+	// destination model uses nullable bytes. Preserve database/sql semantics.
+	for _, text := range []string{"", `{"state":"ready"}`} {
+		var nullable *[]byte
+		if err := newPointerByteSliceScanner(&nullable).Scan(text); err != nil {
+			t.Fatal(err)
+		}
+		if nullable == nil || string(*nullable) != text {
+			t.Fatalf("nullable text was not preserved: %v", nullable)
+		}
+		var plain []byte
+		if err := newPointerByteSliceScanner(&plain).Scan(text); err != nil {
+			t.Fatal(err)
+		}
+		if string(plain) != text {
+			t.Fatalf("plain text was not preserved")
+		}
 	}
 }
 
