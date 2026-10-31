@@ -37,6 +37,7 @@ type (
 		IdentityColumn *io.Column
 		columnIndex    int
 		columns        []io.Column
+		refMembers     []referenceMember
 		bind           io.PlaceholderBinder
 	}
 
@@ -131,10 +132,15 @@ func NewChecks(p reflect.Type, presence *option.SetMarker) (*Checks, error) {
 		}
 
 		if tag.RefColumn != "" && tag.RefTable != "" {
+			members, err := compileReferenceMembers(xField.Tag.Get("refKey"), column, columns, columnByName)
+			if err != nil {
+				return nil, err
+			}
 			checkType := reflect.StructOf([]reflect.StructField{{Name: xField.Name, Type: xField.Type, Tag: `sqlx:"Val"`}})
 			checkField := xunsafe.NewField(checkType.Field(0))
 			result.RefKey = append(result.RefKey, &Check{
 				Reference:  Reference{Field: xField.Name, Schema: tag.RefDb, Table: tag.RefTable, Column: tag.RefColumn},
+				refMembers: members, columns: columns, bind: bind,
 				SQL:        "SELECT " + tag.RefColumn + " AS Val FROM " + schema(tag.RefDb) + tag.RefTable + " WHERE " + tag.RefColumn,
 				CheckType:  checkType,
 				CheckField: checkField,

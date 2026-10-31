@@ -159,7 +159,7 @@ FROM SQLITE_SEQUENCE`,
 			"t.`table` AS REFERENCED_TABLE_NAME, t.`id` AS POSITION_IN_UNIQUE_CONSTRAINT, "+
 			"t.`from` AS COLUMN_NAME, "+
 			"t.`to` AS REFERENCED_COLUMN_NAME, "+
-			"m.name || '_' || t.`table` || '_fk' AS CONSTRAINT_NAME,"+
+			"m.name || '_' || t.`table` || '_fk_' || t.id AS CONSTRAINT_NAME,"+
 			"t.`on_update` AS ON_UPDATE, "+
 			"t.`on_delete` AS ON_DELETE, "+
 			"t.`match` AS ON_MATCH\n"+

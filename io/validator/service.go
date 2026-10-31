@@ -340,7 +340,10 @@ func (s *Service) checkRefs(ctx context.Context, path *Path, db *sql.DB, at io.V
 }
 
 func (s *Service) checkRef(ctx context.Context, path *Path, db *sql.DB, at io.ValueAccessor, count int, check *Check, violations *Validation, options *Options) error {
-	queryCtx := s.buildCheckRefQueryContext(check, count, path, at, options, violations)
+	queryCtx, err := s.buildCheckRefQueryContext(check, count, path, at, options, violations)
+	if err != nil {
+		return err
+	}
 	if len(queryCtx.values) == 0 {
 		return nil
 	}
@@ -381,7 +384,7 @@ func (s *Service) checkRef(ctx context.Context, path *Path, db *sql.DB, at io.Va
 	return nil
 }
 
-func (s *Service) buildCheckRefQueryContext(check *Check, count int, path *Path, at io.ValueAccessor, options *Options, violations *Validation) *queryContext {
+func (s *Service) buildCheckRefQueryContext(check *Check, count int, path *Path, at io.ValueAccessor, options *Options, violations *Validation) (*queryContext, error) {
 	queryCtx := newQueryContext(check.SQL)
 	for i := 0; i < count; i++ {
 		itemPath := path.AppendIndex(i)
@@ -391,13 +394,20 @@ func (s *Service) buildCheckRefQueryContext(check *Check, count int, path *Path,
 		if options.deferredAt(i, check.Field.Name) || options.referenceSatisfiedAt(i, check.Reference) || !options.includesAt(i, record, check.Field.Name) {
 			continue
 		}
+		skip, err := check.nullableReferenceAt(i, count, record, options)
+		if err != nil {
+			return nil, err
+		}
+		if skip {
+			continue
+		}
 		value := check.Field.Value(recordPtr)
 		if isNil(value) {
 			continue //ref key is null and not required skipping validation
 		}
 		queryCtx.Append(value, check.Field.Name, fieldPath)
 	}
-	return queryCtx
+	return queryCtx, nil
 }
 
 func isNil(value interface{}) bool {
