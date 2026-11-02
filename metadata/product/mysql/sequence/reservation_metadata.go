@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/viant/sqlparser"
+	"github.com/viant/sqlx/metadata"
 	"github.com/viant/sqlx/metadata/sink"
 	"github.com/viant/sqlx/option"
 )
@@ -98,7 +99,7 @@ func (*ReservationMetadata) resolve(ctx context.Context, q queryer, options opti
 		return result, fmt.Errorf("MySQL reservation requires an InnoDB source table, found %s for %s.%s", engine, result.sequence.Schema, result.table)
 	}
 	if !strings.Contains(strings.ToLower(extra), "auto_increment") {
-		return result, fmt.Errorf("MySQL column %s.%s.%s is not AUTO_INCREMENT", result.sequence.Schema, result.table, result.column)
+		return result, fmt.Errorf("%w: MySQL column %s.%s.%s is not AUTO_INCREMENT", metadata.ErrSequenceReservationUnsupported, result.sequence.Schema, result.table, result.column)
 	}
 	bits := 0
 	switch strings.ToLower(kind) {
