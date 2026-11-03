@@ -128,7 +128,7 @@ FROM $Args[0].$Args[1].INFORMATION_SCHEMA.COLUMNS
 			info.NewCriterion(info.Catalog, ""),
 			info.NewCriterion(info.Schema, "TABLE_SCHEMA"),
 			info.NewCriterion(info.Table, "TABLE_NAME"),
-		),
+		).OnPre(tableMetadataHandler()),
 
 		info.NewQuery(info.KindSequences, `SELECT * FROM (SELECT 
   '' AS SEQUENCE_CATALOG,
