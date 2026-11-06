@@ -17,6 +17,8 @@ type Dialect struct {
 	PlaceholderResolver placeholder.Generator
 	CompositeInRenderer func(columns []string, rowCount int) string
 	Transactional       bool
+	DirectQuery         bool // QueryContext must be used instead of preparing SELECT statements.
+	InsertBatchCommit   bool // Prepared INSERT batches are sent when the driver transaction commits.
 	Insert              dialect.InsertFeatures
 	// InsertIdentityOverride materializes explicitly mapped identity values.
 	InsertIdentityOverride string

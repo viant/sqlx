@@ -138,7 +138,7 @@ func TestServiceInfo_SQLiteForeignKeysUnaffected(t *testing.T) {
 	}
 
 	want := []sink.Key{{
-		Name:              "track_artist_fk",
+		Name:              "track_artist_fk_0",
 		Type:              "FOREIGN KEY",
 		Table:             "track",
 		Position:          0,

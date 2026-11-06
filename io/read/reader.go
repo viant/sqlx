@@ -46,11 +46,13 @@ func (r *Reader) QuerySingle(ctx context.Context, emit func(row interface{}) err
 	if err := r.queryScope.Validate(r.query, args); err != nil {
 		return err
 	}
-	if err := r.ensureStmt(ctx); err != nil {
-		return err
+	if !r.directQuery() {
+		if err := r.ensureStmt(ctx); err != nil {
+			return err
+		}
 	}
 
-	rows, err := r.stmt.QueryContext(ctx, args...)
+	rows, err := r.queryRows(ctx, args...)
 	if err != nil {
 		return fmt.Errorf("failed to run query: %v, due to %w", r.query, err)
 	}
@@ -116,13 +118,15 @@ func (r *Reader) createSource(ctx context.Context, entry *cache.Entry, args []in
 		if r.cacheOnly {
 			return nil, nil, cache.ErrMiss
 		}
-		if err := r.ensureStmt(ctx); err != nil {
-			r.sourceFailed = true
-			r.noteSourceFailure("prepare", err)
-			return nil, nil, err
+		if !r.directQuery() {
+			if err := r.ensureStmt(ctx); err != nil {
+				r.sourceFailed = true
+				r.noteSourceFailure("prepare", err)
+				return nil, nil, err
+			}
 		}
 
-		rows, err := r.stmt.QueryContext(ctx, args...)
+		rows, err := r.queryRows(ctx, args...)
 		if err != nil {
 			r.sourceFailed = true
 			failure := fmt.Errorf("failed to run query: %v, due to %w", r.query, err)
@@ -439,6 +443,23 @@ func (r *Reader) ensureStmt(ctx context.Context) error {
 
 	r.stmt = stmt
 	return nil
+}
+
+func (r *Reader) directQuery() bool {
+	return r.stmt == nil && r.dialect != nil && r.dialect.DirectQuery
+}
+
+func (r *Reader) queryRows(ctx context.Context, args ...interface{}) (*sql.Rows, error) {
+	if r.directQuery() {
+		if showSQL {
+			fmt.Println(r.query)
+		}
+		if r.tx != nil {
+			return r.tx.QueryContext(ctx, r.query, args...)
+		}
+		return r.db.QueryContext(ctx, r.query, args...)
+	}
+	return r.stmt.QueryContext(ctx, args...)
 }
 
 func (r *Reader) ensureTargetType(row interface{}) {

@@ -35,6 +35,9 @@ func (b *Builder) Build(record interface{}, options ...option.Option) string {
 	if b.dialect.CanReturning && len(b.id) > 0 {
 		suffix += " RETURNING " + b.id
 	}
+	if b.dialect.InsertBatchCommit {
+		return b.sql + suffix
+	}
 
 	if batchSize == b.batchSize {
 		return b.sql + suffix
@@ -48,6 +51,9 @@ func (b *Builder) Build(record interface{}, options ...option.Option) string {
 func NewBuilder(table string, columns []string, dialect *info.Dialect, identity string, batchSize int, options ...option.Option) (io.Builder, error) {
 	if len(columns) == 0 {
 		return nil, fmt.Errorf("columns were empty")
+	}
+	if dialect.InsertBatchCommit {
+		batchSize = 1
 	}
 	sqlBuilder := strings.Builder{}
 	sqlBuilder.Grow(estimateBufferSize(table, columns, batchSize))
@@ -66,7 +72,7 @@ func NewBuilder(table string, columns []string, dialect *info.Dialect, identity 
 	// may be a registry fallback for drivers with their own quoting syntax.
 	quoteColumns := false
 	switch strings.ToLower(dialect.Name) {
-	case "mysql", "bigquery", "postgresql", "sqlite":
+	case "mysql", "bigquery", "postgresql", "sqlite", "clickhouse":
 		quoteColumns = strings.ContainsAny(table, "\"`[")
 	}
 	if strings.EqualFold(dialect.Name, "MySQL") || quoteColumns {

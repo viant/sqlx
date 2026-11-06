@@ -210,12 +210,16 @@ func (s *Service) runQuery(ctx context.Context, db *sql.DB, query *info.Query, s
 	tx := option.Options.Tx(options)
 	args := &option.Args{}
 	option.Assign(options, &args)
+	queryDialect := s.dialect
+	if queryDialect == nil || !strings.EqualFold(queryDialect.Name, query.Name) {
+		queryDialect = registry.LookupDialect(&query.Product)
+	}
 	// placeholder can be different i.e. @p for sqlserver
 	placeholderGetter := func() string {
 		return "?"
 	}
-	if s.dialect != nil {
-		placeholderGetter = s.dialect.PlaceholderGetter()
+	if queryDialect != nil {
+		placeholderGetter = queryDialect.PlaceholderGetter()
 	}
 
 	SQL, params, err := prepareSQL(query, placeholderGetter, args)
@@ -223,19 +227,26 @@ func (s *Service) runQuery(ctx context.Context, db *sql.DB, query *info.Query, s
 		return err
 	}
 
-	var stmt *sql.Stmt
-	if tx != nil {
-		stmt, err = tx.PrepareContext(ctx, SQL)
-	} else {
-		stmt, err = db.PrepareContext(ctx, SQL)
-	}
-	if err != nil {
-		return err
-	}
-	defer stmt.Close()
-
 	var rows *sql.Rows
-	rows, err = stmt.QueryContext(ctx, params...)
+	if queryDialect != nil && queryDialect.DirectQuery {
+		if tx != nil {
+			rows, err = tx.QueryContext(ctx, SQL, params...)
+		} else {
+			rows, err = db.QueryContext(ctx, SQL, params...)
+		}
+	} else {
+		var stmt *sql.Stmt
+		if tx != nil {
+			stmt, err = tx.PrepareContext(ctx, SQL)
+		} else {
+			stmt, err = db.PrepareContext(ctx, SQL)
+		}
+		if err != nil {
+			return err
+		}
+		defer stmt.Close()
+		rows, err = stmt.QueryContext(ctx, params...)
+	}
 	if err != nil {
 		return err
 	}

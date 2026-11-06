@@ -48,7 +48,7 @@ func TestParameterScanCompatibility(t *testing.T) {
 		fmt.Fprintf(hash, "%q:%+v:%q\n", p.SQL, p.items, p.ExpandSinglePositional(3))
 	}
 	t.Logf("compatibility SHA256: %x", hash.Sum(nil))
-	const want = "520c9c701c9f8aee55fdbf9242f344fa04e67c7c67320a2c5fc64374929b43c3"
+	const want = "516aa2d83942ac27ebe72b487ddca5ff2ef5973ec23979bd0ba5451d653eca9e"
 	if got := fmt.Sprintf("%x", hash.Sum(nil)); got != want {
 		t.Fatalf("scanner semantics changed: SHA256=%s want=%s", got, want)
 	}

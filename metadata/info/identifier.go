@@ -34,7 +34,7 @@ func (d *Dialect) TableIdentifier(table, dataset string) (string, error) {
 	switch strings.ToLower(d.Name) {
 	case "bigquery":
 		maxParts = 3
-	case "mysql", "postgresql", "sqlite", "ansi":
+	case "mysql", "postgresql", "sqlite", "clickhouse", "ansi":
 	default:
 		return "", fmt.Errorf("table identifiers unsupported for %q", d.Name)
 	}
@@ -71,7 +71,7 @@ func (d *Dialect) QuoteIdentifier(name string) (string, error) {
 			return "", fmt.Errorf("unsupported BigQuery identifier escape")
 		}
 		return "`" + name + "`", nil
-	case "postgresql", "sqlite", "ansi":
+	case "postgresql", "sqlite", "clickhouse", "ansi":
 		return `"` + strings.ReplaceAll(name, `"`, `""`) + `"`, nil
 	}
 	return "", fmt.Errorf("identifier quoting unsupported for %q", d.Name)

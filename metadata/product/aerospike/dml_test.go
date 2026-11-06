@@ -18,8 +18,6 @@ func TestService_Exec_Mysql(t *testing.T) {
 	driver := "aerospike"
 	dsn := os.Getenv("TEST_AEROSPIKE_DSN")
 
-	dsn = "aerospike://127.0.0.1:3000/test"
-
 	if dsn == "" {
 		t.Skip("set TEST_AEROSPIKE_DSN before running test")
 	}

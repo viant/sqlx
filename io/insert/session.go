@@ -50,6 +50,18 @@ func (s *session) init(record interface{}) (err error) {
 }
 
 func (s *session) begin(ctx context.Context, db *sql.DB, options []option.Option) error {
+	if s.Dialect.InsertBatchCommit {
+		if tx := option.Options(options).Tx(); tx != nil {
+			s.Transaction = &io.Transaction{Tx: tx, Global: true}
+			return nil
+		}
+		tx, err := db.BeginTx(ctx, nil)
+		if err != nil {
+			return err
+		}
+		s.Transaction = &io.Transaction{Tx: tx}
+		return nil
+	}
 	var err error
 	s.Transaction, err = io.TransactionFor(ctx, s.Dialect, db, options)
 	if err != nil {
@@ -153,9 +165,11 @@ func (s *session) insert(ctx context.Context, recValues []interface{}, valueAt i
 	}
 
 	if inBatchCount > 0 {
-		err = s.prepare(ctx, record, inBatchCount)
-		if err != nil {
-			return 0, 0, err
+		if !s.Dialect.InsertBatchCommit {
+			err = s.prepare(ctx, record, inBatchCount)
+			if err != nil {
+				return 0, 0, err
+			}
 		}
 		rowsAffected, lastInsertedID, err = s.flush(ctx, recValues[0:inBatchCount*len(s.columns)], identitiesBatched)
 		if err != nil {
@@ -167,6 +181,15 @@ func (s *session) insert(ctx context.Context, recValues []interface{}, valueAt i
 }
 
 func (s *session) flush(ctx context.Context, values []interface{}, identities []interface{}) (int64, int64, error) {
+	if s.Dialect.InsertBatchCommit {
+		columnCount := len(s.columns)
+		for offset := 0; offset < len(values); offset += columnCount {
+			if _, err := s.stmt.ExecContext(ctx, values[offset:offset+columnCount]...); err != nil {
+				return 0, 0, err
+			}
+		}
+		return int64(len(values) / columnCount), 0, nil
+	}
 	if s.Dialect.CanReturning {
 		return s.flushQuery(ctx, values, identities)
 	}
