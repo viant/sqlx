@@ -13,6 +13,13 @@ import (
 
 const product = "MySQL"
 
+const qualifiedLockName = `'$Args[0].$Args[1].$Args[2]'`
+
+// MySQL added the 64-character limit in 5.7.5. Preserve existing valid names.
+// Fold longer names with the same Unicode case mapping as MySQL named locks.
+const lockName = `COALESCE(/*!50705 IF(CHAR_LENGTH(` + qualifiedLockName + `) > 64,
+CONCAT('sqlx:', SHA1(LOWER(CONVERT(` + qualifiedLockName + ` USING utf8mb4) COLLATE utf8mb4_general_ci))), NULL), */ ` + qualifiedLockName + `)`
+
 var mySQL5 = database.Product{
 	Name:  product,
 	Major: 5,
@@ -236,8 +243,8 @@ where ID=CONNECTION_ID() LIMIT 1;
 		info.NewQuery(info.KindLockGet, `SELECT '$Args[0]' AS LOCK_CATALOG,
 '$Args[1]' AS LOCK_SCHEMA,
 '$Args[2]' AS LOCK_TABLE,
-'$Args[0].$Args[1].$Args[2]' AS LOCK_NAME,
-GET_LOCK('$Args[0].$Args[1].$Args[2]',10) AS SUCCESS`,
+`+lockName+` AS LOCK_NAME,
+GET_LOCK(`+lockName+`,10) AS SUCCESS`,
 			mySQL5,
 			info.NewCriterion(info.Catalog, ""),
 			info.NewCriterion(info.Schema, ""),
@@ -247,8 +254,8 @@ GET_LOCK('$Args[0].$Args[1].$Args[2]',10) AS SUCCESS`,
 		info.NewQuery(info.KindLockRelease, `SELECT '$Args[0]' AS LOCK_CATALOG,
 '$Args[1]' AS LOCK_SCHEMA,
 '$Args[2]' AS LOCK_TABLE,
-'$Args[0].$Args[1].$Args[2]' AS LOCK_NAME,
-RELEASE_LOCK('$Args[0].$Args[1].$Args[2]')  AS SUCCESS`,
+`+lockName+` AS LOCK_NAME,
+RELEASE_LOCK(`+lockName+`) AS SUCCESS`,
 			mySQL5,
 			info.NewCriterion(info.Catalog, ""),
 			info.NewCriterion(info.Schema, ""),
