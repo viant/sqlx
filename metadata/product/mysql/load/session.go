@@ -3,6 +3,8 @@ package load
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
+	"errors"
 	"fmt"
 	"github.com/go-sql-driver/mysql"
 	"github.com/google/uuid"
@@ -12,6 +14,7 @@ import (
 	"github.com/viant/sqlx/metadata/info"
 	"github.com/viant/sqlx/option"
 	goIo "io"
+	"time"
 )
 
 var mysqlLoadConfig = &csv.Config{
@@ -46,6 +49,8 @@ func NewSession(dialect *info.Dialect) io.LoadExecutor {
 
 // Exec inserts given data to database using "LOAD DATA LOCAL INFILE"
 // note: local_infile=1 must be enabled on database
+// Caller-owned transactions retain their sql_notes setting. Configure sql_notes=0
+// on their connection for large loads that generate informational rounding notes.
 func (s *Session) Exec(ctx context.Context, data interface{}, db *sql.DB, tableName string, options ...loption.Option) (sql.Result, error) {
 	loadConfig := *mysqlLoadConfig
 	dataReader, dataType, err := csv.NewReader(data, &loadConfig)
@@ -65,30 +70,10 @@ func (s *Session) Exec(ctx context.Context, data interface{}, db *sql.DB, tableN
 	readerID := uuid.New().String()
 	mysql.RegisterReaderHandler(readerID, readerResolver)
 	defer mysql.DeregisterReaderHandler(readerID)
-	if err = s.begin(ctx, db, options); err != nil {
-		return nil, err
-	}
-
 	SQL := BuildSQL(&loadConfig, readerID, tableName, columns, options...)
 
 	result := &io.QueryResult{}
-	var connection loadConnection
-	if s.Transaction != nil {
-		connection = s.Transaction
-	} else {
-		// Diagnostics belong to the connection that executed LOAD DATA.
-		conn, connErr := db.Conn(ctx)
-		if connErr != nil {
-			return nil, connErr
-		}
-		defer conn.Close()
-		connection = conn
-	}
-	result.Result, err = connection.ExecContext(ctx, SQL)
-	if err == nil {
-		err = s.checkWarnings(ctx, connection)
-	}
-	err = s.end(err)
+	result.Result, err = s.executeLoad(ctx, db, SQL, options)
 
 	if err != nil {
 		return result, err
@@ -104,32 +89,89 @@ func (s *Session) Exec(ctx context.Context, data interface{}, db *sql.DB, tableN
 	return result, err
 }
 
-func (s *Session) begin(ctx context.Context, db *sql.DB, options []loption.Option) error {
-	var err error
-	loadOpts := loption.NewOptions(options...)
-	var opts []option.Option
-	if tx := loadOpts.GetTransaction(); tx != nil {
-		opts = append(opts, tx)
+func (s *Session) executeLoad(ctx context.Context, db *sql.DB, SQL string, options []loption.Option) (result sql.Result, err error) {
+	if tx := loption.NewOptions(options...).GetTransaction(); tx != nil {
+		s.Transaction = &io.Transaction{Tx: tx, Global: true}
+		result, err = tx.ExecContext(ctx, SQL)
+		if err == nil {
+			err = s.checkWarnings(ctx, tx)
+		}
+		return result, err
 	}
-
-	s.Transaction, err = io.TransactionFor(ctx, s.dialect, db, opts)
+	s.Transaction = nil
+	conn, err := db.Conn(ctx)
 	if err != nil {
-		return err
+		return nil, err
+	}
+	defer conn.Close()
+	if !s.dialect.Transactional {
+		result, err = conn.ExecContext(ctx, SQL)
+		if err == nil {
+			err = s.checkWarnings(ctx, conn)
+		}
+		return result, err
 	}
 
-	return nil
-}
-
-func (s *Session) end(err error) error {
-	if s.Transaction == nil || s.Tx == nil {
-		return err
+	var originalNotes int
+	if err = conn.QueryRowContext(ctx, "SELECT @@session.sql_notes").Scan(&originalNotes); err != nil {
+		return nil, err
 	}
-
+	var tx *sql.Tx
+	restore := originalNotes != 0
+	discard := false
+	complete := false
+	// Retain the connection beyond the transaction: cancellation can end the
+	// transaction before restoration, but session settings are not rolled back.
+	defer func() {
+		cleanup, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if tx != nil {
+			if complete && err == nil && restore {
+				_, restoreErr := tx.ExecContext(cleanup, "SET SESSION sql_notes=1")
+				if restoreErr != nil {
+					err = fmt.Errorf("restore LOAD DATA sql_notes: %w", restoreErr)
+					discard = true
+				} else {
+					restore = false
+				}
+			}
+			if complete && err == nil {
+				err = tx.Commit()
+			} else if rollbackErr := tx.Rollback(); rollbackErr != nil && !errors.Is(rollbackErr, sql.ErrTxDone) {
+				err = errors.Join(err, fmt.Errorf("rollback LOAD DATA: %w", rollbackErr))
+			}
+		}
+		if restore {
+			if _, restoreErr := conn.ExecContext(cleanup, "SET SESSION sql_notes=1"); restoreErr != nil {
+				err = errors.Join(err, fmt.Errorf("restore LOAD DATA sql_notes: %w", restoreErr))
+				discard = true
+			}
+		}
+		if discard {
+			if discardErr := conn.Raw(func(interface{}) error { return driver.ErrBadConn }); discardErr != nil && !errors.Is(discardErr, driver.ErrBadConn) && !errors.Is(discardErr, sql.ErrConnDone) {
+				err = errors.Join(err, fmt.Errorf("discard LOAD DATA connection: %w", discardErr))
+			}
+		}
+	}()
+	if restore {
+		if _, err = conn.ExecContext(ctx, "SET SESSION sql_notes=0"); err != nil {
+			return nil, err
+		}
+	}
+	tx, err = conn.BeginTx(ctx, nil)
 	if err != nil {
-		return s.Transaction.RollbackWithErr(err)
+		return nil, err
 	}
-
-	return s.Transaction.Commit()
+	s.Transaction = &io.Transaction{Tx: tx}
+	result, err = tx.ExecContext(ctx, SQL)
+	if err == nil {
+		err = s.checkWarnings(ctx, tx)
+	}
+	if err == nil {
+		err = ctx.Err()
+	}
+	complete = err == nil
+	return result, err
 }
 
 // LOCAL INFILE can downgrade duplicate keys and data coercion to warnings.

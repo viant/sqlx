@@ -127,3 +127,88 @@ func TestMySQLLoadDiagnostics(t *testing.T) {
 		})
 	}
 }
+
+func TestMySQLLoadLargeRoundingBatches(t *testing.T) {
+	dsn := os.Getenv("SQLX_TEST_MYSQL_DSN")
+	if dsn == "" {
+		t.Skip("SQLX_TEST_MYSQL_DSN absent")
+	}
+	db, err := sql.Open("mysql", dsn)
+	if err != nil {
+		t.Fatal("invalid configured MySQL DSN")
+	}
+	defer db.Close()
+	// This dedicated pool has exactly one connection and no concurrent users.
+	// Settings and temporary tables therefore survive the loader acquiring it.
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	var oldNotes, oldLimit int
+	if err := db.QueryRowContext(ctx, "SELECT @@session.sql_notes, @@session.max_error_count").Scan(&oldNotes, &oldLimit); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		cleanup, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if _, err := db.ExecContext(cleanup, fmt.Sprintf("SET SESSION sql_notes=%d, SESSION max_error_count=%d", oldNotes, oldLimit)); err != nil {
+			t.Errorf("restore settings: %v", err)
+		}
+	}()
+	type row struct {
+		ID     int     `sqlx:"id"`
+		Amount float64 `sqlx:"amount"`
+	}
+	for index, test := range []struct {
+		name      string
+		notes     int
+		duplicate bool
+	}{
+		{name: "1025 rounding rows notes enabled", notes: 1},
+		{name: "1025 rounding rows notes disabled", notes: 0},
+		{name: "duplicate after 1025 rounding rows", notes: 1, duplicate: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if _, err := db.ExecContext(ctx, fmt.Sprintf("SET SESSION sql_notes=%d, SESSION max_error_count=1024", test.notes)); err != nil {
+				t.Fatal(err)
+			}
+			table := fmt.Sprintf("sqlx_large_diag_%d_%d", time.Now().UnixNano(), index)
+			if _, err := db.ExecContext(ctx, "CREATE TEMPORARY TABLE "+table+" (id INT PRIMARY KEY, amount DECIMAL(21,11)) ENGINE=InnoDB"); err != nil {
+				t.Fatal(err)
+			}
+			defer db.ExecContext(ctx, "DROP TEMPORARY TABLE "+table)
+			rows := make([]row, 1025)
+			for i := range rows {
+				rows[i] = row{ID: i + 1, Amount: 1.123456789012345}
+			}
+			if test.duplicate {
+				rows = append(rows, rows[0])
+			}
+			_, err := NewSession(registry.LookupDialect(mysqlmeta.MySQL5())).Exec(ctx, rows, db, table)
+			if test.duplicate {
+				if err == nil || !strings.Contains(err.Error(), "Warning 1062") {
+					t.Fatalf("expected duplicate warning, got %v", err)
+				}
+			} else if err != nil {
+				t.Fatal(err)
+			}
+			var notes, count, valid int
+			if err := db.QueryRowContext(ctx, "SELECT @@session.sql_notes").Scan(&notes); err != nil {
+				t.Fatal(err)
+			}
+			if notes != test.notes {
+				t.Fatalf("sql_notes=%d, want %d", notes, test.notes)
+			}
+			if err := db.QueryRowContext(ctx, "SELECT COUNT(*), COUNT(IF(amount=1.12345678901,1,NULL)) FROM "+table).Scan(&count, &valid); err != nil {
+				t.Fatal(err)
+			}
+			want := 1025
+			if test.duplicate {
+				want = 0
+			}
+			if count != want || valid != want {
+				t.Fatalf("persisted=%d correctly rounded=%d, want %d", count, valid, want)
+			}
+		})
+	}
+}

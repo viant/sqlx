@@ -9,6 +9,7 @@ import (
 	"io"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/viant/sqlx/loption"
@@ -68,7 +69,7 @@ func TestLoadDiagnostics(t *testing.T) {
 				t.Fatalf("load and diagnostics used %d connections", state.connections)
 			}
 			if test.countErr == nil && test.wantError != "Scan error" {
-				if !reflect.DeepEqual(state.queries, []string{"LOAD", "SHOW COUNT(*) WARNINGS", "SHOW WARNINGS"}) {
+				if !reflect.DeepEqual(state.queries, []string{"SELECT @@session.sql_notes", "LOAD", "SHOW COUNT(*) WARNINGS", "SHOW WARNINGS"}) {
 					t.Fatalf("query order: %v", state.queries)
 				}
 			}
@@ -77,7 +78,7 @@ func TestLoadDiagnostics(t *testing.T) {
 }
 
 func TestLoadDiagnosticsCallerTransaction(t *testing.T) {
-	state := &diagnosticState{total: int64(1)}
+	state := &diagnosticState{total: int64(1), notes: 1}
 	db := sql.OpenDB(&diagnosticConnector{state: state})
 	defer db.Close()
 	tx, err := db.BeginTx(context.Background(), nil)
@@ -91,6 +92,9 @@ func TestLoadDiagnosticsCallerTransaction(t *testing.T) {
 	}
 	if state.commits != 0 || state.rollbacks != 0 {
 		t.Fatal("loader ended caller transaction")
+	}
+	if state.notes != 1 || !reflect.DeepEqual(state.queries, []string{"LOAD", "SHOW COUNT(*) WARNINGS", "SHOW WARNINGS"}) {
+		t.Fatalf("loader modified caller settings: %v", state.queries)
 	}
 	if err := tx.Rollback(); err != nil || state.rollbacks != 1 {
 		t.Fatalf("caller rollback: %v", err)
@@ -109,12 +113,83 @@ func TestLoadDiagnosticsPinnedNontransactionalConnection(t *testing.T) {
 	}
 }
 
+func TestLoadNotesRestoration(t *testing.T) {
+	loadFailure := errors.New("load failed")
+	settingFailure := errors.New("setting failed")
+	for _, test := range []struct {
+		name                                      string
+		notes                                     int
+		loadErr, disableErr, restoreErr, beginErr error
+		cancel                                    bool
+	}{
+		{name: "enabled notes restored before commit", notes: 1},
+		{name: "disabled notes remain disabled"},
+		{name: "load failure restores notes", notes: 1, loadErr: loadFailure},
+		{name: "begin failure restores notes", notes: 1, beginErr: settingFailure},
+		{name: "disable failure attempts restoration", notes: 1, disableErr: settingFailure},
+		{name: "restore failure prevents commit and discards", notes: 1, restoreErr: settingFailure},
+		{name: "load and restore errors preserved", notes: 1, loadErr: loadFailure, restoreErr: settingFailure},
+		{name: "canceled load cleans up", notes: 1, cancel: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			state := &diagnosticState{notes: test.notes, total: int64(0), loadErr: test.loadErr, disableErr: test.disableErr, restoreErr: test.restoreErr, beginErr: test.beginErr}
+			if test.cancel {
+				state.cancel = cancel
+			}
+			db := sql.OpenDB(&diagnosticConnector{state: state})
+			defer db.Close()
+			_, err := NewSession(&info.Dialect{Transactional: true}).Exec(ctx, []struct{ ID int }{{1}}, db, "test_load")
+			state.mu.Lock()
+			defer state.mu.Unlock()
+			wantErr := test.loadErr != nil || test.disableErr != nil || test.restoreErr != nil || test.beginErr != nil || test.cancel
+			if (err != nil) != wantErr {
+				t.Fatalf("err=%v, want error=%v", err, wantErr)
+			}
+			for _, expected := range []error{test.loadErr, test.disableErr, test.restoreErr, test.beginErr} {
+				if expected != nil && !errors.Is(err, expected) {
+					t.Fatalf("lost error %v: %v", expected, err)
+				}
+			}
+			if test.cancel && !errors.Is(err, context.Canceled) {
+				t.Fatalf("lost cancellation: %v", err)
+			}
+			if wantErr && state.commits != 0 {
+				t.Fatal("committed failed load")
+			}
+			if !wantErr && (state.commits != 1 || state.endNotes != test.notes) {
+				t.Fatalf("commit=%d sql_notes at commit=%d", state.commits, state.endNotes)
+			}
+			if test.restoreErr != nil && state.closed == 0 {
+				t.Fatal("connection with failed restoration was pooled")
+			}
+			if state.notes != test.notes && state.closed == 0 {
+				t.Fatal("connection pooled with modified notes")
+			}
+			if test.notes == 0 {
+				for _, query := range state.queries {
+					if strings.HasPrefix(query, "SET SESSION") {
+						t.Fatalf("unnecessary setting change: %s", query)
+					}
+				}
+			}
+		})
+	}
+}
+
 type diagnosticState struct {
+	mu                                        sync.Mutex
 	total                                     driver.Value
 	diagnostics                               [][]driver.Value
 	countErr, queryErr, iterateErr            error
 	commits, rollbacks, connections, openRows int
 	queries                                   []string
+	notes                                     int
+	loadErr, disableErr, restoreErr, beginErr error
+	cancel                                    context.CancelFunc
+	closed                                    int
+	endNotes                                  int
 }
 
 type diagnosticConnector struct{ state *diagnosticState }
@@ -130,6 +205,8 @@ type diagnosticRows struct {
 }
 
 func (c *diagnosticConnector) Connect(context.Context) (driver.Conn, error) {
+	c.state.mu.Lock()
+	defer c.state.mu.Unlock()
 	c.state.connections++
 	return &diagnosticConn{state: c.state}, nil
 }
@@ -138,21 +215,76 @@ func (diagnosticDriver) Open(string) (driver.Conn, error) { return nil, errors.N
 func (*diagnosticConn) Prepare(string) (driver.Stmt, error) {
 	return nil, errors.New("unexpected prepare")
 }
-func (*diagnosticConn) Close() error                { return nil }
-func (c *diagnosticConn) Begin() (driver.Tx, error) { return &diagnosticTx{state: c.state}, nil }
-func (t *diagnosticTx) Commit() error               { t.state.commits++; return nil }
-func (t *diagnosticTx) Rollback() error             { t.state.rollbacks++; return nil }
-func (c *diagnosticConn) ExecContext(_ context.Context, query string, _ []driver.NamedValue) (driver.Result, error) {
+func (c *diagnosticConn) Close() error {
+	c.state.mu.Lock()
+	defer c.state.mu.Unlock()
+	c.state.closed++
+	return nil
+}
+func (c *diagnosticConn) Begin() (driver.Tx, error) {
+	c.state.mu.Lock()
+	defer c.state.mu.Unlock()
+	if c.state.beginErr != nil {
+		return nil, c.state.beginErr
+	}
+	return &diagnosticTx{state: c.state}, nil
+}
+func (t *diagnosticTx) Commit() error {
+	t.state.mu.Lock()
+	defer t.state.mu.Unlock()
+	t.state.commits++
+	t.state.endNotes = t.state.notes
+	return nil
+}
+func (t *diagnosticTx) Rollback() error {
+	t.state.mu.Lock()
+	defer t.state.mu.Unlock()
+	t.state.rollbacks++
+	return nil
+}
+func (c *diagnosticConn) ExecContext(ctx context.Context, query string, _ []driver.NamedValue) (driver.Result, error) {
+	c.state.mu.Lock()
+	defer c.state.mu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if strings.HasPrefix(query, "SET SESSION sql_notes=") {
+		c.state.queries = append(c.state.queries, query)
+		if query == "SET SESSION sql_notes=0" {
+			if c.state.disableErr != nil {
+				return nil, c.state.disableErr
+			}
+			c.state.notes = 0
+		} else {
+			if c.state.restoreErr != nil {
+				return nil, c.state.restoreErr
+			}
+			c.state.notes = 1
+		}
+		return driver.RowsAffected(0), nil
+	}
 	if !strings.HasPrefix(query, "LOAD DATA") {
 		return nil, fmt.Errorf("unexpected exec: %s", query)
 	}
 	c.state.queries = append(c.state.queries, "LOAD")
+	if c.state.cancel != nil {
+		c.state.cancel()
+		return nil, context.Canceled
+	}
+	if c.state.loadErr != nil {
+		return nil, c.state.loadErr
+	}
 	return driver.RowsAffected(1), nil
 }
 func (c *diagnosticConn) QueryContext(_ context.Context, query string, _ []driver.NamedValue) (driver.Rows, error) {
+	c.state.mu.Lock()
+	defer c.state.mu.Unlock()
 	c.state.queries = append(c.state.queries, query)
 	rows := &diagnosticRows{state: c.state}
 	switch query {
+	case "SELECT @@session.sql_notes":
+		rows.columns = []string{"@@session.sql_notes"}
+		rows.values = [][]driver.Value{{int64(c.state.notes)}}
 	case "SHOW COUNT(*) WARNINGS":
 		if c.state.countErr != nil {
 			return nil, c.state.countErr
@@ -174,6 +306,8 @@ func (c *diagnosticConn) QueryContext(_ context.Context, query string, _ []drive
 }
 func (r *diagnosticRows) Columns() []string { return r.columns }
 func (r *diagnosticRows) Close() error {
+	r.state.mu.Lock()
+	defer r.state.mu.Unlock()
 	if !r.closed {
 		r.state.openRows--
 		r.closed = true
