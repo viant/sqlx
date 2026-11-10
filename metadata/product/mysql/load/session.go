@@ -31,6 +31,12 @@ type Session struct {
 	loption.Options
 }
 
+type loadConnection interface {
+	ExecContext(context.Context, string, ...interface{}) (sql.Result, error)
+	QueryContext(context.Context, string, ...interface{}) (*sql.Rows, error)
+	QueryRowContext(context.Context, string, ...interface{}) *sql.Row
+}
+
 // NewSession returns new MySQL session
 func NewSession(dialect *info.Dialect) io.LoadExecutor {
 	return &Session{
@@ -66,13 +72,21 @@ func (s *Session) Exec(ctx context.Context, data interface{}, db *sql.DB, tableN
 	SQL := BuildSQL(&loadConfig, readerID, tableName, columns, options...)
 
 	result := &io.QueryResult{}
+	var connection loadConnection
 	if s.Transaction != nil {
-		result.Result, err = s.Transaction.ExecContext(ctx, SQL)
+		connection = s.Transaction
 	} else {
-		result.Result, err = db.ExecContext(ctx, SQL)
+		// Diagnostics belong to the connection that executed LOAD DATA.
+		conn, connErr := db.Conn(ctx)
+		if connErr != nil {
+			return nil, connErr
+		}
+		defer conn.Close()
+		connection = conn
 	}
+	result.Result, err = connection.ExecContext(ctx, SQL)
 	if err == nil {
-		err = s.checkWarnings(ctx, db)
+		err = s.checkWarnings(ctx, connection)
 	}
 	err = s.end(err)
 
@@ -121,25 +135,35 @@ func (s *Session) end(err error) error {
 // LOCAL INFILE can downgrade duplicate keys and data coercion to warnings.
 // Read diagnostics on the owning transaction before any commit, and make such
 // partial loads fail rather than claiming successful insertion of every row.
-func (s *Session) checkWarnings(ctx context.Context, db *sql.DB) error {
-	var rows *sql.Rows
-	var err error
-	if s.Transaction != nil {
-		rows, err = s.Transaction.QueryContext(ctx, "SHOW WARNINGS")
-	} else {
-		rows, err = db.QueryContext(ctx, "SHOW WARNINGS")
+// Notes alone are allowed only when the complete diagnostic list is available.
+func (s *Session) checkWarnings(ctx context.Context, connection loadConnection) error {
+	var total uint64
+	// Unlike SELECT @@warning_count, this does not clear the diagnostic list.
+	if err := connection.QueryRowContext(ctx, "SHOW COUNT(*) WARNINGS").Scan(&total); err != nil {
+		return err
 	}
+	rows, err := connection.QueryContext(ctx, "SHOW WARNINGS")
 	if err != nil {
 		return err
 	}
 	defer rows.Close()
+	var seen uint64
 	for rows.Next() {
 		var level, message string
 		var code int
 		if err := rows.Scan(&level, &code, &message); err != nil {
 			return err
 		}
-		return fmt.Errorf("LOAD DATA %s %d: %s", level, code, message)
+		seen++
+		if level != "Note" {
+			return fmt.Errorf("LOAD DATA %s %d: %s", level, code, message)
+		}
 	}
-	return rows.Err()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if seen < total {
+		return fmt.Errorf("LOAD DATA diagnostics incomplete: received %d of %d", seen, total)
+	}
+	return nil
 }
