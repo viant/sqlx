@@ -53,7 +53,7 @@ func NewSession(dialect *info.Dialect) io.LoadExecutor {
 // on their connection for large loads that generate informational rounding notes.
 func (s *Session) Exec(ctx context.Context, data interface{}, db *sql.DB, tableName string, options ...loption.Option) (sql.Result, error) {
 	loadConfig := *mysqlLoadConfig
-	dataReader, dataType, err := csv.NewReader(data, &loadConfig)
+	dataReader, dataType, err := csv.NewReader(data, &loadConfig, io.StringifierTimeLayout("2006-01-02T15:04:05-07:00"))
 	if err != nil {
 		return nil, err
 	}

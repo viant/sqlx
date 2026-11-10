@@ -146,7 +146,7 @@ func NewReader(any interface{}, config *Config, options ...interface{}) (*Reader
 	structType := io.EnsureDereference(valueAt(0))
 	stringifier, stringifierConfig := readOptions(options)
 	if stringifier == nil {
-		stringifier = io.TypeStringifier(structType, config.NullValue, true)
+		stringifier = io.TypeStringifier(structType, config.NullValue, true, options...)
 	}
 
 	stringifierFn, err := stringifier.Stringifier(options...)

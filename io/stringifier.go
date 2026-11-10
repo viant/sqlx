@@ -43,6 +43,9 @@ type (
 	}
 
 	Parallel bool
+
+	// StringifierTimeLayout supplies the default time layout when a field has no timeLayout tag.
+	StringifierTimeLayout string
 )
 
 func (s *ObjectStringifier) Has(fieldName string) bool {
@@ -222,8 +225,8 @@ func Stringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue string, 
 	case reflect.Float32:
 		return float32Stringifier(field, nullifyZeroValue, nullValue, wasPointer, options...)
 	case reflect.Interface:
-		return interfaceStringifier(field, nullifyZeroValue, nullValue, wasPointer)
+		return interfaceStringifier(field, nullifyZeroValue, nullValue, wasPointer, options...)
 	default:
-		return defaultStringifier(field, nullifyZeroValue, nullValue)
+		return defaultStringifier(field, nullifyZeroValue, nullValue, options...)
 	}
 }
