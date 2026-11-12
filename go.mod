@@ -19,7 +19,7 @@ require (
 	github.com/viant/aerospike v0.2.7
 	github.com/viant/afs v1.30.1-0.20260914155934-90e95d483861
 	github.com/viant/assertly v0.9.1-0.20220620174148-bab013f93a60
-	github.com/viant/bigquery v0.5.5-0.20261103234045-64060eda7f97
+	github.com/viant/bigquery v0.5.5-0.20261112202235-311cfdbb627f
 	github.com/viant/parsly v0.3.3
 	github.com/viant/sqlparser v0.13.1-0.20261005175605-18369aade19d
 	github.com/viant/structology v0.10.1-0.20260915165514-89d421971772

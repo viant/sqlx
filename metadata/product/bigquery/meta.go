@@ -106,7 +106,7 @@ FROM $Args[0].$Args[1].INFORMATION_SCHEMA.TABLES`,
 			bigQuery,
 			info.NewCriterion(info.Catalog, ""),
 			info.NewCriterion(info.Schema, "TABLE_SCHEMA"),
-		),
+		).OnPre(tablesMetadataHandler()),
 
 		info.NewQuery(info.KindTable, `SELECT 
 TABLE_CATALOG,
