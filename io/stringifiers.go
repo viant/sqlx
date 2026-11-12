@@ -327,12 +327,16 @@ func float32Stringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue s
 	}
 }
 
-//TODO: Time format
-func defaultStringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue string) FieldStringifierFn {
+func defaultStringifier(field *xunsafe.Field, nullifyZeroValue bool, nullValue string, options ...interface{}) FieldStringifierFn {
 
 	timeLayout := field.Tag.Get("timeLayout")
 	if timeLayout == "" {
 		timeLayout = time.RFC3339
+		for _, option := range options {
+			if layout, ok := option.(StringifierTimeLayout); ok && layout != "" {
+				timeLayout = string(layout)
+			}
+		}
 	}
 
 	if field.Type == timeType {
