@@ -227,6 +227,10 @@ func (s *Service) runQuery(ctx context.Context, db *sql.DB, query *info.Query, s
 		return err
 	}
 
+	SQL, params, sink, page, err := prepareMetadataPage(query, SQL, params, sink, options)
+	if err != nil {
+		return err
+	}
 	var rows *sql.Rows
 	if queryDialect != nil && queryDialect.DirectQuery {
 		if tx != nil {
@@ -257,7 +261,11 @@ func (s *Service) runQuery(ctx context.Context, db *sql.DB, query *info.Query, s
 	case *[]string:
 		return fetchToStrings(rows, value)
 	default:
-		return fetchStruct(ctx, rows, value)
+		err := fetchStruct(ctx, rows, value)
+		if err == nil && page != nil {
+			page.finish()
+		}
+		return err
 	}
 }
 
