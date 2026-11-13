@@ -1310,11 +1310,11 @@ func (a *Cache) updateColumnsInMatchEntry(entry *cache.Entry, match *RecordMatch
 	if err != nil {
 		return err
 	}
-	if scalarComposite {
-		// Legacy markers cannot prove complete scalar groups; rewarm before reuse.
-		if !isCompleteWarmup(match.record.Bins[completeBin]) {
-			return nil
-		}
+	if (matcher.By != "" || scalarComposite) && !isCompleteWarmup(match.record.Bins[completeBin]) {
+		// An incomplete dataset proves neither empty missing groups nor complete
+		// populated groups. Legacy markers must be rewarmed before indexed reuse.
+		a.logWarmupFailure(matcher.By, warmupURL, markerKey, "marker_incomplete")
+		return nil
 	}
 	multiReader := NewMultiReader(lookup)
 
@@ -1386,7 +1386,7 @@ func (a *Cache) updateColumnsInMatchEntry(entry *cache.Entry, match *RecordMatch
 
 // isCompleteWarmup accepts the native integer marker and legacy Boolean
 // markers. Missing, partial or malformed metadata must never prove a complete
-// scalar group for composite replay.
+// indexed dataset for replay.
 func isCompleteWarmup(value interface{}) bool {
 	switch actual := value.(type) {
 	case int:

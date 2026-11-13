@@ -145,9 +145,9 @@ func TestScalarWarmupCompositeReplay(t *testing.T) {
 				scalar := scalarCompositeMatcher()
 				scalar.ByColumns, scalar.InTuples, scalar.In = nil, nil, []any{1}
 				scalarRows, scalarStats, scalarErr := scalarCompositeRead(t, db, native, scalar)
-				require.NoError(t, scalarErr)
-				require.True(t, scalarStats.FoundWarmup)
-				require.Len(t, scalarRows, 40)
+				require.Error(t, scalarErr)
+				require.False(t, scalarStats.FoundWarmup)
+				require.Empty(t, scalarRows)
 				return
 			}
 			require.NoError(t, err)
