@@ -36,7 +36,7 @@ func TestBigQuerySingleTableMetadata(t *testing.T) {
 					_, _ = w.Write([]byte(`{"error":{"message":"table metadata denied"}}`))
 					return
 				}
-				_, _ = w.Write([]byte(`{"schema":{"fields":[{"name":"id","type":"INTEGER","mode":"REQUIRED"},{"name":"title","type":"STRING"},{"name":"items","type":"RECORD","mode":"REPEATED","fields":[{"name":"active","type":"BOOLEAN"},{"name":"scores","type":"FLOAT","mode":"REPEATED"}]},{"name":"date_window","type":"RANGE","rangeElementType":{"type":"DATE"}},{"name":"timestamp_windows","type":"RANGE","mode":"REPEATED","rangeElementType":{"type":"TIMESTAMP"}},{"name":"record_window","type":"RECORD","fields":[{"name":"datetime_window","type":"RANGE","rangeElementType":{"type":"DATETIME"}}]}]},"timePartitioning":{"type":"DAY"}}`))
+				_, _ = w.Write([]byte(`{"schema":{"fields":[{"name":"id","type":"INTEGER","mode":"REQUIRED"},{"name":"title","type":"STRING","description":"Human readable record title"},{"name":"items","type":"RECORD","mode":"REPEATED","fields":[{"name":"active","type":"BOOLEAN"},{"name":"scores","type":"FLOAT","mode":"REPEATED"}]},{"name":"date_window","type":"RANGE","rangeElementType":{"type":"DATE"}},{"name":"timestamp_windows","type":"RANGE","mode":"REPEATED","rangeElementType":{"type":"TIMESTAMP"}},{"name":"record_window","type":"RECORD","fields":[{"name":"datetime_window","type":"RANGE","rangeElementType":{"type":"DATETIME"}}]}]},"timePartitioning":{"type":"DAY"}}`))
 			}))
 			defer server.Close()
 			bqdriver.SetOptions(apioption.WithEndpoint(server.URL+"/"), apioption.WithoutAuthentication())
@@ -57,6 +57,7 @@ func TestBigQuerySingleTableMetadata(t *testing.T) {
 				require.Equal(t, "INT64", columns[0].Type)
 				require.True(t, columns[0].IsNotNull())
 				require.True(t, columns[1].IsNullable())
+				require.Equal(t, "Human readable record title", columns[1].Comments)
 				require.Equal(t, "ARRAY<STRUCT<`active` BOOL, `scores` ARRAY<FLOAT64>>>", columns[2].Type)
 				require.True(t, columns[2].IsNotNull())
 				require.Equal(t, "RANGE<DATE>", columns[3].Type)

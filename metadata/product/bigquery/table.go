@@ -87,7 +87,7 @@ func tableMetadataHandler() info.Handler {
 			if field.Mode == "REQUIRED" || field.Mode == "REPEATED" {
 				nullable = "NO"
 			}
-			columns = append(columns, sink.Column{Catalog: names[0], Schema: names[1], Table: names[2], Name: field.Name, Position: i + 1, Type: tableFieldType(field), Nullable: nullable, Default: new(string)})
+			columns = append(columns, sink.Column{Catalog: names[0], Schema: names[1], Table: names[2], Name: field.Name, Comments: field.Description, Position: i + 1, Type: tableFieldType(field), Nullable: nullable, Default: new(string)})
 		}
 		// Ingestion-time partition columns are hidden pseudo columns with no ordinal.
 		if partition := table.TimePartitioning; partition != nil && partition.Field == "" {
