@@ -82,6 +82,9 @@ type registry struct {
 }
 
 func (r *registry) LookupDialect(product *database.Product) *info.Dialect {
+	if product == nil {
+		return nil
+	}
 	dialects, ok := r.dialects[product.Name]
 	if !ok {
 		return nil

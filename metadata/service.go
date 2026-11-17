@@ -43,15 +43,14 @@ func (s *Service) DetectProduct(ctx context.Context, db *sql.DB, options ...opti
 		return product, nil
 	}
 	product, err := s.matchProduct(ctx, db, options...)
-	if err == nil {
-		s.recent.db = db
-		s.recent.product = product
-		s.dialect = registry.LookupDialect(product)
-	}
 	if err != nil {
-		err = fmt.Errorf("failed to detect product: %w", err)
+		return nil, fmt.Errorf("failed to detect product: %w", err)
 	}
-	return product, err
+	if product == nil {
+		return nil, fmt.Errorf("failed to detect product: database product is nil")
+	}
+	s.setService(db, product)
+	return product, nil
 }
 
 // Execute execute the metadata kind corresponding SQL
@@ -165,19 +164,23 @@ func (s *Service) matchVersion(ctx context.Context, db *sql.DB, product *databas
 	var err error
 	for _, query := range versionQueries {
 		var version string
-		if err = s.infoQuery(ctx, db, query, &version, versionOptions...); err == nil {
-			productTmp, err := database.Parse([]byte(version))
-			if err == nil && productTmp != nil {
-				if productTmp.Name != "" {
-					product.Name = productTmp.Name
-				}
-				product.Major = productTmp.Major
-				product.Minor = productTmp.Minor
-				product.Release = productTmp.Release
-				return product, nil
-			}
-			break
+		if err = s.infoQuery(ctx, db, query, &version, versionOptions...); err != nil {
+			continue
 		}
+		productTmp, parseErr := database.Parse([]byte(version))
+		if parseErr != nil {
+			return nil, fmt.Errorf("failed to parse %s database version %q: %w", product.Name, version, parseErr)
+		}
+		if productTmp == nil {
+			return nil, fmt.Errorf("failed to parse %s database version %q: database product is nil", product.Name, version)
+		}
+		if productTmp.Name != "" {
+			product.Name = productTmp.Name
+		}
+		product.Major = productTmp.Major
+		product.Minor = productTmp.Minor
+		product.Release = productTmp.Release
+		return product, nil
 	}
 	return nil, err
 }

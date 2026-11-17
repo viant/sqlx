@@ -15,7 +15,7 @@ func fetchToString(rows *sql.Rows, dest *string) error {
 			return err
 		}
 	}
-	return nil
+	return rows.Err()
 }
 
 func fetchToStrings(rows *sql.Rows, dest *[]string) error {
@@ -26,7 +26,7 @@ func fetchToStrings(rows *sql.Rows, dest *[]string) error {
 		}
 		*dest = append(*dest, item)
 	}
-	return nil
+	return rows.Err()
 }
 
 func fetchStruct(ctx context.Context, rows *sql.Rows, dest Sink) error {
