@@ -5,6 +5,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/viant/sqlx/metadata/info"
+	_ "github.com/viant/sqlx/metadata/product/bigquery"
 	_ "github.com/viant/sqlx/metadata/product/mysql"
 	_ "github.com/viant/sqlx/metadata/product/pg"
 	_ "github.com/viant/sqlx/metadata/product/sqlite"
@@ -60,6 +61,11 @@ func TestDialectMaxPlaceholderCount(t *testing.T) {
 			description: "sqlite 3",
 			productName: "sqlite",
 			expected:    994,
+		},
+		{
+			description: "BigQuery",
+			productName: "bigquery",
+			expected:    10000,
 		},
 	}
 

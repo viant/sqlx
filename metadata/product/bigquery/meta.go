@@ -231,6 +231,7 @@ SESSION_USER() AS USER_NAME,
 		QuoteCharacter:          '\'',
 		CanAutoincrement:        false,
 		CanLastInsertID:         false,
+		MaxPlaceholders:         10000, // GoogleSQL query parameter limit
 		AutoincrementFunc:       "",
 		DefaultPresetIDStrategy: dialect.PresetIDStrategyUndefined,
 	})
